@@ -1,0 +1,420 @@
+[
+  {
+    "no": "ELG-001",
+    "name": "Wanjiku Kamau",
+    "role": "Executive Director",
+    "grade": "G1",
+    "basic": 430000,
+    "house": 130000,
+    "transport": 60000,
+    "acting": 0,
+    "sacco": 25000,
+    "advance": 0,
+    "joined": "04 Feb 2019",
+    "bank": "KCB · 1104 ****882",
+    "kra": "A004 2288 71K",
+    "nssfNo": "3092 4471",
+    "alloc": [
+      {
+        "fund": "General Fund",
+        "grant": "Unassigned",
+        "program": "Shared services",
+        "pct": 50
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "USAID/URAIA/2026",
+        "program": "Election Observation",
+        "pct": 30
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "FORD/GA-24",
+        "program": "Governance Advocacy",
+        "pct": 20
+      }
+    ]
+  },
+  {
+    "no": "ELG-002",
+    "name": "Moses Otieno",
+    "role": "Finance Manager",
+    "grade": "G2",
+    "basic": 265000,
+    "house": 80000,
+    "transport": 40000,
+    "acting": 0,
+    "sacco": 18000,
+    "advance": 0,
+    "joined": "11 Sep 2020",
+    "bank": "KCB · 1104 ****114",
+    "kra": "A007 1140 09P",
+    "nssfNo": "4118 0233",
+    "alloc": [
+      {
+        "fund": "General Fund",
+        "grant": "Unassigned",
+        "program": "Shared services",
+        "pct": 60
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "USAID/URAIA/2026",
+        "program": "Election Observation",
+        "pct": 25
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "UNDP/BASKET/2026",
+        "program": "Election Observation",
+        "pct": 15
+      }
+    ]
+  },
+  {
+    "no": "ELG-003",
+    "name": "Sarah Njeri",
+    "role": "Payroll and Accounts Officer",
+    "grade": "G4",
+    "basic": 145000,
+    "house": 45000,
+    "transport": 20000,
+    "acting": 0,
+    "sacco": 9000,
+    "advance": 15000,
+    "joined": "02 Mar 2021",
+    "bank": "Equity · 0330 ****507",
+    "kra": "A009 8871 22T",
+    "nssfNo": "5220 7714",
+    "alloc": [
+      {
+        "fund": "General Fund",
+        "grant": "Unassigned",
+        "program": "Shared services",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-004",
+    "name": "Joyce Achieng",
+    "role": "Grants Accountant",
+    "grade": "G3",
+    "basic": 170000,
+    "house": 50000,
+    "transport": 25000,
+    "acting": 0,
+    "sacco": 12000,
+    "advance": 0,
+    "joined": "18 Jan 2022",
+    "bank": "Equity · 0330 ****612",
+    "kra": "A011 3390 44M",
+    "nssfNo": "6104 2280",
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "USAID/URAIA/2026",
+        "program": "Election Observation",
+        "pct": 50
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "FORD/GA-24",
+        "program": "Governance Advocacy",
+        "pct": 30
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "UNDP/BASKET/2026",
+        "program": "Election Observation",
+        "pct": 20
+      }
+    ]
+  },
+  {
+    "no": "ELG-005",
+    "name": "Peter Mwangi",
+    "role": "Programme Director, Election Observation",
+    "grade": "G2",
+    "basic": 335000,
+    "house": 100000,
+    "transport": 45000,
+    "acting": 0,
+    "sacco": 20000,
+    "advance": 0,
+    "joined": "06 Jun 2019",
+    "bank": "KCB · 1104 ****330",
+    "kra": "A005 6612 88J",
+    "nssfNo": "3388 1902",
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "USAID/URAIA/2026",
+        "program": "Election Observation",
+        "pct": 70
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "UNDP/BASKET/2026",
+        "program": "Election Observation",
+        "pct": 30
+      }
+    ]
+  },
+  {
+    "no": "ELG-006",
+    "name": "Grace Muthoni",
+    "role": "Observer Coordinator",
+    "grade": "G3",
+    "basic": 185000,
+    "house": 55000,
+    "transport": 25000,
+    "acting": 22000,
+    "actingFrom": "Jun 2026",
+    "sacco": 11000,
+    "advance": 0,
+    "joined": "14 Nov 2022",
+    "bank": "Equity · 0330 ****741",
+    "kra": "A013 4420 17W",
+    "nssfNo": "7011 3348",
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "USAID/URAIA/2026",
+        "program": "Election Observation",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-007",
+    "name": "David Kiplagat",
+    "role": "Data and Analytics Lead",
+    "grade": "G3",
+    "basic": 225000,
+    "house": 65000,
+    "transport": 30000,
+    "acting": 0,
+    "sacco": 14000,
+    "advance": 0,
+    "joined": "21 Feb 2023",
+    "bank": "KCB · 1104 ****198",
+    "kra": "A014 7781 30C",
+    "nssfNo": "7422 6610",
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "UNDP/BASKET/2026",
+        "program": "Election Observation",
+        "pct": 60
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "USAID/URAIA/2026",
+        "program": "Election Observation",
+        "pct": 40
+      }
+    ]
+  },
+  {
+    "no": "ELG-008",
+    "name": "Alice Wairimu",
+    "role": "Advocacy Manager",
+    "grade": "G3",
+    "basic": 205000,
+    "house": 62000,
+    "transport": 28000,
+    "acting": 0,
+    "sacco": 13000,
+    "advance": 0,
+    "joined": "09 Aug 2021",
+    "bank": "Equity · 0330 ****884",
+    "kra": "A010 2204 65R",
+    "nssfNo": "6633 4471",
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "FORD/GA-24",
+        "program": "Governance Advocacy",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-009",
+    "name": "Brian Omondi",
+    "role": "County Liaison Officer, Kisumu",
+    "grade": "G5",
+    "basic": 130000,
+    "house": 38000,
+    "transport": 17000,
+    "acting": 0,
+    "sacco": 7000,
+    "advance": 0,
+    "joined": "03 Apr 2023",
+    "bank": "Equity · 0330 ****219",
+    "kra": "A015 9930 41B",
+    "nssfNo": "7811 2204",
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "FORD/GA-24",
+        "program": "Governance Advocacy",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-010",
+    "name": "Fatuma Hassan",
+    "role": "Communications Officer",
+    "grade": "G4",
+    "basic": 142000,
+    "house": 43000,
+    "transport": 20000,
+    "acting": 0,
+    "sacco": 8500,
+    "advance": 0,
+    "joined": "17 Oct 2022",
+    "bank": "KCB · 1104 ****663",
+    "kra": "A012 8840 92N",
+    "nssfNo": "7104 5528",
+    "alloc": [
+      {
+        "fund": "General Fund",
+        "grant": "Unassigned",
+        "program": "Shared services",
+        "pct": 40
+      },
+      {
+        "fund": "Grant Fund",
+        "grant": "UNDP/BASKET/2026",
+        "program": "Election Observation",
+        "pct": 60
+      }
+    ]
+  },
+  {
+    "no": "ELG-011",
+    "name": "Samuel Njoroge",
+    "role": "Logistics Officer",
+    "grade": "G5",
+    "basic": 115000,
+    "house": 34000,
+    "transport": 16000,
+    "acting": 0,
+    "sacco": 6000,
+    "advance": 20000,
+    "joined": "25 Jul 2020",
+    "bank": "KCB · 1104 ****407",
+    "kra": "A008 3317 55V",
+    "nssfNo": "5511 8830",
+    "alloc": [
+      {
+        "fund": "General Fund",
+        "grant": "Unassigned",
+        "program": "Shared services",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-012",
+    "name": "Mercy Chebet",
+    "role": "Call Centre Supervisor",
+    "grade": "G5",
+    "basic": 101000,
+    "house": 30000,
+    "transport": 14000,
+    "acting": 0,
+    "sacco": 0,
+    "advance": 0,
+    "joined": "01 Aug 2026",
+    "bank": "Equity · 0330 ****955",
+    "kra": "A019 1120 07F",
+    "nssfNo": "8830 4417",
+    "isNew": true,
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "UNDP/BASKET/2026",
+        "program": "Election Observation",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-013",
+    "name": "John Kariuki",
+    "role": "Driver",
+    "grade": "G7",
+    "basic": 68000,
+    "house": 20000,
+    "transport": 10000,
+    "acting": 0,
+    "sacco": 4000,
+    "advance": 0,
+    "joined": "12 Jan 2018",
+    "bank": "KCB · 1104 ****028",
+    "kra": "A003 4471 18D",
+    "nssfNo": "2214 6603",
+    "alloc": [
+      {
+        "fund": "General Fund",
+        "grant": "Unassigned",
+        "program": "Shared services",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-014",
+    "name": "Esther Wangui",
+    "role": "Office Administrator",
+    "grade": "G6",
+    "basic": 78000,
+    "house": 23000,
+    "transport": 11000,
+    "acting": 0,
+    "sacco": 5000,
+    "advance": 0,
+    "joined": "08 May 2021",
+    "bank": "Equity · 0330 ****373",
+    "kra": "A010 6650 84H",
+    "nssfNo": "6210 9947",
+    "alloc": [
+      {
+        "fund": "General Fund",
+        "grant": "Unassigned",
+        "program": "Shared services",
+        "pct": 100
+      }
+    ]
+  },
+  {
+    "no": "ELG-015",
+    "name": "Daniel Mutua",
+    "role": "Monitoring and Evaluation Officer",
+    "grade": "G4",
+    "basic": 164000,
+    "house": 48000,
+    "transport": 23000,
+    "acting": 0,
+    "sacco": 9500,
+    "advance": 0,
+    "joined": "15 Mar 2022",
+    "bank": "KCB · 1104 ****551",
+    "kra": "A011 9902 36S",
+    "nssfNo": "6844 1120",
+    "leaves": "15 Aug 2026",
+    "days": 15,
+    "alloc": [
+      {
+        "fund": "Grant Fund",
+        "grant": "UNDP/BASKET/2026",
+        "program": "Election Observation",
+        "pct": 100
+      }
+    ]
+  }
+]

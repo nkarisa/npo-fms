@@ -1,0 +1,167 @@
+[
+  {
+    "code": "5110",
+    "group": "Programme costs",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "USAID / Uraia 2026",
+    "orig": 58000000,
+    "annual": 62000000,
+    "actual": 38260000,
+    "profile": "peak"
+  },
+  {
+    "code": "5120",
+    "group": "Programme costs",
+    "fund": "Grant Fund",
+    "program": "Civic Education",
+    "grant": "DANIDA CE-2025/27",
+    "orig": 26000000,
+    "annual": 24000000,
+    "actual": 16940000,
+    "profile": "even"
+  },
+  {
+    "code": "5130",
+    "group": "Programme costs",
+    "fund": "Grant Fund",
+    "program": "Civic Education",
+    "grant": "DANIDA CE-2025/27",
+    "orig": 16000000,
+    "annual": 18000000,
+    "actual": 9310000,
+    "profile": "front"
+  },
+  {
+    "code": "5140",
+    "group": "Programme costs",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "USAID / Uraia 2026",
+    "orig": 30000000,
+    "annual": 28000000,
+    "actual": 12485000,
+    "profile": "peak"
+  },
+  {
+    "code": "5150",
+    "group": "Programme costs",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "UNDP Basket 2026",
+    "orig": 20000000,
+    "annual": 22000000,
+    "actual": 7620000,
+    "profile": "back"
+  },
+  {
+    "code": "5210",
+    "group": "Personnel costs",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "orig": 42000000,
+    "annual": 44000000,
+    "actual": 28450000,
+    "profile": "even"
+  },
+  {
+    "code": "5220",
+    "group": "Personnel costs",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "orig": 4600000,
+    "annual": 4800000,
+    "actual": 3120000,
+    "profile": "even"
+  },
+  {
+    "code": "5230",
+    "group": "Personnel costs",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "orig": 3400000,
+    "annual": 3600000,
+    "actual": 2480000,
+    "profile": "even"
+  },
+  {
+    "code": "5310",
+    "group": "Administration",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "orig": 9200000,
+    "annual": 9200000,
+    "actual": 6240000,
+    "profile": "even"
+  },
+  {
+    "code": "5320",
+    "group": "Administration",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "orig": 2400000,
+    "annual": 2600000,
+    "actual": 1875000,
+    "profile": "even"
+  },
+  {
+    "code": "5330",
+    "group": "Administration",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "orig": 3200000,
+    "annual": 3200000,
+    "actual": 2340000,
+    "profile": "back"
+  },
+  {
+    "code": "5340",
+    "group": "Administration",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "orig": 640000,
+    "annual": 640000,
+    "actual": 486300,
+    "profile": "even"
+  },
+  {
+    "code": "5350",
+    "group": "Administration",
+    "fund": "Capital Fund",
+    "program": "Shared services",
+    "grant": "DANIDA CE-2025/27",
+    "orig": 4400000,
+    "annual": 4400000,
+    "actual": 2915000,
+    "profile": "even"
+  },
+  {
+    "code": "5410",
+    "group": "Grants to partners",
+    "fund": "Grant Fund",
+    "program": "Governance Advocacy",
+    "grant": "Ford Foundation GA-24",
+    "orig": 18000000,
+    "annual": 19200000,
+    "actual": 15680000,
+    "profile": "front"
+  },
+  {
+    "code": "5420",
+    "group": "Grants to partners",
+    "fund": "Grant Fund",
+    "program": "Governance Advocacy",
+    "grant": "EU Delegation KE-2026",
+    "orig": 30000000,
+    "annual": 28000000,
+    "actual": 4390000,
+    "profile": "back"
+  }
+]

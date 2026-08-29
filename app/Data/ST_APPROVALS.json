@@ -1,0 +1,44 @@
+[
+  {
+    "key": "journal",
+    "label": "Journal entries",
+    "threshold": 500000,
+    "approver": "Finance Manager",
+    "escalation": "Executive Director"
+  },
+  {
+    "key": "bill",
+    "label": "Supplier bills",
+    "threshold": 1000000,
+    "approver": "Finance Manager",
+    "escalation": "Executive Director"
+  },
+  {
+    "key": "payment",
+    "label": "Payment runs",
+    "threshold": 2000000,
+    "approver": "Executive Director",
+    "escalation": "Board Treasurer"
+  },
+  {
+    "key": "subgrant",
+    "label": "Sub-grants to partners",
+    "threshold": 0,
+    "approver": "Executive Director",
+    "escalation": "Board Treasurer"
+  },
+  {
+    "key": "transfer",
+    "label": "Inter-fund transfers",
+    "threshold": 0,
+    "approver": "Executive Director",
+    "escalation": "Board minute required"
+  },
+  {
+    "key": "revision",
+    "label": "Budget revisions",
+    "threshold": 2000000,
+    "approver": "Finance Manager",
+    "escalation": "Funder consent above 10%"
+  }
+]

@@ -1,0 +1,563 @@
+[
+  {
+    "no": "BILL-0412",
+    "supplier": "Sarova Panafric Hotel",
+    "pin": "P051182934C",
+    "category": "Venue and catering",
+    "invDate": "02 Jul",
+    "dueDate": "01 Aug",
+    "dueIn": -25,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Civic Education",
+    "grant": "DANIDA CE-2025/27",
+    "budget": "KES 2,410,000 of 9,000,000",
+    "taxable": 1420000,
+    "whtRate": 0,
+    "status": "Awaiting approval",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5120",
+        "desc": "Residential ToT — 3 days, 48 participants",
+        "amount": 1180000
+      },
+      {
+        "code": "5120",
+        "desc": "Conference facilities and equipment hire",
+        "amount": 240000
+      }
+    ],
+    "trail": [
+      {
+        "when": "03 Jul",
+        "what": "Received and coded by S. Njeri"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0418",
+    "supplier": "Colourprint Ltd",
+    "pin": "P051043118K",
+    "category": "Printing",
+    "invDate": "14 Jul",
+    "dueDate": "13 Aug",
+    "dueIn": -13,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Civic Education",
+    "grant": "DANIDA CE-2025/27",
+    "budget": "KES 1,880,000 of 6,200,000",
+    "taxable": 860000,
+    "whtRate": 0,
+    "status": "Approved",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5130",
+        "desc": "Voter guide — 40,000 copies, Swahili and English",
+        "amount": 720000
+      },
+      {
+        "code": "5130",
+        "desc": "County posters — 6,000 copies",
+        "amount": 140000
+      }
+    ],
+    "trail": [
+      {
+        "when": "15 Jul",
+        "what": "Received and coded by S. Njeri"
+      },
+      {
+        "when": "18 Jul",
+        "what": "Approved by W. Kamau"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0421",
+    "supplier": "Wanjiku Advisory LLP",
+    "pin": "P051776220M",
+    "category": "Professional fees",
+    "invDate": "20 Jul",
+    "dueDate": "19 Aug",
+    "dueIn": -7,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "USAID / Uraia 2026",
+    "budget": "KES 640,000 of 3,000,000",
+    "taxable": 1250000,
+    "whtRate": 5,
+    "status": "Approved",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5150",
+        "desc": "Statistical analysis of PVT sample data",
+        "amount": 950000
+      },
+      {
+        "code": "5150",
+        "desc": "Methodology peer review",
+        "amount": 300000
+      }
+    ],
+    "trail": [
+      {
+        "when": "21 Jul",
+        "what": "Received and coded by M. Otieno"
+      },
+      {
+        "when": "24 Jul",
+        "what": "Approved by W. Kamau"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0426",
+    "supplier": "Nation Media Group",
+    "pin": "P051002211A",
+    "category": "Media and outreach",
+    "invDate": "28 Jul",
+    "dueDate": "27 Aug",
+    "dueIn": 1,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Civic Education",
+    "grant": "DANIDA CE-2025/27",
+    "budget": "KES 3,100,000 of 8,000,000",
+    "taxable": 2400000,
+    "whtRate": 0,
+    "status": "Awaiting approval",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5130",
+        "desc": "Radio spots — 4 stations, 6 weeks",
+        "amount": 1900000
+      },
+      {
+        "code": "5130",
+        "desc": "Production of Swahili audio content",
+        "amount": 500000
+      }
+    ],
+    "trail": [
+      {
+        "when": "29 Jul",
+        "what": "Received and coded by S. Njeri"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0429",
+    "supplier": "Kenchic Suppliers Ltd",
+    "pin": "P051339087B",
+    "category": "Field catering",
+    "invDate": "01 Aug",
+    "dueDate": "31 Aug",
+    "dueIn": 5,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "USAID / Uraia 2026",
+    "budget": "KES 980,000 of 4,400,000",
+    "taxable": 486000,
+    "whtRate": 0,
+    "status": "Approved",
+    "method": "M-Pesa B2B paybill",
+    "lines": [
+      {
+        "code": "5140",
+        "desc": "Observer meals — Nakuru and Nyeri clusters",
+        "amount": 486000
+      }
+    ],
+    "trail": [
+      {
+        "when": "02 Aug",
+        "what": "Received and coded by P. Mwangi"
+      },
+      {
+        "when": "04 Aug",
+        "what": "Approved by W. Kamau"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0433",
+    "supplier": "Rift Valley Car Hire",
+    "pin": "P051884406R",
+    "category": "Transport",
+    "invDate": "04 Aug",
+    "dueDate": "03 Sep",
+    "dueIn": 8,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "USAID / Uraia 2026",
+    "budget": "KES 1,720,000 of 7,500,000",
+    "taxable": 1340000,
+    "whtRate": 0,
+    "status": "Scheduled",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5140",
+        "desc": "14 vehicles, 9 days, Rift Valley deployment",
+        "amount": 1160000
+      },
+      {
+        "code": "5140",
+        "desc": "Fuel reimbursement at agreed rate",
+        "amount": 180000
+      }
+    ],
+    "trail": [
+      {
+        "when": "05 Aug",
+        "what": "Received and coded by P. Mwangi"
+      },
+      {
+        "when": "07 Aug",
+        "what": "Approved by W. Kamau"
+      },
+      {
+        "when": "11 Aug",
+        "what": "Scheduled in 05 Sep payment run"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0437",
+    "supplier": "Safaricom PLC",
+    "pin": "P051092845Z",
+    "category": "Communication",
+    "invDate": "05 Aug",
+    "dueDate": "04 Sep",
+    "dueIn": 9,
+    "terms": "30 days",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "budget": "KES 620,000 of 2,400,000",
+    "taxable": 384000,
+    "whtRate": 0,
+    "status": "Scheduled",
+    "method": "M-Pesa B2B paybill",
+    "lines": [
+      {
+        "code": "5320",
+        "desc": "Data bundles — 210 field devices",
+        "amount": 268000
+      },
+      {
+        "code": "5320",
+        "desc": "Office fibre and voice",
+        "amount": 116000
+      }
+    ],
+    "trail": [
+      {
+        "when": "06 Aug",
+        "what": "Auto-imported from supplier portal"
+      },
+      {
+        "when": "08 Aug",
+        "what": "Approved by W. Kamau"
+      },
+      {
+        "when": "11 Aug",
+        "what": "Scheduled in 05 Sep payment run"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0441",
+    "supplier": "Delta Corner Management",
+    "pin": "P051220774D",
+    "category": "Rent",
+    "invDate": "07 Aug",
+    "dueDate": "06 Sep",
+    "dueIn": 11,
+    "terms": "30 days",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "budget": "KES 4,160,000 of 7,500,000",
+    "taxable": 1560000,
+    "whtRate": 10,
+    "status": "Awaiting approval",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5310",
+        "desc": "Secretariat office rent — Q3 2026",
+        "amount": 1380000
+      },
+      {
+        "code": "5310",
+        "desc": "Service charge and parking",
+        "amount": 180000
+      }
+    ],
+    "trail": [
+      {
+        "when": "08 Aug",
+        "what": "Received and coded by J. Achieng"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0444",
+    "supplier": "PKF Kenya",
+    "pin": "P051667330F",
+    "category": "Audit fees",
+    "invDate": "10 Aug",
+    "dueDate": "09 Sep",
+    "dueIn": 14,
+    "terms": "30 days",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "budget": "KES 1,560,000 of 2,800,000",
+    "taxable": 980000,
+    "whtRate": 5,
+    "status": "Awaiting approval",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5330",
+        "desc": "Interim audit fieldwork — instalment 2 of 3",
+        "amount": 980000
+      }
+    ],
+    "trail": [
+      {
+        "when": "11 Aug",
+        "what": "Received and coded by J. Achieng"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0447",
+    "supplier": "Kisumu Civic Forum",
+    "pin": "P051458822G",
+    "category": "Sub-grant",
+    "invDate": "12 Aug",
+    "dueDate": "26 Aug",
+    "dueIn": 0,
+    "terms": "14 days",
+    "fund": "Grant Fund",
+    "program": "Governance Advocacy",
+    "grant": "Ford Foundation GA-24",
+    "budget": "KES 6,300,000 of 12,000,000",
+    "taxable": 2400000,
+    "whtRate": 0,
+    "status": "Approved",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5410",
+        "desc": "Tranche 2 sub-grant — county accountability work",
+        "amount": 2400000
+      }
+    ],
+    "trail": [
+      {
+        "when": "12 Aug",
+        "what": "Partner report reviewed by M. Otieno"
+      },
+      {
+        "when": "14 Aug",
+        "what": "Approved by W. Kamau"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0450",
+    "supplier": "Techno Brain Kenya",
+    "pin": "P051559911T",
+    "category": "ICT services",
+    "invDate": "14 Aug",
+    "dueDate": "13 Sep",
+    "dueIn": 18,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "UNDP Basket 2026",
+    "budget": "KES 2,240,000 of 5,600,000",
+    "taxable": 1720000,
+    "whtRate": 5,
+    "status": "Awaiting approval",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5150",
+        "desc": "Call centre platform licence — 6 months",
+        "amount": 1200000
+      },
+      {
+        "code": "5150",
+        "desc": "SMS gateway credits",
+        "amount": 520000
+      }
+    ],
+    "trail": [
+      {
+        "when": "15 Aug",
+        "what": "Received and coded by M. Otieno"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0452",
+    "supplier": "Chandarana Foodplus",
+    "pin": "P051110044C",
+    "category": "Office supplies",
+    "invDate": "15 Aug",
+    "dueDate": "14 Sep",
+    "dueIn": 19,
+    "terms": "30 days",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "budget": "KES 310,000 of 900,000",
+    "taxable": 96000,
+    "whtRate": 0,
+    "status": "Approved",
+    "method": "M-Pesa B2B paybill",
+    "lines": [
+      {
+        "code": "5310",
+        "desc": "Office consumables and pantry — August",
+        "amount": 96000
+      }
+    ],
+    "trail": [
+      {
+        "when": "16 Aug",
+        "what": "Received and coded by J. Achieng"
+      },
+      {
+        "when": "18 Aug",
+        "what": "Approved by W. Kamau"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0398",
+    "supplier": "Jubilee Insurance",
+    "pin": "P051007733J",
+    "category": "Staff medical",
+    "invDate": "12 Jun",
+    "dueDate": "12 Jul",
+    "dueIn": -45,
+    "terms": "30 days",
+    "fund": "General Fund",
+    "program": "Shared services",
+    "grant": "Unassigned",
+    "budget": "KES 2,480,000 of 3,600,000",
+    "taxable": 1240000,
+    "whtRate": 0,
+    "status": "Paid",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5230",
+        "desc": "Group medical cover — Q3 premium",
+        "amount": 1240000
+      }
+    ],
+    "trail": [
+      {
+        "when": "13 Jun",
+        "what": "Received and coded by P. Mwangi"
+      },
+      {
+        "when": "17 Jun",
+        "what": "Approved by W. Kamau"
+      },
+      {
+        "when": "10 Jul",
+        "what": "Paid by EFT, ref KCB/2026/40118"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0405",
+    "supplier": "Total Energies Kenya",
+    "pin": "P051334409T",
+    "category": "Fuel",
+    "invDate": "24 Jun",
+    "dueDate": "24 Jul",
+    "dueIn": -33,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Election Observation",
+    "grant": "USAID / Uraia 2026",
+    "budget": "KES 1,340,000 of 4,000,000",
+    "taxable": 742000,
+    "whtRate": 0,
+    "status": "Paid",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5140",
+        "desc": "Fleet fuel cards — June deployment",
+        "amount": 742000
+      }
+    ],
+    "trail": [
+      {
+        "when": "25 Jun",
+        "what": "Received and coded by P. Mwangi"
+      },
+      {
+        "when": "27 Jun",
+        "what": "Approved by W. Kamau"
+      },
+      {
+        "when": "22 Jul",
+        "what": "Paid by EFT, ref KCB/2026/40255"
+      }
+    ]
+  },
+  {
+    "no": "BILL-0409",
+    "supplier": "Zuri Consulting",
+    "pin": "P051992288Z",
+    "category": "Professional fees",
+    "invDate": "30 Jun",
+    "dueDate": "30 Jul",
+    "dueIn": -27,
+    "terms": "30 days",
+    "fund": "Grant Fund",
+    "program": "Governance Advocacy",
+    "grant": "EU Delegation KE-2026",
+    "budget": "KES 480,000 of 2,000,000",
+    "taxable": 680000,
+    "whtRate": 5,
+    "status": "Rejected",
+    "method": "EFT — KCB Current (KES)",
+    "lines": [
+      {
+        "code": "5420",
+        "desc": "Partner capacity assessment — 4 counties",
+        "amount": 680000
+      }
+    ],
+    "trail": [
+      {
+        "when": "01 Jul",
+        "what": "Received and coded by M. Otieno"
+      },
+      {
+        "when": "05 Jul",
+        "what": "Rejected by W. Kamau — deliverable not submitted"
+      }
+    ]
+  }
+]

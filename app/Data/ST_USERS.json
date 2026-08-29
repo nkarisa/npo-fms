@@ -1,0 +1,74 @@
+[
+  {
+    "name": "Wanjiru Kamau",
+    "email": "w.kamau@elog.or.ke",
+    "role": "Finance Manager",
+    "entities": "All entities",
+    "lastActive": "today, 09:12",
+    "status": "Active"
+  },
+  {
+    "name": "Michael Otieno",
+    "email": "m.otieno@elog.or.ke",
+    "role": "Senior Accountant",
+    "entities": "All entities",
+    "lastActive": "today, 08:40",
+    "status": "Active"
+  },
+  {
+    "name": "Sarah Njeri",
+    "email": "s.njeri@elog.or.ke",
+    "role": "Accountant",
+    "entities": "Secretariat, Coast",
+    "lastActive": "yesterday",
+    "status": "Active"
+  },
+  {
+    "name": "Peter Mwangi",
+    "email": "p.mwangi@elog.or.ke",
+    "role": "Accountant",
+    "entities": "Secretariat, Western",
+    "lastActive": "yesterday",
+    "status": "Active"
+  },
+  {
+    "name": "Joyce Achieng",
+    "email": "j.achieng@elog.or.ke",
+    "role": "Accountant",
+    "entities": "Secretariat",
+    "lastActive": "2 days ago",
+    "status": "Active"
+  },
+  {
+    "name": "Daniel Kiptoo",
+    "email": "d.kiptoo@elog.or.ke",
+    "role": "Executive Director",
+    "entities": "All entities",
+    "lastActive": "3 days ago",
+    "status": "Active"
+  },
+  {
+    "name": "PKF Kenya (audit)",
+    "email": "audit@pkfea.com",
+    "role": "Auditor (read only)",
+    "entities": "All entities",
+    "lastActive": "18 Aug",
+    "status": "Active"
+  },
+  {
+    "name": "Grace Wambui",
+    "email": "g.wambui@elog.or.ke",
+    "role": "Programme Officer",
+    "entities": "Secretariat",
+    "lastActive": "—",
+    "status": "Invited"
+  },
+  {
+    "name": "Brian Omondi",
+    "email": "b.omondi@elog.or.ke",
+    "role": "Accountant",
+    "entities": "Rift Valley",
+    "lastActive": "12 Mar",
+    "status": "Suspended"
+  }
+]

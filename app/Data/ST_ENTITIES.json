@@ -1,0 +1,32 @@
+[
+  {
+    "name": "ELOG National Secretariat",
+    "type": "Head office",
+    "currency": "KES",
+    "status": "Live"
+  },
+  {
+    "name": "ELOG Coast Regional Office",
+    "type": "Branch",
+    "currency": "KES",
+    "status": "Live"
+  },
+  {
+    "name": "ELOG Western Regional Office",
+    "type": "Branch",
+    "currency": "KES",
+    "status": "Live"
+  },
+  {
+    "name": "ELOG Trust (Endowment)",
+    "type": "Related trust",
+    "currency": "KES",
+    "status": "Live"
+  },
+  {
+    "name": "ELOG Rift Valley Office",
+    "type": "Branch",
+    "currency": "KES",
+    "status": "Dormant"
+  }
+]

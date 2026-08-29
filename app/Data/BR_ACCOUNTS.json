@@ -1,0 +1,339 @@
+[
+  {
+    "code": "1110",
+    "name": "Bank — KCB Current (KES)",
+    "short": "KCB Current",
+    "stmtRef": "KCB current a/c 1104578921 · statement 08/2026 received 27 Aug",
+    "opening": 9405900,
+    "stmt": [
+      {
+        "id": "s1",
+        "date": "04 Aug",
+        "ref": "REF 771204",
+        "desc": "USAID tranche receipt — Uraia 2026",
+        "amt": 18400000,
+        "jl": ""
+      },
+      {
+        "id": "s2",
+        "date": "05 Aug",
+        "ref": "EFT 884120",
+        "desc": "Rift Valley Motors Ltd",
+        "amt": -1340000,
+        "jl": ""
+      },
+      {
+        "id": "s3",
+        "date": "07 Aug",
+        "ref": "CHQ 004512",
+        "desc": "Cheque 004512 presented",
+        "amt": -486000,
+        "jl": ""
+      },
+      {
+        "id": "s4",
+        "date": "11 Aug",
+        "ref": "DD 990412",
+        "desc": "Safaricom PLC — direct debit",
+        "amt": -384000,
+        "jl": ""
+      },
+      {
+        "id": "s5",
+        "date": "14 Aug",
+        "ref": "TFR 118820",
+        "desc": "Transfer to M-Pesa paybill",
+        "amt": -2000000,
+        "jl": ""
+      },
+      {
+        "id": "s6",
+        "date": "18 Aug",
+        "ref": "CHG 0818",
+        "desc": "Ledger fees and cheque charges",
+        "amt": -14800,
+        "jl": "Post bank charges"
+      },
+      {
+        "id": "s7",
+        "date": "20 Aug",
+        "ref": "EFT 884540",
+        "desc": "KRA — PAYE remittance",
+        "amt": -3120000,
+        "jl": ""
+      },
+      {
+        "id": "s8",
+        "date": "22 Aug",
+        "ref": "INT 0822",
+        "desc": "Interest on current account",
+        "amt": 36400,
+        "jl": "Post interest received"
+      },
+      {
+        "id": "s9",
+        "date": "25 Aug",
+        "ref": "EFT 884712",
+        "desc": "Sarova Panafric Hotel",
+        "amt": -1720000,
+        "jl": ""
+      },
+      {
+        "id": "s10",
+        "date": "26 Aug",
+        "ref": "CR 771990",
+        "desc": "Unidentified credit — ELOG/DON/0912",
+        "amt": 250000,
+        "jl": "Post to suspense"
+      },
+      {
+        "id": "s11",
+        "date": "27 Aug",
+        "ref": "SO 004990",
+        "desc": "Standing order — Kilimani office rent",
+        "amt": -980000,
+        "jl": ""
+      }
+    ],
+    "book": [
+      {
+        "id": "b1",
+        "date": "04 Aug",
+        "ref": "RC-26-0301",
+        "desc": "USAID tranche — Uraia 2026",
+        "amt": 18400000,
+        "jl": ""
+      },
+      {
+        "id": "b2",
+        "date": "05 Aug",
+        "ref": "PV-26-0455",
+        "desc": "Rift Valley Motors — vehicle hire, Rift Valley",
+        "amt": -1340000,
+        "jl": ""
+      },
+      {
+        "id": "b3",
+        "date": "06 Aug",
+        "ref": "PV-26-0448",
+        "desc": "Kenchic Suppliers — observer catering",
+        "amt": -486000,
+        "jl": ""
+      },
+      {
+        "id": "b4",
+        "date": "10 Aug",
+        "ref": "PV-26-0461",
+        "desc": "Safaricom — data bundles and office fibre",
+        "amt": -384000,
+        "jl": ""
+      },
+      {
+        "id": "b5",
+        "date": "14 Aug",
+        "ref": "JV-26-0288",
+        "desc": "Transfer to M-Pesa paybill float",
+        "amt": -2000000,
+        "jl": ""
+      },
+      {
+        "id": "b6",
+        "date": "19 Aug",
+        "ref": "PV-26-0470",
+        "desc": "KRA — PAYE on July payroll",
+        "amt": -3120000,
+        "jl": ""
+      },
+      {
+        "id": "b7",
+        "date": "24 Aug",
+        "ref": "PV-26-0475",
+        "desc": "Sarova Panafric — training venue",
+        "amt": -1720000,
+        "jl": ""
+      },
+      {
+        "id": "b8",
+        "date": "26 Aug",
+        "ref": "PV-26-0479",
+        "desc": "Nation Media Group — radio spots",
+        "amt": -2400000,
+        "jl": ""
+      },
+      {
+        "id": "b9",
+        "date": "27 Aug",
+        "ref": "PV-26-0481",
+        "desc": "Kilimani office rent — August",
+        "amt": -980000,
+        "jl": ""
+      },
+      {
+        "id": "b10",
+        "date": "27 Aug",
+        "ref": "PV-26-0483",
+        "desc": "Simba Telecom — call centre licence",
+        "amt": -1730000,
+        "jl": ""
+      }
+    ]
+  },
+  {
+    "code": "1120",
+    "name": "Bank — Equity Grant Account (USD)",
+    "short": "Equity USD",
+    "stmtRef": "Equity USD a/c 0410294778 · statement 08/2026 received 27 Aug",
+    "opening": 40120000,
+    "stmt": [
+      {
+        "id": "s1",
+        "date": "02 Aug",
+        "ref": "SWF 220144",
+        "desc": "DANIDA disbursement — CE-2025/27",
+        "amt": 12400000,
+        "jl": ""
+      },
+      {
+        "id": "s2",
+        "date": "08 Aug",
+        "ref": "SWF 220198",
+        "desc": "SWIFT transfer to KCB current",
+        "amt": -6000000,
+        "jl": ""
+      },
+      {
+        "id": "s3",
+        "date": "15 Aug",
+        "ref": "SWF 220240",
+        "desc": "LTO stipend batch — 118 observers",
+        "amt": -3860000,
+        "jl": ""
+      },
+      {
+        "id": "s4",
+        "date": "21 Aug",
+        "ref": "CHG 0821",
+        "desc": "SWIFT and correspondent bank fees",
+        "amt": -48200,
+        "jl": "Post bank charges"
+      },
+      {
+        "id": "s5",
+        "date": "26 Aug",
+        "ref": "FX 0826",
+        "desc": "Exchange gain credited on revaluation",
+        "amt": 214000,
+        "jl": "Post exchange gain"
+      }
+    ],
+    "book": [
+      {
+        "id": "b1",
+        "date": "02 Aug",
+        "ref": "RC-26-0308",
+        "desc": "DANIDA disbursement — CE-2025/27",
+        "amt": 12400000,
+        "jl": ""
+      },
+      {
+        "id": "b2",
+        "date": "08 Aug",
+        "ref": "JV-26-0291",
+        "desc": "Transfer to KCB current account",
+        "amt": -6000000,
+        "jl": ""
+      },
+      {
+        "id": "b3",
+        "date": "15 Aug",
+        "ref": "PV-26-0468",
+        "desc": "LTO stipends — August deployment",
+        "amt": -3860000,
+        "jl": ""
+      },
+      {
+        "id": "b4",
+        "date": "27 Aug",
+        "ref": "PV-26-0486",
+        "desc": "Ipsos Kenya — endline survey, first instalment",
+        "amt": -2180000,
+        "jl": ""
+      }
+    ]
+  },
+  {
+    "code": "1130",
+    "name": "M-Pesa paybill float",
+    "short": "M-Pesa float",
+    "stmtRef": "Paybill 509118 · settlement report 08/2026 pulled 27 Aug",
+    "opening": 620000,
+    "stmt": [
+      {
+        "id": "s1",
+        "date": "14 Aug",
+        "ref": "TFR 118820",
+        "desc": "Top-up from KCB current",
+        "amt": 2000000,
+        "jl": ""
+      },
+      {
+        "id": "s2",
+        "date": "17 Aug",
+        "ref": "MP 0301",
+        "desc": "Observer stipends — batch MP/0301",
+        "amt": -1540000,
+        "jl": ""
+      },
+      {
+        "id": "s3",
+        "date": "21 Aug",
+        "ref": "MP 0308",
+        "desc": "Observer stipends — batch MP/0308",
+        "amt": -420000,
+        "jl": ""
+      },
+      {
+        "id": "s4",
+        "date": "25 Aug",
+        "ref": "CHG 0825",
+        "desc": "Paybill transaction charges — August",
+        "amt": -8600,
+        "jl": "Post transaction charges"
+      }
+    ],
+    "book": [
+      {
+        "id": "b1",
+        "date": "14 Aug",
+        "ref": "JV-26-0288",
+        "desc": "Top-up from KCB current account",
+        "amt": 2000000,
+        "jl": ""
+      },
+      {
+        "id": "b2",
+        "date": "17 Aug",
+        "ref": "MP-26-0301",
+        "desc": "Observer stipends — batch MP/0301",
+        "amt": -1540000,
+        "jl": ""
+      },
+      {
+        "id": "b3",
+        "date": "21 Aug",
+        "ref": "MP-26-0308",
+        "desc": "Observer stipends — batch MP/0308",
+        "amt": -420000,
+        "jl": ""
+      },
+      {
+        "id": "b4",
+        "date": "27 Aug",
+        "ref": "MP-26-0312",
+        "desc": "Observer stipends — batch MP/0312",
+        "amt": -110000,
+        "jl": ""
+      }
+    ]
+  }
+]

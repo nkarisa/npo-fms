@@ -1,0 +1,261 @@
+[
+  {
+    "tag": "VEH-001",
+    "name": "Toyota Land Cruiser Hardtop — KDK 411X",
+    "cls": "Motor vehicles",
+    "acquired": "15 Jul 2024",
+    "life": 5,
+    "cost": 8400000,
+    "accum": 3360000,
+    "costAcct": "1310",
+    "fund": "Grant Fund",
+    "funder": "USAID / Uraia",
+    "grant": "USAID / Uraia 2026",
+    "program": "Election Observation",
+    "title": "Title reverts to USAID at grant close unless disposal is approved",
+    "custodian": "Logistics — Nairobi",
+    "location": "Secretariat, Kilimani",
+    "status": "In use",
+    "doc": "ELOG/FA/2024/019",
+    "trail": [
+      {
+        "when": "15 Jul 2024",
+        "what": "Capitalised from PV-24-0912, donor-funded under Uraia"
+      },
+      {
+        "when": "31 Jul 2026",
+        "what": "Verified present in the annual asset count"
+      }
+    ]
+  },
+  {
+    "tag": "VEH-002",
+    "name": "Toyota Hiace 14-seat minibus — KDN 802Q",
+    "cls": "Motor vehicles",
+    "acquired": "03 Dec 2024",
+    "life": 5,
+    "cost": 5800000,
+    "accum": 1933340,
+    "costAcct": "1310",
+    "fund": "Grant Fund",
+    "funder": "DANIDA",
+    "grant": "DANIDA CE-2025/27",
+    "program": "Civic Education",
+    "title": "Title reverts to DANIDA at agreement end",
+    "custodian": "Logistics — Nairobi",
+    "location": "Secretariat, Kilimani",
+    "status": "In use",
+    "doc": "ELOG/FA/2024/031",
+    "trail": [
+      {
+        "when": "03 Dec 2024",
+        "what": "Capitalised from PV-24-1104"
+      },
+      {
+        "when": "31 Jul 2026",
+        "what": "Verified present in the annual asset count"
+      }
+    ]
+  },
+  {
+    "tag": "IT-014",
+    "name": "42 × Lenovo ThinkPad L14 — observer deployment",
+    "cls": "Computer equipment",
+    "acquired": "20 Jan 2026",
+    "life": 3,
+    "cost": 2310000,
+    "accum": 385000,
+    "costAcct": "1320",
+    "fund": "Grant Fund",
+    "funder": "USAID / Uraia",
+    "grant": "USAID / Uraia 2026",
+    "program": "Election Observation",
+    "title": "Title reverts to USAID at grant close",
+    "custodian": "ICT — Nairobi",
+    "location": "Issued to LTOs, 9 counties",
+    "status": "In use",
+    "doc": "ELOG/FA/2026/004",
+    "trail": [
+      {
+        "when": "20 Jan 2026",
+        "what": "Capitalised from PV-26-0088, 42 units tagged individually"
+      },
+      {
+        "when": "14 Aug 2026",
+        "what": "38 of 42 confirmed with custodians; 4 outstanding"
+      }
+    ]
+  },
+  {
+    "tag": "IT-021",
+    "name": "Dell PowerEdge server and rack",
+    "cls": "Computer equipment",
+    "acquired": "12 Nov 2024",
+    "life": 4,
+    "cost": 1180000,
+    "accum": 491660,
+    "costAcct": "1320",
+    "fund": "General Fund",
+    "funder": "—",
+    "grant": "Unassigned",
+    "program": "Shared services",
+    "title": "ELOG retains title",
+    "custodian": "ICT — Nairobi",
+    "location": "Server room, Secretariat",
+    "status": "In use",
+    "doc": "ELOG/FA/2024/028",
+    "trail": [
+      {
+        "when": "12 Nov 2024",
+        "what": "Capitalised from PV-24-1051, core-funded"
+      }
+    ]
+  },
+  {
+    "tag": "IT-030",
+    "name": "210 × field data-collection tablets",
+    "cls": "Computer equipment",
+    "acquired": "05 Jun 2026",
+    "life": 3,
+    "cost": 1050000,
+    "accum": 58334,
+    "costAcct": "1320",
+    "fund": "Grant Fund",
+    "funder": "UNDP Kenya",
+    "grant": "UNDP Basket 2026",
+    "program": "Election Observation",
+    "title": "Title reverts to the UNDP basket at close",
+    "custodian": "ICT — Nairobi",
+    "location": "Stores, pending deployment",
+    "status": "In use",
+    "doc": "ELOG/FA/2026/017",
+    "trail": [
+      {
+        "when": "05 Jun 2026",
+        "what": "Capitalised from PV-26-0402, 210 units tagged in blocks of 30"
+      }
+    ]
+  },
+  {
+    "tag": "EQP-003",
+    "name": "Call centre headsets and PABX",
+    "cls": "Office equipment",
+    "acquired": "18 Apr 2026",
+    "life": 5,
+    "cost": 620000,
+    "accum": 31000,
+    "costAcct": "1320",
+    "fund": "Grant Fund",
+    "funder": "Ford Foundation",
+    "grant": "Ford Foundation GA-24",
+    "program": "Governance Advocacy",
+    "title": "ELOG retains title — capital use approved in the award",
+    "custodian": "Programmes — Nairobi",
+    "location": "Call centre, 2nd floor",
+    "status": "In use",
+    "doc": "ELOG/FA/2026/011",
+    "trail": [
+      {
+        "when": "18 Apr 2026",
+        "what": "Capitalised from PV-26-0271"
+      }
+    ]
+  },
+  {
+    "tag": "EQP-009",
+    "name": "Generator — 30 kVA standby",
+    "cls": "Office equipment",
+    "acquired": "22 Aug 2022",
+    "life": 10,
+    "cost": 1045000,
+    "accum": 472666,
+    "costAcct": "1320",
+    "fund": "General Fund",
+    "funder": "—",
+    "grant": "Unassigned",
+    "program": "Shared services",
+    "title": "ELOG retains title",
+    "custodian": "Administration",
+    "location": "Secretariat, Kilimani",
+    "status": "In use",
+    "doc": "ELOG/FA/2022/007",
+    "trail": [
+      {
+        "when": "22 Aug 2022",
+        "what": "Capitalised from PV-22-0533"
+      },
+      {
+        "when": "12 Mar 2026",
+        "what": "Major service — expensed, not capitalised"
+      }
+    ]
+  },
+  {
+    "tag": "IT-008",
+    "name": "24 × field tablets — 2022 observation cycle",
+    "cls": "Computer equipment",
+    "acquired": "10 Feb 2023",
+    "life": 3,
+    "cost": 680000,
+    "accum": 680000,
+    "costAcct": "1320",
+    "fund": "Grant Fund",
+    "funder": "EU Delegation",
+    "grant": "EU Delegation KE-2026",
+    "program": "Election Observation",
+    "title": "Title passed to ELOG on grant close",
+    "custodian": "ICT — Nairobi",
+    "location": "Stores — 19 units, 5 written off",
+    "status": "Fully depreciated",
+    "doc": "ELOG/FA/2023/002",
+    "trail": [
+      {
+        "when": "10 Feb 2023",
+        "what": "Capitalised from PV-23-0044"
+      },
+      {
+        "when": "31 Jan 2026",
+        "what": "Useful life expired; carried at nil book value"
+      },
+      {
+        "when": "30 Jun 2026",
+        "what": "5 units written off after the annual count"
+      }
+    ]
+  },
+  {
+    "tag": "VEH-000",
+    "name": "Nissan Hardbody pickup — KCA 097J",
+    "cls": "Motor vehicles",
+    "acquired": "09 Jul 2021",
+    "life": 5,
+    "cost": 3900000,
+    "accum": 3510000,
+    "costAcct": "1310",
+    "fund": "General Fund",
+    "funder": "—",
+    "grant": "Unassigned",
+    "program": "Shared services",
+    "title": "Sold at auction, 30 Jun 2026",
+    "custodian": "—",
+    "location": "Disposed",
+    "status": "Disposed",
+    "proceeds": 1250000,
+    "disposed": "30 Jun 2026",
+    "doc": "ELOG/FA/2021/012",
+    "trail": [
+      {
+        "when": "09 Jul 2021",
+        "what": "Capitalised from PV-21-0388"
+      },
+      {
+        "when": "12 Jun 2026",
+        "what": "Board approved disposal by public auction"
+      },
+      {
+        "when": "30 Jun 2026",
+        "what": "Sold for 1,250,000 — derecognised, gain of 860,000 taken to 4250"
+      }
+    ]
+  }
+]

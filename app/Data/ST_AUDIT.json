@@ -1,0 +1,62 @@
+[
+  {
+    "when": "26 Aug 09:41",
+    "who": "W. Kamau",
+    "what": "Payment run threshold raised from 1,500,000 to 2,000,000",
+    "area": "Approvals"
+  },
+  {
+    "when": "22 Aug 16:08",
+    "who": "W. Kamau",
+    "what": "Grant / award segment made mandatory on restricted-fund postings",
+    "area": "Segments"
+  },
+  {
+    "when": "19 Aug 11:22",
+    "who": "M. Otieno",
+    "what": "July 2026 period closed to further posting",
+    "area": "Ledger"
+  },
+  {
+    "when": "14 Aug 10:03",
+    "who": "D. Kiptoo",
+    "what": "B. Omondi suspended following transfer out of the Rift Valley office",
+    "area": "Users"
+  },
+  {
+    "when": "08 Aug 15:37",
+    "who": "W. Kamau",
+    "what": "Retrospective posting to closed periods disabled",
+    "area": "Ledger"
+  },
+  {
+    "when": "02 Aug 08:55",
+    "who": "W. Kamau",
+    "what": "PKF Kenya granted read-only access across all entities for the interim audit",
+    "area": "Users"
+  },
+  {
+    "when": "28 Jul 14:19",
+    "who": "M. Otieno",
+    "what": "County segment added as an optional analysis dimension",
+    "area": "Segments"
+  },
+  {
+    "when": "11 Jul 09:30",
+    "who": "D. Kiptoo",
+    "what": "Sub-grant approval threshold set to nil — all sub-grants require sign-off",
+    "area": "Approvals"
+  },
+  {
+    "when": "03 Jul 17:44",
+    "who": "W. Kamau",
+    "what": "ELOG Rift Valley Office marked dormant",
+    "area": "Organisation"
+  },
+  {
+    "when": "19 Jun 12:07",
+    "who": "W. Kamau",
+    "what": "Withholding tax rate table updated for the Finance Act 2026",
+    "area": "Ledger"
+  }
+]

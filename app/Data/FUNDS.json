@@ -1,0 +1,184 @@
+[
+  {
+    "code": "FND-100",
+    "name": "General Fund",
+    "cls": "Unrestricted",
+    "funder": "Own income",
+    "grant": "—",
+    "purpose": "Core operations, governance and unfunded programme gaps",
+    "period": "Perpetual",
+    "spendBy": "—",
+    "daysLeft": 9999,
+    "conditions": "No donor restriction. Board approval required for transfers above KES 2,000,000.",
+    "programs": [
+      "Shared services",
+      "Governance Advocacy"
+    ],
+    "ledgerFund": "General Fund",
+    "opening": 18240000,
+    "income": 8076300,
+    "spend": 6420000,
+    "transfers": -1800000
+  },
+  {
+    "code": "FND-210",
+    "name": "USAID / Uraia Election Observation Fund",
+    "cls": "Restricted",
+    "funder": "USAID / Uraia",
+    "grant": "USAID / Uraia 2026",
+    "purpose": "Long-term and short-term observation of the 2027 general election",
+    "period": "01 Oct 2025 – 31 Mar 2027",
+    "spendBy": "31 Mar 2027",
+    "daysLeft": 217,
+    "conditions": "Costs must be incurred within the agreement period. Unspent balances are returnable within 90 days of close. No sub-granting without prior written approval.",
+    "programs": [
+      "Election Observation"
+    ],
+    "ledgerFund": "Grant Fund",
+    "opening": 12480000,
+    "income": 96400000,
+    "spend": 58365000,
+    "transfers": 0
+  },
+  {
+    "code": "FND-220",
+    "name": "DANIDA Civic Education Fund",
+    "cls": "Restricted",
+    "funder": "DANIDA",
+    "grant": "DANIDA CE-2025/27",
+    "purpose": "Voter civic education across 14 counties",
+    "period": "01 Jan 2025 – 31 Dec 2026",
+    "spendBy": "31 Dec 2026",
+    "daysLeft": 127,
+    "conditions": "Maximum 8% indirect cost recovery. Quarterly narrative and financial reporting. Procurement above KES 1,000,000 requires three quotations.",
+    "programs": [
+      "Civic Education"
+    ],
+    "ledgerFund": "Grant Fund",
+    "opening": 7920000,
+    "income": 34250000,
+    "spend": 26250000,
+    "transfers": 0
+  },
+  {
+    "code": "FND-230",
+    "name": "UNDP Basket Fund",
+    "cls": "Restricted",
+    "funder": "UNDP Kenya",
+    "grant": "UNDP Basket 2026",
+    "purpose": "Shared electoral support basket — data systems and call centre",
+    "period": "01 Apr 2026 – 30 Jun 2027",
+    "spendBy": "30 Jun 2027",
+    "daysLeft": 308,
+    "conditions": "Pooled reporting with other basket recipients. Assets above USD 5,000 vest in UNDP at close.",
+    "programs": [
+      "Election Observation",
+      "Shared services"
+    ],
+    "ledgerFund": "Grant Fund",
+    "opening": 0,
+    "income": 27900000,
+    "spend": 7620000,
+    "transfers": 0
+  },
+  {
+    "code": "FND-240",
+    "name": "Ford Foundation Governance Fund",
+    "cls": "Restricted",
+    "funder": "Ford Foundation",
+    "grant": "Ford Foundation GA-24",
+    "purpose": "County-level accountability and partner sub-granting",
+    "period": "01 Jul 2024 – 30 Sep 2026",
+    "spendBy": "30 Sep 2026",
+    "daysLeft": 35,
+    "conditions": "At least 60% must reach county partners as sub-grants. Final report due 60 days after close.",
+    "programs": [
+      "Governance Advocacy"
+    ],
+    "ledgerFund": "Grant Fund",
+    "opening": 9640000,
+    "income": 18700000,
+    "spend": 15680000,
+    "transfers": 0
+  },
+  {
+    "code": "FND-250",
+    "name": "EU Delegation Partner Fund",
+    "cls": "Restricted",
+    "funder": "EU Delegation",
+    "grant": "EU Delegation KE-2026",
+    "purpose": "Capacity strengthening of county civil society partners",
+    "period": "01 Feb 2026 – 31 Jan 2028",
+    "spendBy": "31 Jan 2028",
+    "daysLeft": 523,
+    "conditions": "EU visibility guidelines apply to all outputs. Exchange losses are not eligible.",
+    "programs": [
+      "Governance Advocacy"
+    ],
+    "ledgerFund": "Grant Fund",
+    "opening": 0,
+    "income": 12600000,
+    "spend": 4390000,
+    "transfers": 0
+  },
+  {
+    "code": "FND-300",
+    "name": "Capital Fund",
+    "cls": "Restricted",
+    "funder": "DANIDA",
+    "grant": "DANIDA CE-2025/27",
+    "purpose": "Vehicles, ICT equipment and leasehold improvements",
+    "period": "01 Jan 2025 – 31 Dec 2026",
+    "spendBy": "31 Dec 2026",
+    "daysLeft": 127,
+    "conditions": "Assets are held for programme use and may not be disposed of without donor consent.",
+    "programs": [
+      "Shared services"
+    ],
+    "ledgerFund": "Capital Fund",
+    "opening": 16400000,
+    "income": 0,
+    "spend": 2915000,
+    "transfers": 1800000
+  },
+  {
+    "code": "FND-400",
+    "name": "ELOG Trust Endowment",
+    "cls": "Endowment",
+    "funder": "Ford Foundation",
+    "grant": "Endowment deed 2019",
+    "purpose": "Permanent capital — only investment income may be applied",
+    "period": "Perpetual",
+    "spendBy": "—",
+    "daysLeft": 9999,
+    "conditions": "Capital is permanently maintained. Only realised investment income may be released to the General Fund, on board resolution.",
+    "programs": [
+      "Shared services"
+    ],
+    "ledgerFund": "Endowment Fund",
+    "opening": 9500000,
+    "income": 612400,
+    "spend": 0,
+    "transfers": 0
+  },
+  {
+    "code": "FND-110",
+    "name": "Board Designated Reserve",
+    "cls": "Unrestricted",
+    "funder": "Own income",
+    "grant": "—",
+    "purpose": "Three months of operating cover, designated by the board",
+    "period": "Perpetual",
+    "spendBy": "—",
+    "daysLeft": 9999,
+    "conditions": "Designated, not restricted. Release requires a board minute but no donor consent.",
+    "programs": [
+      "Shared services"
+    ],
+    "ledgerFund": "General Fund",
+    "opening": 6800000,
+    "income": 0,
+    "spend": 0,
+    "transfers": 0
+  }
+]
