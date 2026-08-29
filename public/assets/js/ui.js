@@ -202,13 +202,17 @@ const UI = (() => {
       const dr = [...linesBox.querySelectorAll('.jd-dr')].reduce((a, el) => a + (parseFloat(el.value) || 0), 0);
       const cr = [...linesBox.querySelectorAll('.jd-cr')].reduce((a, el) => a + (parseFloat(el.value) || 0), 0);
       const bal = journalDrawer.querySelector('#jd-balance');
-      if (dr === cr && dr > 0) {
+      const balanced = dr === cr && dr > 0;
+      if (balanced) {
         bal.style.color = '#2C6B58';
         bal.textContent = `Balanced · ${fmtMoney(dr)} each side`;
       } else {
         bal.style.color = '#A5442F';
         bal.textContent = `Out of balance by ${fmtMoney(Math.abs(dr - cr))} · debits ${fmtMoney(dr)}, credits ${fmtMoney(cr)}`;
       }
+      // Debits must equal credits before either save action is allowed — no exception for drafts.
+      journalDrawer.querySelector('#jd-save-draft').disabled = !balanced;
+      journalDrawer.querySelector('#jd-submit').disabled = !balanced;
     }
     journalDrawer._updateBalance = updateBalance;
   }

@@ -100,13 +100,13 @@ class Journals extends BaseApiController
         $sumDr = array_sum(array_map(fn ($l) => $l['dr'], $lines));
         $sumCr = array_sum(array_map(fn ($l) => $l['cr'], $lines));
 
-        if ($status !== 'Draft') {
-            if ($narration === '') {
-                return $this->response->setStatusCode(422)->setJSON(['error' => 'A narration is required before the entry leaves draft.']);
-            }
-            if ($sumDr !== $sumCr || $sumDr === 0.0) {
-                return $this->response->setStatusCode(422)->setJSON(['error' => 'Entry is out of balance by ' . Prototype::fmt(abs($sumDr - $sumCr)) . ' — cannot submit.']);
-            }
+        // Every journal — draft or not — must balance: total debits always equal total credits.
+        if ($sumDr !== $sumCr || $sumDr === 0.0) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'Entry is out of balance by ' . Prototype::fmt(abs($sumDr - $sumCr)) . ' — debits must equal credits before it can be saved.']);
+        }
+
+        if ($status !== 'Draft' && $narration === '') {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'A narration is required before the entry leaves draft.']);
         }
 
         $all = Prototype::load('JOURNALS');
