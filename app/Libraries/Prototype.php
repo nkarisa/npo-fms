@@ -22,6 +22,14 @@ class Prototype
         return self::$cache[$name];
     }
 
+    /** Persists a dataset back to app/Data/*.json and refreshes the in-memory cache. */
+    public static function save(string $name, array $data): void
+    {
+        $path = APPPATH . 'Data/' . $name . '.json';
+        file_put_contents($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        self::$cache[$name] = $data;
+    }
+
     /** Format a KES amount the way the prototype does: "—" for 0, "(1,234)" for negatives. */
     public static function fmt(float|int $n): string
     {

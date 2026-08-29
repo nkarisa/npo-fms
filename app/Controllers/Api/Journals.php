@@ -73,4 +73,69 @@ class Journals extends BaseApiController
         }
         return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
     }
+
+    /** Creates a new journal document as a Draft or submits it straight for approval. */
+    public function create()
+    {
+        $body   = $this->request->getJSON(true) ?? [];
+        $status = in_array($body['status'] ?? 'Draft', ['Draft', 'Pending approval'], true) ? $body['status'] : 'Draft';
+        $narration = trim((string) ($body['narration'] ?? ''));
+
+        $lines = array_values(array_filter($body['lines'] ?? [], function ($l) {
+            return trim((string) ($l['code'] ?? '')) !== '' || (float) ($l['dr'] ?? 0) !== 0.0 || (float) ($l['cr'] ?? 0) !== 0.0;
+        }));
+        $lines = array_map(fn ($l) => [
+            'code'    => trim((string) ($l['code'] ?? '')),
+            'desc'    => trim((string) ($l['desc'] ?? '')),
+            'fund'    => $l['fund'] ?? 'General Fund',
+            'program' => $l['program'] ?? 'Shared services',
+            'dr'      => round((float) ($l['dr'] ?? 0)),
+            'cr'      => round((float) ($l['cr'] ?? 0)),
+        ], $lines);
+
+        if (count($lines) < 2) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'A journal needs at least two lines.']);
+        }
+
+        $sumDr = array_sum(array_map(fn ($l) => $l['dr'], $lines));
+        $sumCr = array_sum(array_map(fn ($l) => $l['cr'], $lines));
+
+        if ($status !== 'Draft') {
+            if ($narration === '') {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'A narration is required before the entry leaves draft.']);
+            }
+            if ($sumDr !== $sumCr || $sumDr === 0.0) {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'Entry is out of balance by ' . Prototype::fmt(abs($sumDr - $sumCr)) . ' — cannot submit.']);
+            }
+        }
+
+        $all = Prototype::load('JOURNALS');
+        $seq = 312 + count(array_filter($all, fn ($j) => str_starts_with($j['ref'], 'JV-26')));
+        $ref = 'JV-26-' . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+        $date = trim((string) ($body['date'] ?? '')) ?: date('d M Y');
+
+        $trail = [['when' => substr($date, 0, 6), 'what' => 'Draft created by ' . ($body['preparer'] ?? 'J. Achieng')]];
+        if ($status === 'Pending approval') {
+            $trail[] = ['when' => substr($date, 0, 6), 'what' => 'Submitted for approval to W. Kamau'];
+        }
+
+        $journal = [
+            'ref'       => $ref,
+            'date'      => $date,
+            'type'      => $body['type'] ?? 'Standard',
+            'period'    => $body['period'] ?? 'Aug 2026',
+            'status'    => $status,
+            'preparer'  => $body['preparer'] ?? 'J. Achieng',
+            'doc'       => trim((string) ($body['doc'] ?? '')),
+            'memo'      => trim((string) ($body['memo'] ?? '')),
+            'narration' => $narration,
+            'lines'     => $lines,
+            'trail'     => $trail,
+        ];
+
+        array_unshift($all, $journal);
+        Prototype::save('JOURNALS', $all);
+
+        return $this->response->setStatusCode(201)->setJSON(['journal' => $journal]);
+    }
 }

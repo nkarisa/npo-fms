@@ -58,7 +58,9 @@
     card.appendChild(footer);
     app.appendChild(card);
 
-    document.getElementById('new-journal').addEventListener('click', () => UI.toast('Journal capture is normally driven by the posting workflow — not wired up in this prototype UI.'));
+    document.getElementById('new-journal').addEventListener('click', () => {
+      UI.openNewJournalDrawer({ onSaved: refresh });
+    });
   }
 
   async function refresh() {

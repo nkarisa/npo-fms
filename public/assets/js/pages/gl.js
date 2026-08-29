@@ -15,8 +15,16 @@
       kicker: data.account.code + ' · ' + data.account.name,
       title: 'General ledger',
       blurb: 'Every posting behind a single account, in date order, with a running balance.',
+      actions: '<button class="btn btn-primary" id="new-journal">New journal</button>',
     });
     app.appendChild(UI.statGrid(data.summary));
+
+    document.getElementById('new-journal').addEventListener('click', () => {
+      UI.openNewJournalDrawer({
+        defaultLine: { code: data.account.code, fund: data.account.fund === 'All funds' ? undefined : data.account.fund, program: data.account.program },
+        onSaved: refresh,
+      });
+    });
 
     const card = document.createElement('div');
     card.className = 'card';

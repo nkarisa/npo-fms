@@ -23,8 +23,13 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('dashboard', 'Api\Dashboard::index');
     $routes->get('period-close', 'Api\PeriodClose::index');
     $routes->get('coa', 'Api\Coa::index');
+    $routes->post('coa', 'Api\Coa::create');
+    $routes->get('coa/export', 'Api\Coa::export');
+    $routes->put('coa/(:segment)', 'Api\Coa::update/$1');
+    $routes->post('coa/(:segment)/archive', 'Api\Coa::archive/$1');
     $routes->get('gl', 'Api\Gl::index');
     $routes->get('journals', 'Api\Journals::index');
+    $routes->post('journals', 'Api\Journals::create');
     $routes->get('journals/(:segment)', 'Api\Journals::show/$1');
     $routes->get('payables', 'Api\Payables::index');
     $routes->get('payables/(:segment)', 'Api\Payables::show/$1');
