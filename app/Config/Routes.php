@@ -32,6 +32,8 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('journals', 'Api\Journals::index');
     $routes->post('journals', 'Api\Journals::create');
     $routes->get('journals/(:segment)', 'Api\Journals::show/$1');
+    $routes->post('journals/(:segment)/approve', 'Api\Journals::approve/$1');
+    $routes->post('journals/(:segment)/reject', 'Api\Journals::reject/$1');
     $routes->get('payables', 'Api\Payables::index');
     $routes->get('payables/(:segment)', 'Api\Payables::show/$1');
     $routes->get('bank-rec', 'Api\BankRec::index');

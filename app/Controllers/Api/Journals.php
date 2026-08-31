@@ -138,4 +138,77 @@ class Journals extends BaseApiController
 
         return $this->response->setStatusCode(201)->setJSON(['journal' => $journal]);
     }
+
+    /** Approves and posts a journal entry from Pending approval status. */
+    public function approve($ref)
+    {
+        $all = Prototype::load('JOURNALS');
+        $journalIndex = null;
+        $journal = null;
+
+        foreach ($all as $i => $j) {
+            if ($j['ref'] === $ref) {
+                $journalIndex = $i;
+                $journal = $j;
+                break;
+            }
+        }
+
+        if (!$journal) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'Journal not found']);
+        }
+
+        if ($journal['status'] !== 'Pending approval') {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'Only entries awaiting approval can be approved. Current status: ' . $journal['status']]);
+        }
+
+        $journal['status'] = 'Posted';
+        $date = trim($journal['date']) ?: date('d M Y');
+        $journal['trail'][] = ['when' => substr($date, 0, 6), 'what' => 'Approved and posted by W. Kamau'];
+
+        $all[$journalIndex] = $journal;
+        Prototype::save('JOURNALS', $all);
+
+        return $this->json(['journal' => $journal]);
+    }
+
+    /** Rejects a journal entry, reverting it to Draft status. */
+    public function reject($ref)
+    {
+        $body = $this->request->getJSON(true) ?? [];
+        $reason = trim((string) ($body['reason'] ?? ''));
+
+        $all = Prototype::load('JOURNALS');
+        $journalIndex = null;
+        $journal = null;
+
+        foreach ($all as $i => $j) {
+            if ($j['ref'] === $ref) {
+                $journalIndex = $i;
+                $journal = $j;
+                break;
+            }
+        }
+
+        if (!$journal) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'Journal not found']);
+        }
+
+        if ($journal['status'] !== 'Pending approval') {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'Only entries awaiting approval can be rejected. Current status: ' . $journal['status']]);
+        }
+
+        $journal['status'] = 'Draft';
+        $date = trim($journal['date']) ?: date('d M Y');
+        $rejectMsg = 'Rejected by W. Kamau';
+        if ($reason !== '') {
+            $rejectMsg .= ': ' . $reason;
+        }
+        $journal['trail'][] = ['when' => substr($date, 0, 6), 'what' => $rejectMsg];
+
+        $all[$journalIndex] = $journal;
+        Prototype::save('JOURNALS', $all);
+
+        return $this->json(['journal' => $journal]);
+    }
 }

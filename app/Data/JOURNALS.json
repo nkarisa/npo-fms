@@ -4,7 +4,7 @@
         "date": "31 Aug 2026",
         "type": "Accrual",
         "period": "Aug 2026",
-        "status": "Pending approval",
+        "status": "Posted",
         "preparer": "J. Achieng",
         "doc": "PV/2026/01",
         "memo": "Rent",
@@ -35,6 +35,10 @@
             {
                 "when": "31 Aug",
                 "what": "Submitted for approval to W. Kamau"
+            },
+            {
+                "when": "31 Aug",
+                "what": "Approved and posted by W. Kamau"
             }
         ]
     },
@@ -113,7 +117,7 @@
         "date": "18 Aug 2026",
         "type": "Allocation",
         "period": "Aug 2026",
-        "status": "Pending approval",
+        "status": "Draft",
         "preparer": "M. Otieno",
         "doc": "ELOG/AL/0019",
         "memo": "Shared support cost allocation per approved cost allocation methodology (headcount basis).",
@@ -152,6 +156,10 @@
             {
                 "when": "18 Aug",
                 "what": "Submitted for approval to W. Kamau"
+            },
+            {
+                "when": "18 Aug",
+                "what": "Rejected by W. Kamau: Missing supporting documentation. Please resubmit with updated allocation schedule."
             }
         ]
     },
