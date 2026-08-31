@@ -1,506 +1,541 @@
 [
-  {
-    "ref": "JV-26-0311",
-    "date": "19 Aug 2026",
-    "type": "Accrual",
-    "period": "Aug 2026",
-    "status": "Draft",
-    "preparer": "J. Achieng",
-    "doc": "ELOG/AC/0044",
-    "memo": "",
-    "narration": "August accrual — external audit fee instalment",
-    "lines": [
-      {
-        "code": "5330",
-        "desc": "Audit fee accrual — Q3",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 780000,
-        "cr": 0
-      },
-      {
-        "code": "2120",
-        "desc": "Accrued expenses",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 780000
-      }
-    ],
-    "trail": [
-      {
-        "when": "19 Aug",
-        "what": "Draft created by J. Achieng"
-      }
-    ]
-  },
-  {
-    "ref": "JV-26-0310",
-    "date": "18 Aug 2026",
-    "type": "Allocation",
-    "period": "Aug 2026",
-    "status": "Pending approval",
-    "preparer": "M. Otieno",
-    "doc": "ELOG/AL/0019",
-    "memo": "Shared support cost allocation per approved cost allocation methodology (headcount basis).",
-    "narration": "Support cost allocation to programmes — August",
-    "lines": [
-      {
-        "code": "5310",
-        "desc": "Rent allocated to observation",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 320000,
-        "cr": 0
-      },
-      {
-        "code": "5310",
-        "desc": "Rent allocated to civic education",
-        "fund": "Grant Fund",
-        "program": "Civic Education",
-        "dr": 190000,
-        "cr": 0
-      },
-      {
-        "code": "5310",
-        "desc": "Rent reversal from shared pool",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 510000
-      }
-    ],
-    "trail": [
-      {
-        "when": "18 Aug",
-        "what": "Draft created by M. Otieno"
-      },
-      {
-        "when": "18 Aug",
-        "what": "Submitted for approval to W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "PV-26-0298",
-    "date": "15 Aug 2026",
-    "type": "Standard",
-    "period": "Aug 2026",
-    "status": "Pending approval",
-    "preparer": "S. Njeri",
-    "doc": "ELOG/PV/0298",
-    "memo": "Second tranche to Kisumu and Homa Bay partners, both reports received and reviewed.",
-    "narration": "Sub-grant tranche 2 — county partners",
-    "lines": [
-      {
-        "code": "5410",
-        "desc": "Sub-grant — Kisumu partner",
-        "fund": "Grant Fund",
-        "program": "Governance Advocacy",
-        "dr": 2400000,
-        "cr": 0
-      },
-      {
-        "code": "5410",
-        "desc": "Sub-grant — Homa Bay partner",
-        "fund": "Grant Fund",
-        "program": "Governance Advocacy",
-        "dr": 1850000,
-        "cr": 0
-      },
-      {
-        "code": "1110",
-        "desc": "Bank — KCB Current",
-        "fund": "Grant Fund",
-        "program": "Governance Advocacy",
-        "dr": 0,
-        "cr": 4250000
-      }
-    ],
-    "trail": [
-      {
-        "when": "14 Aug",
-        "what": "Draft created by S. Njeri"
-      },
-      {
-        "when": "15 Aug",
-        "what": "Submitted for approval to W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "PR-26-0292",
-    "date": "28 Jul 2026",
-    "type": "Standard",
-    "period": "Jul 2026",
-    "status": "Posted",
-    "preparer": "P. Mwangi",
-    "doc": "ELOG/PR/0292",
-    "memo": "",
-    "narration": "July payroll — 34 staff",
-    "lines": [
-      {
-        "code": "5210",
-        "desc": "Gross salaries",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 3560000,
-        "cr": 0
-      },
-      {
-        "code": "5220",
-        "desc": "Employer statutory contributions",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 389000,
-        "cr": 0
-      },
-      {
-        "code": "2210",
-        "desc": "PAYE payable",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 892000
-      },
-      {
-        "code": "2220",
-        "desc": "NSSF payable",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 74800
-      },
-      {
-        "code": "2230",
-        "desc": "SHIF payable",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 61200
-      },
-      {
-        "code": "1110",
-        "desc": "Net pay disbursed",
-        "fund": "General Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 2921000
-      }
-    ],
-    "trail": [
-      {
-        "when": "27 Jul",
-        "what": "Draft created by P. Mwangi"
-      },
-      {
-        "when": "28 Jul",
-        "what": "Approved and posted by W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "RC-26-0287",
-    "date": "24 Jul 2026",
-    "type": "Standard",
-    "period": "Jul 2026",
-    "status": "Posted",
-    "preparer": "J. Achieng",
-    "doc": "ELOG/RC/0287",
-    "memo": "",
-    "narration": "USAID / Uraia tranche 3 received",
-    "lines": [
-      {
-        "code": "1120",
-        "desc": "Bank — Equity grant account",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 28400000,
-        "cr": 0
-      },
-      {
-        "code": "2130",
-        "desc": "Deferred grant income released",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 0,
-        "cr": 28400000
-      }
-    ],
-    "trail": [
-      {
-        "when": "24 Jul",
-        "what": "Draft created by J. Achieng"
-      },
-      {
-        "when": "24 Jul",
-        "what": "Approved and posted by W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "JV-26-0281",
-    "date": "21 Jul 2026",
-    "type": "Adjustment",
-    "period": "Jul 2026",
-    "status": "Posted",
-    "preparer": "M. Otieno",
-    "doc": "ELOG/JV/0281",
-    "memo": "Reclassification requested by DANIDA in June monitoring visit.",
-    "narration": "Reclassify printing costs to civic education",
-    "lines": [
-      {
-        "code": "5130",
-        "desc": "Voter guide printing",
-        "fund": "Grant Fund",
-        "program": "Civic Education",
-        "dr": 1240000,
-        "cr": 0
-      },
-      {
-        "code": "5140",
-        "desc": "Reversal from field transport",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 0,
-        "cr": 1240000
-      }
-    ],
-    "trail": [
-      {
-        "when": "20 Jul",
-        "what": "Draft created by M. Otieno"
-      },
-      {
-        "when": "21 Jul",
-        "what": "Approved and posted by W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "MP-26-0274",
-    "date": "12 Jul 2026",
-    "type": "Standard",
-    "period": "Jul 2026",
-    "status": "Posted",
-    "preparer": "S. Njeri",
-    "doc": "ELOG/MP/0274",
-    "memo": "",
-    "narration": "M-Pesa batch — observer stipends, 214 observers",
-    "lines": [
-      {
-        "code": "5110",
-        "desc": "Observer stipends — polling day",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 4280000,
-        "cr": 0
-      },
-      {
-        "code": "1130",
-        "desc": "M-Pesa paybill float",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 0,
-        "cr": 4280000
-      }
-    ],
-    "trail": [
-      {
-        "when": "12 Jul",
-        "what": "Draft created by S. Njeri"
-      },
-      {
-        "when": "12 Jul",
-        "what": "Approved and posted by W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "JV-26-0268",
-    "date": "30 Jun 2026",
-    "type": "Reversing",
-    "period": "Jun 2026",
-    "status": "Posted",
-    "preparer": "J. Achieng",
-    "doc": "ELOG/JV/0268",
-    "memo": "Reverses the May workshop accrual on delivery of supplier invoice.",
-    "narration": "Reversal of May workshop accrual",
-    "lines": [
-      {
-        "code": "2120",
-        "desc": "Accrued expenses released",
-        "fund": "Grant Fund",
-        "program": "Civic Education",
-        "dr": 640000,
-        "cr": 0
-      },
-      {
-        "code": "5120",
-        "desc": "Workshop venue and catering",
-        "fund": "Grant Fund",
-        "program": "Civic Education",
-        "dr": 0,
-        "cr": 640000
-      }
-    ],
-    "trail": [
-      {
-        "when": "30 Jun",
-        "what": "Draft created by J. Achieng"
-      },
-      {
-        "when": "30 Jun",
-        "what": "Approved and posted by W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "JV-26-0261",
-    "date": "28 Jun 2026",
-    "type": "Standard",
-    "period": "Jun 2026",
-    "status": "Reversed",
-    "preparer": "P. Mwangi",
-    "doc": "ELOG/JV/0261",
-    "memo": "Posted against the wrong grant segment; reversed by JV-26-0266.",
-    "narration": "Data collection costs — call centre (superseded)",
-    "lines": [
-      {
-        "code": "5150",
-        "desc": "Call centre operator costs",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 920000,
-        "cr": 0
-      },
-      {
-        "code": "2110",
-        "desc": "Trade payables",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 0,
-        "cr": 920000
-      }
-    ],
-    "trail": [
-      {
-        "when": "28 Jun",
-        "what": "Approved and posted by W. Kamau"
-      },
-      {
-        "when": "29 Jun",
-        "what": "Reversed by JV-26-0266"
-      }
-    ]
-  },
-  {
-    "ref": "JV-26-0266",
-    "date": "29 Jun 2026",
-    "type": "Reversing",
-    "period": "Jun 2026",
-    "status": "Posted",
-    "preparer": "P. Mwangi",
-    "doc": "ELOG/JV/0266",
-    "memo": "Reversal of JV-26-0261.",
-    "narration": "Reversal of JV-26-0261 — incorrect grant segment",
-    "lines": [
-      {
-        "code": "2110",
-        "desc": "Trade payables",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 920000,
-        "cr": 0
-      },
-      {
-        "code": "5150",
-        "desc": "Call centre operator costs",
-        "fund": "Grant Fund",
-        "program": "Election Observation",
-        "dr": 0,
-        "cr": 920000
-      }
-    ],
-    "trail": [
-      {
-        "when": "29 Jun",
-        "what": "Approved and posted by W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "AC-26-0255",
-    "date": "22 Jun 2026",
-    "type": "Recurring",
-    "period": "Jun 2026",
-    "status": "Posted",
-    "preparer": "M. Otieno",
-    "doc": "ELOG/AC/0255",
-    "memo": "",
-    "narration": "Monthly depreciation charge",
-    "lines": [
-      {
-        "code": "5350",
-        "desc": "Depreciation charge",
-        "fund": "Capital Fund",
-        "program": "Shared services",
-        "dr": 364000,
-        "cr": 0
-      },
-      {
-        "code": "1390",
-        "desc": "Accumulated depreciation",
-        "fund": "Capital Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 364000
-      }
-    ],
-    "trail": [
-      {
-        "when": "22 Jun",
-        "what": "Generated from recurring template"
-      },
-      {
-        "when": "22 Jun",
-        "what": "Approved and posted by W. Kamau"
-      }
-    ]
-  },
-  {
-    "ref": "JV-26-0249",
-    "date": "16 Jun 2026",
-    "type": "Standard",
-    "period": "Jun 2026",
-    "status": "Draft",
-    "preparer": "S. Njeri",
-    "doc": "",
-    "memo": "",
-    "narration": "Forex revaluation of USD grant account",
-    "lines": [
-      {
-        "code": "1120",
-        "desc": "Bank — Equity grant account",
-        "fund": "Grant Fund",
-        "program": "Shared services",
-        "dr": 1483900,
-        "cr": 0
-      },
-      {
-        "code": "4240",
-        "desc": "Foreign exchange gain",
-        "fund": "Grant Fund",
-        "program": "Shared services",
-        "dr": 0,
-        "cr": 1200000
-      }
-    ],
-    "trail": [
-      {
-        "when": "16 Jun",
-        "what": "Draft created by S. Njeri"
-      }
-    ]
-  }
+    {
+        "ref": "JV-26-0319",
+        "date": "29 Aug 2026",
+        "type": "Standard",
+        "period": "Aug 2026",
+        "status": "Draft",
+        "preparer": "J. Achieng",
+        "doc": "Test",
+        "memo": "Test",
+        "narration": "Payment of salary",
+        "lines": [
+            {
+                "code": "1110",
+                "desc": "Salary",
+                "fund": "General Fund",
+                "program": "Election Observation",
+                "dr": 0,
+                "cr": 650000
+            },
+            {
+                "code": "5210",
+                "desc": "Salary",
+                "fund": "General Fund",
+                "program": "Election Observation",
+                "dr": 650000,
+                "cr": 0
+            }
+        ],
+        "trail": [
+            {
+                "when": "29 Aug",
+                "what": "Draft created by J. Achieng"
+            }
+        ]
+    },
+    {
+        "ref": "JV-26-0311",
+        "date": "19 Aug 2026",
+        "type": "Accrual",
+        "period": "Aug 2026",
+        "status": "Draft",
+        "preparer": "J. Achieng",
+        "doc": "ELOG/AC/0044",
+        "memo": "",
+        "narration": "August accrual — external audit fee instalment",
+        "lines": [
+            {
+                "code": "5330",
+                "desc": "Audit fee accrual — Q3",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 780000,
+                "cr": 0
+            },
+            {
+                "code": "2120",
+                "desc": "Accrued expenses",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 780000
+            }
+        ],
+        "trail": [
+            {
+                "when": "19 Aug",
+                "what": "Draft created by J. Achieng"
+            }
+        ]
+    },
+    {
+        "ref": "JV-26-0310",
+        "date": "18 Aug 2026",
+        "type": "Allocation",
+        "period": "Aug 2026",
+        "status": "Pending approval",
+        "preparer": "M. Otieno",
+        "doc": "ELOG/AL/0019",
+        "memo": "Shared support cost allocation per approved cost allocation methodology (headcount basis).",
+        "narration": "Support cost allocation to programmes — August",
+        "lines": [
+            {
+                "code": "5310",
+                "desc": "Rent allocated to observation",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 320000,
+                "cr": 0
+            },
+            {
+                "code": "5310",
+                "desc": "Rent allocated to civic education",
+                "fund": "Grant Fund",
+                "program": "Civic Education",
+                "dr": 190000,
+                "cr": 0
+            },
+            {
+                "code": "5310",
+                "desc": "Rent reversal from shared pool",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 510000
+            }
+        ],
+        "trail": [
+            {
+                "when": "18 Aug",
+                "what": "Draft created by M. Otieno"
+            },
+            {
+                "when": "18 Aug",
+                "what": "Submitted for approval to W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "PV-26-0298",
+        "date": "15 Aug 2026",
+        "type": "Standard",
+        "period": "Aug 2026",
+        "status": "Pending approval",
+        "preparer": "S. Njeri",
+        "doc": "ELOG/PV/0298",
+        "memo": "Second tranche to Kisumu and Homa Bay partners, both reports received and reviewed.",
+        "narration": "Sub-grant tranche 2 — county partners",
+        "lines": [
+            {
+                "code": "5410",
+                "desc": "Sub-grant — Kisumu partner",
+                "fund": "Grant Fund",
+                "program": "Governance Advocacy",
+                "dr": 2400000,
+                "cr": 0
+            },
+            {
+                "code": "5410",
+                "desc": "Sub-grant — Homa Bay partner",
+                "fund": "Grant Fund",
+                "program": "Governance Advocacy",
+                "dr": 1850000,
+                "cr": 0
+            },
+            {
+                "code": "1110",
+                "desc": "Bank — KCB Current",
+                "fund": "Grant Fund",
+                "program": "Governance Advocacy",
+                "dr": 0,
+                "cr": 4250000
+            }
+        ],
+        "trail": [
+            {
+                "when": "14 Aug",
+                "what": "Draft created by S. Njeri"
+            },
+            {
+                "when": "15 Aug",
+                "what": "Submitted for approval to W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "PR-26-0292",
+        "date": "28 Jul 2026",
+        "type": "Standard",
+        "period": "Jul 2026",
+        "status": "Posted",
+        "preparer": "P. Mwangi",
+        "doc": "ELOG/PR/0292",
+        "memo": "",
+        "narration": "July payroll — 34 staff",
+        "lines": [
+            {
+                "code": "5210",
+                "desc": "Gross salaries",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 3560000,
+                "cr": 0
+            },
+            {
+                "code": "5220",
+                "desc": "Employer statutory contributions",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 389000,
+                "cr": 0
+            },
+            {
+                "code": "2210",
+                "desc": "PAYE payable",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 892000
+            },
+            {
+                "code": "2220",
+                "desc": "NSSF payable",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 74800
+            },
+            {
+                "code": "2230",
+                "desc": "SHIF payable",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 61200
+            },
+            {
+                "code": "1110",
+                "desc": "Net pay disbursed",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 2921000
+            }
+        ],
+        "trail": [
+            {
+                "when": "27 Jul",
+                "what": "Draft created by P. Mwangi"
+            },
+            {
+                "when": "28 Jul",
+                "what": "Approved and posted by W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "RC-26-0287",
+        "date": "24 Jul 2026",
+        "type": "Standard",
+        "period": "Jul 2026",
+        "status": "Posted",
+        "preparer": "J. Achieng",
+        "doc": "ELOG/RC/0287",
+        "memo": "",
+        "narration": "USAID / Uraia tranche 3 received",
+        "lines": [
+            {
+                "code": "1120",
+                "desc": "Bank — Equity grant account",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 28400000,
+                "cr": 0
+            },
+            {
+                "code": "2130",
+                "desc": "Deferred grant income released",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 0,
+                "cr": 28400000
+            }
+        ],
+        "trail": [
+            {
+                "when": "24 Jul",
+                "what": "Draft created by J. Achieng"
+            },
+            {
+                "when": "24 Jul",
+                "what": "Approved and posted by W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "JV-26-0281",
+        "date": "21 Jul 2026",
+        "type": "Adjustment",
+        "period": "Jul 2026",
+        "status": "Posted",
+        "preparer": "M. Otieno",
+        "doc": "ELOG/JV/0281",
+        "memo": "Reclassification requested by DANIDA in June monitoring visit.",
+        "narration": "Reclassify printing costs to civic education",
+        "lines": [
+            {
+                "code": "5130",
+                "desc": "Voter guide printing",
+                "fund": "Grant Fund",
+                "program": "Civic Education",
+                "dr": 1240000,
+                "cr": 0
+            },
+            {
+                "code": "5140",
+                "desc": "Reversal from field transport",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 0,
+                "cr": 1240000
+            }
+        ],
+        "trail": [
+            {
+                "when": "20 Jul",
+                "what": "Draft created by M. Otieno"
+            },
+            {
+                "when": "21 Jul",
+                "what": "Approved and posted by W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "MP-26-0274",
+        "date": "12 Jul 2026",
+        "type": "Standard",
+        "period": "Jul 2026",
+        "status": "Posted",
+        "preparer": "S. Njeri",
+        "doc": "ELOG/MP/0274",
+        "memo": "",
+        "narration": "M-Pesa batch — observer stipends, 214 observers",
+        "lines": [
+            {
+                "code": "5110",
+                "desc": "Observer stipends — polling day",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 4280000,
+                "cr": 0
+            },
+            {
+                "code": "1130",
+                "desc": "M-Pesa paybill float",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 0,
+                "cr": 4280000
+            }
+        ],
+        "trail": [
+            {
+                "when": "12 Jul",
+                "what": "Draft created by S. Njeri"
+            },
+            {
+                "when": "12 Jul",
+                "what": "Approved and posted by W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "JV-26-0268",
+        "date": "30 Jun 2026",
+        "type": "Reversing",
+        "period": "Jun 2026",
+        "status": "Posted",
+        "preparer": "J. Achieng",
+        "doc": "ELOG/JV/0268",
+        "memo": "Reverses the May workshop accrual on delivery of supplier invoice.",
+        "narration": "Reversal of May workshop accrual",
+        "lines": [
+            {
+                "code": "2120",
+                "desc": "Accrued expenses released",
+                "fund": "Grant Fund",
+                "program": "Civic Education",
+                "dr": 640000,
+                "cr": 0
+            },
+            {
+                "code": "5120",
+                "desc": "Workshop venue and catering",
+                "fund": "Grant Fund",
+                "program": "Civic Education",
+                "dr": 0,
+                "cr": 640000
+            }
+        ],
+        "trail": [
+            {
+                "when": "30 Jun",
+                "what": "Draft created by J. Achieng"
+            },
+            {
+                "when": "30 Jun",
+                "what": "Approved and posted by W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "JV-26-0261",
+        "date": "28 Jun 2026",
+        "type": "Standard",
+        "period": "Jun 2026",
+        "status": "Reversed",
+        "preparer": "P. Mwangi",
+        "doc": "ELOG/JV/0261",
+        "memo": "Posted against the wrong grant segment; reversed by JV-26-0266.",
+        "narration": "Data collection costs — call centre (superseded)",
+        "lines": [
+            {
+                "code": "5150",
+                "desc": "Call centre operator costs",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 920000,
+                "cr": 0
+            },
+            {
+                "code": "2110",
+                "desc": "Trade payables",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 0,
+                "cr": 920000
+            }
+        ],
+        "trail": [
+            {
+                "when": "28 Jun",
+                "what": "Approved and posted by W. Kamau"
+            },
+            {
+                "when": "29 Jun",
+                "what": "Reversed by JV-26-0266"
+            }
+        ]
+    },
+    {
+        "ref": "JV-26-0266",
+        "date": "29 Jun 2026",
+        "type": "Reversing",
+        "period": "Jun 2026",
+        "status": "Posted",
+        "preparer": "P. Mwangi",
+        "doc": "ELOG/JV/0266",
+        "memo": "Reversal of JV-26-0261.",
+        "narration": "Reversal of JV-26-0261 — incorrect grant segment",
+        "lines": [
+            {
+                "code": "2110",
+                "desc": "Trade payables",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 920000,
+                "cr": 0
+            },
+            {
+                "code": "5150",
+                "desc": "Call centre operator costs",
+                "fund": "Grant Fund",
+                "program": "Election Observation",
+                "dr": 0,
+                "cr": 920000
+            }
+        ],
+        "trail": [
+            {
+                "when": "29 Jun",
+                "what": "Approved and posted by W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "AC-26-0255",
+        "date": "22 Jun 2026",
+        "type": "Recurring",
+        "period": "Jun 2026",
+        "status": "Posted",
+        "preparer": "M. Otieno",
+        "doc": "ELOG/AC/0255",
+        "memo": "",
+        "narration": "Monthly depreciation charge",
+        "lines": [
+            {
+                "code": "5350",
+                "desc": "Depreciation charge",
+                "fund": "Capital Fund",
+                "program": "Shared services",
+                "dr": 364000,
+                "cr": 0
+            },
+            {
+                "code": "1390",
+                "desc": "Accumulated depreciation",
+                "fund": "Capital Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 364000
+            }
+        ],
+        "trail": [
+            {
+                "when": "22 Jun",
+                "what": "Generated from recurring template"
+            },
+            {
+                "when": "22 Jun",
+                "what": "Approved and posted by W. Kamau"
+            }
+        ]
+    },
+    {
+        "ref": "JV-26-0249",
+        "date": "16 Jun 2026",
+        "type": "Standard",
+        "period": "Jun 2026",
+        "status": "Draft",
+        "preparer": "S. Njeri",
+        "doc": "",
+        "memo": "",
+        "narration": "Forex revaluation of USD grant account",
+        "lines": [
+            {
+                "code": "1120",
+                "desc": "Bank — Equity grant account",
+                "fund": "Grant Fund",
+                "program": "Shared services",
+                "dr": 1483900,
+                "cr": 0
+            },
+            {
+                "code": "4240",
+                "desc": "Foreign exchange gain",
+                "fund": "Grant Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 1200000
+            }
+        ],
+        "trail": [
+            {
+                "when": "16 Jun",
+                "what": "Draft created by S. Njeri"
+            }
+        ]
+    }
 ]
