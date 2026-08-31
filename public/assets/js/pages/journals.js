@@ -45,7 +45,7 @@
       { label: 'Amount', num: true, key: 'amount' },
     ];
     if (data.rows.length) {
-      card.appendChild(UI.table(cols, data.rows, (r) => { window.location.href = `/api/journals/${r.ref}`; }));
+      card.appendChild(UI.table(cols, data.rows, (r) => { window.location.href = `/journals/${r.ref}`; }));
     } else {
       const empty = document.createElement('div');
       empty.className = 'empty-state';

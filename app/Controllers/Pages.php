@@ -45,6 +45,18 @@ class Pages extends BaseController
         return $this->render('pages/journals', 'journals', 'journals', 'Journals', 'Accounting');
     }
 
+    public function journalDetail($ref)
+    {
+        return view('pages/journal_detail', [
+            'page'        => 'journal-detail',
+            'jsPage'      => 'journal_detail',
+            'title'       => 'Journal entry',
+            'crumbGroup'  => 'Accounting',
+            'crumbPage'   => 'Journal entry',
+            'ref'         => $ref,
+        ]);
+    }
+
     public function payables()
     {
         return $this->render('pages/payables', 'payables', 'payables', 'Payables', 'Accounting');

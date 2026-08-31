@@ -1,5 +1,44 @@
 [
     {
+        "ref": "JV-26-0320",
+        "date": "31 Aug 2026",
+        "type": "Accrual",
+        "period": "Aug 2026",
+        "status": "Pending approval",
+        "preparer": "J. Achieng",
+        "doc": "PV/2026/01",
+        "memo": "Rent",
+        "narration": "Rent expense",
+        "lines": [
+            {
+                "code": "5310",
+                "desc": "Rent expnese",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 3000,
+                "cr": 0
+            },
+            {
+                "code": "2120",
+                "desc": "Accrued rent",
+                "fund": "General Fund",
+                "program": "Shared services",
+                "dr": 0,
+                "cr": 3000
+            }
+        ],
+        "trail": [
+            {
+                "when": "31 Aug",
+                "what": "Draft created by J. Achieng"
+            },
+            {
+                "when": "31 Aug",
+                "what": "Submitted for approval to W. Kamau"
+            }
+        ]
+    },
+    {
         "ref": "JV-26-0319",
         "date": "29 Aug 2026",
         "type": "Standard",

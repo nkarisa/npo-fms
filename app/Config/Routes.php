@@ -8,6 +8,7 @@ $routes->get('period-close', 'Pages::periodClose');
 $routes->get('coa', 'Pages::coa');
 $routes->get('gl', 'Pages::gl');
 $routes->get('journals', 'Pages::journals');
+$routes->get('journals/(:segment)', 'Pages::journalDetail/$1');
 $routes->get('payables', 'Pages::payables');
 $routes->get('bank-rec', 'Pages::bankRec');
 $routes->get('asset-register', 'Pages::assets');
