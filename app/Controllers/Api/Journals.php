@@ -79,7 +79,48 @@ class Journals extends BaseApiController
     {
         $body   = $this->request->getJSON(true) ?? [];
         $status = in_array($body['status'] ?? 'Draft', ['Draft', 'Pending approval'], true) ? $body['status'] : 'Draft';
+        $type   = (string) ($body['type'] ?? 'Standard');
         $narration = trim((string) ($body['narration'] ?? ''));
+
+        // Validate journal type
+        $validTypes = Prototype::load('J_TYPES');
+        if (!in_array($type, $validTypes, true)) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => 'Invalid journal type. Must be one of: ' . implode(', ', $validTypes) . '.']);
+        }
+
+        // Load all journals once for referral checks and final save
+        $all = Prototype::load('JOURNALS');
+
+        // For reversing entries, require a reference to the original entry
+        if ($type === 'Reversing') {
+            $reversalOf = trim((string) ($body['reversalOf'] ?? ''));
+            if ($reversalOf === '') {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'Reversing entries must reference an original entry. Provide the original journal reference in "reversalOf".']);
+            }
+
+            // Verify the referenced entry exists
+            $originalEntry = null;
+            foreach ($all as $j) {
+                if ($j['ref'] === $reversalOf) {
+                    $originalEntry = $j;
+                    break;
+                }
+            }
+
+            if (!$originalEntry) {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'Referenced entry ' . $reversalOf . ' does not exist.']);
+            }
+
+            if ($originalEntry['status'] !== 'Posted') {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'Cannot reverse ' . $reversalOf . ' — only posted entries can be reversed. Current status: ' . $originalEntry['status'] . '.']);
+            }
+
+            // Check if this entry has already been reversed
+            $alreadyReversed = array_filter($all, fn ($j) => ($j['reversalOf'] ?? '') === $reversalOf && $j['status'] === 'Posted');
+            if ($alreadyReversed) {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'Entry ' . $reversalOf . ' has already been reversed.']);
+            }
+        }
 
         $lines = array_values(array_filter($body['lines'] ?? [], function ($l) {
             return trim((string) ($l['code'] ?? '')) !== '' || (float) ($l['dr'] ?? 0) !== 0.0 || (float) ($l['cr'] ?? 0) !== 0.0;
@@ -109,7 +150,6 @@ class Journals extends BaseApiController
             return $this->response->setStatusCode(422)->setJSON(['error' => 'A narration is required before the entry leaves draft.']);
         }
 
-        $all = Prototype::load('JOURNALS');
         $seq = 312 + count(array_filter($all, fn ($j) => str_starts_with($j['ref'], 'JV-26')));
         $ref = 'JV-26-' . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
         $date = trim((string) ($body['date'] ?? '')) ?: date('d M Y');
@@ -122,7 +162,7 @@ class Journals extends BaseApiController
         $journal = [
             'ref'       => $ref,
             'date'      => $date,
-            'type'      => $body['type'] ?? 'Standard',
+            'type'      => $type,
             'period'    => $body['period'] ?? 'Aug 2026',
             'status'    => $status,
             'preparer'  => $body['preparer'] ?? 'J. Achieng',
@@ -132,6 +172,11 @@ class Journals extends BaseApiController
             'lines'     => $lines,
             'trail'     => $trail,
         ];
+
+        // Add reversalOf reference if this is a reversing entry
+        if ($type === 'Reversing') {
+            $journal['reversalOf'] = trim((string) ($body['reversalOf'] ?? ''));
+        }
 
         array_unshift($all, $journal);
         Prototype::save('JOURNALS', $all);
