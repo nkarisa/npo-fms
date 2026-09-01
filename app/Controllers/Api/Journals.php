@@ -6,6 +6,49 @@ use App\Libraries\Prototype;
 
 class Journals extends BaseApiController
 {
+    public static function validateAllocationFundTransfer(array $lines): string
+    {
+        if ($lines === []) {
+            return 'Allocation journals must include at least two fund movements.';
+        }
+
+        $fundTotals = [];
+        foreach ($lines as $line) {
+            $fund = trim((string) ($line['fund'] ?? 'General Fund'));
+            if ($fund === '') {
+                $fund = 'General Fund';
+            }
+
+            $fundTotals[$fund] = (float) ($fundTotals[$fund] ?? 0) + ((float) ($line['dr'] ?? 0) - (float) ($line['cr'] ?? 0));
+        }
+
+        if (count($fundTotals) < 2) {
+            return 'Allocation journals must involve at least two funds and their transfers must sum to zero.';
+        }
+
+        $netMovement = array_sum(array_values($fundTotals));
+        if (abs($netMovement) > 0.0001) {
+            return 'Allocation entries must sum to zero across fund transfers. Current fund movement totals are ' . Prototype::fmt(abs($netMovement)) . ' out of balance.';
+        }
+
+        $hasPositive = false;
+        $hasNegative = false;
+        foreach ($fundTotals as $fund => $total) {
+            if ($total > 0) {
+                $hasPositive = true;
+            }
+            if ($total < 0) {
+                $hasNegative = true;
+            }
+        }
+
+        if (!$hasPositive || !$hasNegative) {
+            return 'Allocation entries must include both receiving and releasing fund movements so the transfer sums to zero.';
+        }
+
+        return '';
+    }
+
     public function index()
     {
         $all    = Prototype::load('JOURNALS');
@@ -125,13 +168,35 @@ class Journals extends BaseApiController
         $lines = array_values(array_filter($body['lines'] ?? [], function ($l) {
             return trim((string) ($l['code'] ?? '')) !== '' || (float) ($l['dr'] ?? 0) !== 0.0 || (float) ($l['cr'] ?? 0) !== 0.0;
         }));
+        $grants = [];
+        foreach (Prototype::load('GRANTS') as $grant) {
+            $grants[$grant['ref']] = $grant;
+        }
+
+        foreach ($lines as &$line) {
+            $grantRef = trim((string) ($line['grantRef'] ?? ''));
+            if ($grantRef !== '') {
+                if (!isset($grants[$grantRef])) {
+                    return $this->response->setStatusCode(422)->setJSON(['error' => 'Selected grant ' . $grantRef . ' does not exist.']);
+                }
+                if (!in_array($grants[$grantRef]['status'], ['Active', 'Closing'], true)) {
+                    return $this->response->setStatusCode(422)->setJSON(['error' => 'Selected grant ' . $grantRef . ' is not available for journal postings.']);
+                }
+
+                $line['fund'] = $grants[$grantRef]['fund'];
+                $line['program'] = $grants[$grantRef]['program'];
+            }
+        }
+        unset($line);
+
         $lines = array_map(fn ($l) => [
-            'code'    => trim((string) ($l['code'] ?? '')),
-            'desc'    => trim((string) ($l['desc'] ?? '')),
-            'fund'    => $l['fund'] ?? 'General Fund',
-            'program' => $l['program'] ?? 'Shared services',
-            'dr'      => round((float) ($l['dr'] ?? 0)),
-            'cr'      => round((float) ($l['cr'] ?? 0)),
+            'code'     => trim((string) ($l['code'] ?? '')),
+            'desc'     => trim((string) ($l['desc'] ?? '')),
+            'fund'     => $l['fund'] ?? 'General Fund',
+            'program'  => $l['program'] ?? 'Shared services',
+            'grantRef' => trim((string) ($l['grantRef'] ?? '')),
+            'dr'       => round((float) ($l['dr'] ?? 0)),
+            'cr'       => round((float) ($l['cr'] ?? 0)),
         ], $lines);
 
         if (count($lines) < 2) {
@@ -144,6 +209,13 @@ class Journals extends BaseApiController
         // Every journal — draft or not — must balance: total debits always equal total credits.
         if ($sumDr !== $sumCr || $sumDr === 0.0) {
             return $this->response->setStatusCode(422)->setJSON(['error' => 'Entry is out of balance by ' . Prototype::fmt(abs($sumDr - $sumCr)) . ' — debits must equal credits before it can be saved.']);
+        }
+
+        if ($type === 'Allocation') {
+            $allocationError = self::validateAllocationFundTransfer($lines);
+            if ($allocationError !== '') {
+                return $this->response->setStatusCode(422)->setJSON(['error' => $allocationError]);
+            }
         }
 
         if ($status !== 'Draft' && $narration === '') {

@@ -29,7 +29,7 @@ class Grants extends BaseApiController
 
         $rows = array_map(fn ($g) => [
             'ref' => $g['ref'], 'title' => $g['title'], 'funder' => $g['funder'], 'program' => $g['program'],
-            'period' => $g['period'], 'status' => $g['status'],
+            'fund' => $g['fund'], 'period' => $g['period'], 'status' => $g['status'],
             'value' => Prototype::fmt($g['value']), 'received' => Prototype::fmt($g['received']), 'spent' => Prototype::fmt($g['spent']),
             'burnPct' => self::burn($g), 'elapsed' => $g['elapsed'],
             'reportDue' => $g['reportDays'] <= 45,

@@ -91,6 +91,7 @@ const UI = (() => {
 
   let journalDrawer;
   let accountOptions = null;
+  let grantOptions = null;
 
   async function loadAccountOptions() {
     if (accountOptions) return accountOptions;
@@ -101,18 +102,30 @@ const UI = (() => {
     return accountOptions;
   }
 
+  async function loadGrantOptions() {
+    if (grantOptions) return grantOptions;
+    const data = await fetchJSON('/api/grants?status=Active');
+    grantOptions = data.rows || [];
+    return grantOptions;
+  }
+
   function lineRow(line) {
     const row = document.createElement('div');
     row.className = 'jd-line';
-    row.style.cssText = 'display:grid;grid-template-columns:170px 1fr 130px 80px 80px 20px;gap:6px;align-items:center;margin-bottom:6px;';
+    row.style.cssText = 'display:grid;grid-template-columns:160px 1fr 170px 120px 80px 80px 20px;gap:6px;align-items:center;margin-bottom:6px;';
     const cellStyle = 'width:100%;min-width:0;box-sizing:border-box;';
     const codeOptions = (accountOptions || []).map(o => `<option value="${o.code}" ${o.code === line?.code ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+    const grantChoices = (grantOptions || []).map(g => `<option value="${esc(g.ref)}" data-fund="${esc(g.fund)}" data-program="${esc(g.program)}" ${g.ref === line?.grantRef ? 'selected' : ''}>${esc(g.ref)} · ${esc(g.title)}</option>`).join('');
     row.innerHTML = `
       <select class="jd-code" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;">
         <option value="">Select account…</option>
         ${codeOptions}
       </select>
       <input class="jd-desc" placeholder="Line description" value="${esc(line?.desc || '')}" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;">
+      <select class="jd-grant" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 4px;font-size:11.5px;">
+        <option value="">No grant</option>
+        ${grantChoices}
+      </select>
       <select class="jd-program" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 4px;font-size:11.5px;">${J_PROGRAM_OPTIONS.map(o => `<option ${o === line?.program ? 'selected' : ''}>${o}</option>`).join('')}</select>
       <input class="jd-dr" type="number" min="0" step="1" placeholder="Debit" value="${line?.dr || ''}" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;text-align:right;">
       <input class="jd-cr" type="number" min="0" step="1" placeholder="Credit" value="${line?.cr || ''}" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;text-align:right;">
@@ -167,8 +180,8 @@ const UI = (() => {
             <div style="font-size:10px;letter-spacing:0.09em;text-transform:uppercase;color:#8B948F;">Lines</div>
             <button type="button" id="jd-add-line" class="btn" style="margin-left:auto;padding:4px 10px;">Add line</button>
           </div>
-          <div style="display:grid;grid-template-columns:170px 1fr 130px 80px 80px 20px;gap:6px;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;color:#A3ABA7;">
-            <span>Account</span><span>Description</span><span>Programme</span><span>Debit</span><span>Credit</span><span></span>
+          <div style="display:grid;grid-template-columns:160px 1fr 170px 120px 80px 80px 20px;gap:6px;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;color:#A3ABA7;">
+            <span>Account</span><span>Description</span><span>Grant</span><span>Programme</span><span>Debit</span><span>Credit</span><span></span>
           </div>
           <div id="jd-lines"></div>
           <div id="jd-balance" style="font-size:12px;font-weight:600;text-align:right;"></div>
@@ -184,6 +197,18 @@ const UI = (() => {
 
     const linesBox = journalDrawer.querySelector('#jd-lines');
     linesBox.addEventListener('input', updateBalance);
+    linesBox.addEventListener('change', (e) => {
+      if (!e.target.classList.contains('jd-grant')) return;
+      const selected = e.target.selectedOptions[0];
+      const row = e.target.closest('.jd-line');
+      if (selected.value) {
+        row.dataset.fund = selected.dataset.fund;
+        row.querySelector('.jd-program').value = selected.dataset.program;
+      } else {
+        delete row.dataset.fund;
+        row.querySelector('.jd-program').value = 'Shared services';
+      }
+    });
     linesBox.addEventListener('click', (e) => {
       if (e.target.classList.contains('jd-remove') && linesBox.children.length > 2) {
         e.target.closest('.jd-line').remove();
@@ -225,6 +250,8 @@ const UI = (() => {
     return [...journalDrawer.querySelectorAll('.jd-line')].map(row => ({
       code: row.querySelector('.jd-code').value.trim(),
       desc: row.querySelector('.jd-desc').value.trim(),
+      fund: row.dataset.fund || 'General Fund',
+      grantRef: row.querySelector('.jd-grant').value,
       program: row.querySelector('.jd-program').value,
       dr: parseFloat(row.querySelector('.jd-dr').value) || 0,
       cr: parseFloat(row.querySelector('.jd-cr').value) || 0,
@@ -233,7 +260,7 @@ const UI = (() => {
 
   async function openNewJournalDrawer(opts) {
     opts = opts || {};
-    await loadAccountOptions();
+    await Promise.all([loadAccountOptions(), loadGrantOptions()]);
     if (!journalDrawer) buildJournalDrawer();
 
     const form = journalDrawer.querySelector('#jd-form');
