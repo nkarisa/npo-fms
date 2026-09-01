@@ -1,0 +1,10 @@
+Use the claude_design MCP (https://api.anthropic.com/v1/design/mcp, auth via /design-login) to import this project:
+https://claude.ai/design/p/35b6e256-21dd-4c98-bc02-6f410e98bab6?file=ELOG+Finance+Management+System.dc.html
+
+Focus on these files (the whole project is readable):
+- `ELOG Finance Management System.dc.html`
+
+Also read these files the selection imports:
+- `support.js`
+
+Implement: `ELOG Finance Management System.dc.html`
