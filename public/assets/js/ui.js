@@ -360,11 +360,14 @@ const UI = (() => {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
   }
 
-  function drawer(title, html) {
+  /** `wide` gives a summary document (the board pack) room; records stay at 432px. */
+  function drawer(title, html, opts) {
     if (!recordDrawer) buildRecordDrawer();
+    const panel = recordDrawer.querySelector('.rd-panel');
+    panel.style.width = opts && opts.wide ? '640px' : '432px';
     recordDrawer.querySelector('.rd-title').textContent = title;
     recordDrawer.querySelector('.rd-body').innerHTML = html;
-    recordDrawer.querySelector('.rd-panel').scrollTop = 0;
+    panel.scrollTop = 0;
     recordDrawer.style.display = 'flex';
   }
 

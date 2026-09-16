@@ -11,6 +11,7 @@ class Dashboard extends BaseApiController
     {
         return $this->json([
             'date'         => 'Thursday, 27 August 2026 · August open',
+            'subtitle'     => 'One reconciling book. What follows is drawn from the ledger as it stands this morning — nothing here is entered twice or kept on a side spreadsheet.',
             'stats'        => $this->stats(),
             'queue'        => $this->queue(),
             'queueHint'    => $this->queueHint(),
@@ -19,7 +20,10 @@ class Dashboard extends BaseApiController
             'funds'        => $this->funds(),
             'fundHint'     => $this->fundHint(),
             'checks'       => $this->checks(),
-            'activity'     => array_slice(Prototype::load('ST_AUDIT'), 0, 4),
+            'activity'     => array_map(
+                static fn ($a) => $a + ['meta' => $a['when'] . ' · ' . $a['who'] . ' · ' . $a['area']],
+                array_slice(Prototype::load('ST_AUDIT'), 0, 4)
+            ),
         ]);
     }
 
@@ -157,11 +161,13 @@ class Dashboard extends BaseApiController
         ));
     }
 
+    /** Whose queue this is — it is filtered to the acting user's decisions. */
     private function queueHint(): string
     {
-        $n = count($this->queue());
+        $n    = count($this->queue());
+        $role = $this->actor()['role'];
 
-        return $n ? $n . ($n === 1 ? ' item' : ' items') . ' open · oldest 11 days' : 'Clear';
+        return $n ? $n . ($n === 1 ? ' item' : ' items') . ' open · ' . $role : $role . ' · clear';
     }
 
     /** The four awards burning fastest — those are the ones worth a look. */
@@ -267,5 +273,106 @@ class Dashboard extends BaseApiController
                 'href'  => '/period-close',
             ],
         ];
+    }
+
+    /**
+     * The board pack: a governance summary for trustees, deliberately without
+     * account-level detail — that lives in the monthly close pack.
+     */
+    public function boardPack()
+    {
+        $cash     = Ledger::sumCodes(['1110', '1120', '1130', '1140']);
+        $income   = Ledger::byType('Income');
+        $spend    = Ledger::byType('Expense');
+        $burn     = (int) round($spend / max(1, Ledger::MONTHS_ELAPSED));
+        // Whole months only: part of a month of cover is not a month of payroll.
+        $runway   = $burn > 0 ? (int) floor($cash / $burn) : 0;
+        $funds    = Prototype::load('FUNDS');
+        $total    = array_sum(array_map(static fn ($f) => Ledger::fundClose($f), $funds));
+        $restrict = Ledger::fundsByClass('Restricted');
+        $payable  = Ledger::billsNet(Ledger::openBills());
+
+        $overdueBills = Ledger::overdueBills();
+        $lateReports  = Ledger::overdueReports();
+        $overLines    = Ledger::overBudgetLines();
+        $expiring     = Ledger::expiringFunds();
+        $returnable   = array_sum(array_map(static fn ($f) => Ledger::fundAvailable($f) - $f['spend'], $expiring));
+
+        $plural = static fn (int $n, string $one, string $many) => $n . ' ' . ($n === 1 ? $one : $many);
+
+        $risks = [
+            [
+                'area' => 'Liquidity',
+                'note' => $overdueBills
+                    ? count($overdueBills) . ' supplier bills already past due, ' . Prototype::fmt(Ledger::billsNet($overdueBills)) . ' outstanding'
+                    : 'No supplier bill is past due',
+                'ok'   => !$overdueBills,
+            ],
+            [
+                'area' => 'Donor reporting',
+                'note' => $lateReports
+                    ? $plural(count($lateReports), 'donor report is', 'donor reports are') . ' past the reporting deadline'
+                    : 'Every donor report is within its deadline',
+                'ok'   => !$lateReports,
+            ],
+            [
+                'area' => 'Budget control',
+                'note' => $overLines
+                    ? $plural(count($overLines), 'budget line is', 'budget lines are') . ' over the approved amount'
+                    : 'No budget line is over its approved amount',
+                'ok'   => !$overLines,
+            ],
+            [
+                'area' => 'Restricted funds',
+                'note' => $expiring
+                    ? $plural(count($expiring), 'restricted fund closes', 'restricted funds close') . ' within 90 days · ' . Prototype::fmt($returnable) . ' unspent and returnable'
+                    : 'No restricted fund closes within 90 days',
+                'ok'   => !$expiring,
+            ],
+            [
+                'area' => 'Period close',
+                'note' => count(Ledger::CLOSED) . ' periods locked · earliest open is ' . Ledger::earliestOpenPeriod(),
+                'ok'   => true,
+            ],
+            [
+                'area' => 'Segregation of duties',
+                'note' => 'No journal reaches the ledger without a second person approving it',
+                'ok'   => true,
+            ],
+        ];
+
+        $attention = count(array_filter($risks, static fn ($r) => !$r['ok']));
+
+        $sections = [
+            ['name' => 'Financial position', 'figure' => Prototype::fmt($cash) . ' cash held'],
+            ['name' => 'Income and expenditure against budget', 'figure' => Prototype::fmt($income - $spend) . ' surplus'],
+            ['name' => 'Cash and runway', 'figure' => $runway . ' months at current burn'],
+            ['name' => 'Funds and restricted balances', 'figure' => Prototype::fmt($restrict) . ' restricted'],
+            ['name' => 'Grant burn against elapsed time', 'figure' => count(Ledger::liveGrants()) . ' live awards'],
+            ['name' => 'Payables ageing', 'figure' => Prototype::fmt($payable) . ' outstanding'],
+            ['name' => 'Risk and compliance', 'figure' => $plural($attention, 'matter', 'matters') . ' for attention'],
+        ];
+
+        return $this->json([
+            'title'    => 'Board pack',
+            'meta'     => 'Elections Observation Group · prepared for the Board of Trustees · KES',
+            'intro'    => "A governance summary of the position, the funds held and the matters needing the board's attention. Account-level detail sits in the monthly close pack.",
+            'headline' => [
+                ['label' => 'Cash held', 'value' => Prototype::fmt($cash), 'note' => 'across bank, M-Pesa and petty cash'],
+                ['label' => 'Runway', 'value' => $runway . ' months', 'note' => 'at ' . Prototype::fmt($burn) . ' average monthly spend'],
+                ['label' => 'Surplus to date', 'value' => Prototype::fmt($income - $spend), 'note' => Prototype::fmt($income) . ' income against ' . Prototype::fmt($spend) . ' spend'],
+                ['label' => 'Restricted funds', 'value' => Prototype::fmt($restrict), 'note' => 'of ' . Prototype::fmt($total) . ' held across ' . count($funds) . ' funds'],
+            ],
+            'sections' => array_map(
+                static fn ($x, $i) => $x + ['no' => str_pad((string) ($i + 1), 2, '0', STR_PAD_LEFT)],
+                $sections,
+                array_keys($sections)
+            ),
+            'risks'     => $risks,
+            'attention' => $attention
+                ? $plural($attention, 'matter needs', 'matters need') . " the board's attention"
+                : "Nothing requires the board's attention this period",
+            'footer'    => 'Eight pages · governance summary, no account detail',
+        ]);
     }
 }

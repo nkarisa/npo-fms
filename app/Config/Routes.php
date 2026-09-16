@@ -28,6 +28,12 @@ $routes->get('settings', 'Pages::settings');
 
 $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('dashboard', 'Api\Dashboard::index');
+    $routes->get('dashboard/board-pack', 'Api\Dashboard::boardPack');
+    $routes->get('notifications', 'Api\Notifications::index');
+    $routes->post('notifications/read', 'Api\Notifications::read');
+    $routes->get('search', 'Api\Search::index');
+    $routes->get('me', 'Api\Me::index');
+    $routes->post('me/act-as', 'Api\Me::actAs');
     $routes->get('period-close', 'Api\PeriodClose::index');
     $routes->get('coa', 'Api\Coa::index');
     $routes->post('coa', 'Api\Coa::create');

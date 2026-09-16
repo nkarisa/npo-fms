@@ -4,6 +4,7 @@ namespace App\Controllers\Api;
 
 use App\Controllers\BaseController;
 use App\Libraries\I18n;
+use App\Libraries\Prototype;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
 use Psr\Log\LoggerInterface;
@@ -79,6 +80,24 @@ abstract class BaseApiController extends BaseController
         $mode = $this->request->getGet('fallback') ?: $this->request->getCookie('elog_i18n_fallback');
 
         return is_string($mode) ? $mode : I18n::DEFAULT_FALLBACK;
+    }
+
+    /**
+     * The acting user. There is no authentication yet; "Act as" in the user menu
+     * sets this cookie so one person can play preparer and approver in turn.
+     */
+    protected function actor(): array
+    {
+        $actors = Prototype::load('ACTORS');
+        $email  = $this->request->getCookie('elog_actor') ?: 'w.kamau@elog.or.ke';
+
+        foreach ($actors as $a) {
+            if ($a['email'] === $email) {
+                return $a;
+            }
+        }
+
+        return $actors[0];
     }
 
     protected function t(string $s): string

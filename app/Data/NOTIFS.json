@@ -1,0 +1,72 @@
+[
+    {
+        "id": "n1",
+        "kind": "Approval",
+        "tone": "action",
+        "title": "JV-26-0312 awaiting your approval",
+        "body": "Sub-grants to Kisumu and Homa Bay partners, KES 4,250,000. Above the KES 500,000 journal threshold.",
+        "when": "09:24",
+        "day": "Today",
+        "page": "journals"
+    },
+    {
+        "id": "n2",
+        "kind": "Overdue",
+        "tone": "alert",
+        "title": "Donor report DR-26-012 is 23 days overdue",
+        "body": "Financial report H2 2026 to Konrad Adenauer Stiftung, blocked pending the June monitoring finding.",
+        "when": "08:05",
+        "day": "Today",
+        "page": "donor"
+    },
+    {
+        "id": "n3",
+        "kind": "Payables",
+        "tone": "action",
+        "title": "3 supplier bills fall due within 5 days",
+        "body": "Kenchic Suppliers, Rift Valley Car Hire and Safaricom PLC total KES 2,210,000.",
+        "when": "07:00",
+        "day": "Today",
+        "page": "payables"
+    },
+    {
+        "id": "n4",
+        "kind": "Period close",
+        "tone": "info",
+        "title": "August close checklist is 6 of 11 complete",
+        "body": "Bank reconciliation and depreciation remain outstanding before the period can be locked.",
+        "when": "07:00",
+        "day": "Today",
+        "page": "period"
+    },
+    {
+        "id": "n5",
+        "kind": "Grants",
+        "tone": "alert",
+        "title": "KAS/2025-KE suspended by the funder",
+        "body": "No further expenditure may be charged to this award until the finding is cleared.",
+        "when": "Yesterday",
+        "day": "Earlier",
+        "page": "grants"
+    },
+    {
+        "id": "n6",
+        "kind": "Bank",
+        "tone": "info",
+        "title": "M-Pesa paybill 509118 settlement report ready",
+        "body": "142 float movements imported and waiting to be matched.",
+        "when": "26 Aug",
+        "day": "Earlier",
+        "page": "bankrec"
+    },
+    {
+        "id": "n7",
+        "kind": "Payroll",
+        "tone": "info",
+        "title": "August payroll posted — 34 staff",
+        "body": "KES 4,132,000 charged across three grants; PAYE, NSSF and SHIF raised as statutory liabilities.",
+        "when": "25 Aug",
+        "day": "Earlier",
+        "page": "payroll"
+    }
+]
