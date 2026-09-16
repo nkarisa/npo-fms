@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Ledger;
 use App\Libraries\Prototype;
 
 /** Statement of financial position, activities, cash flows and trial balance — all derived from the chart of accounts. */
@@ -61,16 +62,19 @@ class Reports extends BaseApiController
 
     private function financialPosition(array $seed): array
     {
-        $currAssets = ['1110', '1120', '1130', '1140', '1210', '1220', '1230', '1240'];
-        $nonCurr    = ['1310', '1320', '1390'];
-        $currLiab   = ['2110', '2120', '2130', '2210', '2220', '2230', '2240'];
-        $funds      = ['3100', '3200', '3300', '3900'];
+        // Read from the chart, never listed: a hardcoded leaf list dropped 2250
+        // and 2260 from this statement and understated liabilities by 426,700.
+        $nonCurrent = static fn ($l) => in_array($l['group'], Ledger::NON_CURRENT_ASSET_GROUPS, true);
+        $currAssets = Ledger::statementCodes('Asset', static fn ($l) => !$nonCurrent($l));
+        $nonCurr    = Ledger::statementCodes('Asset', $nonCurrent);
+        $currLiab   = Ledger::statementCodes('Liability');
+        $funds      = Ledger::statementCodes('Equity');
 
         $tca = $this->sumCodes($seed, $currAssets);
         $tnca = $this->sumCodes($seed, $nonCurr);
         $tcl = $this->sumCodes($seed, $currLiab);
         $tf  = $this->sumCodes($seed, $funds);
-        $balanced = ($tca + $tnca - $tcl) === $tf;
+        $balanced = round($tca + $tnca - $tcl) == round($tf);
 
         return [
             'title' => 'Statement of financial position',
@@ -116,7 +120,8 @@ class Reports extends BaseApiController
             - $this->sumCodes($seed, ['5110', '5120', '5130', '5140', '5150', '5210', '5220', '5230', '5310', '5320', '5330', '5340', '5350', '5410', '5420']);
         $dep = $this->acctBal($seed, '5350');
         $wcRecv = -$this->acctBal($seed, '1210') - $this->acctBal($seed, '1220') - $this->acctBal($seed, '1230');
-        $wcPay  = $this->sumCodes($seed, ['2110', '2120', '2130', '2210', '2220', '2230', '2240']);
+        // Every liability on the chart, not a list — the list missed 2250 and 2260.
+        $wcPay  = $this->sumCodes($seed, Ledger::statementCodes('Liability'));
         $opCash = $surplus + $dep + $wcRecv + $wcPay;
         $invest = -($this->acctBal($seed, '1310') + $this->acctBal($seed, '1320')) * 0.18;
         $finance = $this->acctBal($seed, '3300') * 0.1;

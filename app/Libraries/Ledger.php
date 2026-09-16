@@ -263,12 +263,80 @@ class Ledger
         return round($dr - $cr) == 0;
     }
 
+    /** Level-1 asset groups presented as non-current; every other asset group is current. */
+    public const NON_CURRENT_ASSET_GROUPS = ['1300'];
+
+    /**
+     * Postable accounts of one balance-sheet type, read from the chart itself.
+     *
+     * Account membership must never be a hardcoded list of leaf codes: an account
+     * added under an existing heading would silently fall out of the statement,
+     * understating that side while the other side still carried the postings. This
+     * happened with 2250 and 2260 — 426,700 of payroll liabilities left the
+     * statement and it reported that the books did not balance when they did.
+     *
+     * Only the grouping headings are fixed; the leaves under them are discovered.
+     * An archived account still carrying a balance is included, because archiving
+     * an account does not make its balance disappear.
+     *
+     * @return list<array{code:string,name:string,balance:float,group:string}>
+     */
+    public static function statementLeaves(string $type): array
+    {
+        $chart = Prototype::load('SEED');
+        $out   = [];
+        $group = '';
+
+        foreach ($chart as $i => $a) {
+            if ($a['type'] !== $type) {
+                continue;
+            }
+            if ($a['level'] === 1) {
+                $group = $a['code'];
+            }
+
+            // The chart is ordered depth-first, so an account is a leaf when the
+            // next account is not nested beneath it.
+            $next   = $chart[$i + 1] ?? null;
+            $isLeaf = $next === null || $next['level'] <= $a['level'];
+            if (!$isLeaf || $a['level'] === 0) {
+                continue;
+            }
+
+            $archived = ($a['status'] ?? 'Active') !== 'Active';
+            if ($archived && (float) $a['balance'] === 0.0) {
+                continue;
+            }
+
+            $out[] = [
+                'code'    => $a['code'],
+                'name'    => $a['name'],
+                'balance' => (float) $a['balance'],
+                // A level-1 leaf (the fund balances) is its own group.
+                'group'   => $a['level'] === 1 ? $a['code'] : $group,
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @return list<string> */
+    public static function statementCodes(string $type, ?callable $where = null): array
+    {
+        $leaves = self::statementLeaves($type);
+        if ($where !== null) {
+            $leaves = array_filter($leaves, $where);
+        }
+
+        return array_values(array_map(static fn ($l) => $l['code'], $leaves));
+    }
+
     /** Assets less liabilities equal the fund balances. */
     public static function positionBalanced(): bool
     {
-        $assets = self::sumCodes(['1110', '1120', '1130', '1140', '1210', '1220', '1230', '1240', '1310', '1320', '1390']);
-        $liab   = self::sumCodes(['2110', '2120', '2130', '2210', '2220', '2230', '2240']);
-        $funds  = self::sumCodes(self::EQUITY_CODES);
+        $assets = self::sumCodes(self::statementCodes('Asset'));
+        $liab   = self::sumCodes(self::statementCodes('Liability'));
+        $funds  = self::sumCodes(self::statementCodes('Equity'));
 
         return round($assets - $liab) == round($funds);
     }
