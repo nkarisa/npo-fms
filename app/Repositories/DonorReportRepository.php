@@ -175,7 +175,7 @@ final class DonorReportRepository extends Repository
         $t = static fn (string $s) => $translations->translation($locale, $s) ?? $s;
 
         $closed = (new PeriodRepository())->closed();
-        $periods = (new Lookups())->periods();
+        $periods = (new Lookups())->yearPeriods();
         $start = $periods[0]['starts_on'] ?? Clock::date();
         $end = $start;
         foreach ($periods as $p) {

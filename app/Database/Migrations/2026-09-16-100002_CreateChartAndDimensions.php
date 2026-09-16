@@ -33,42 +33,70 @@ class CreateChartAndDimensions extends SchemaMigration
             ],
         ]);
 
-        // Closing locks a period against posting; closing and reopening (with its
-        // reason and approver) are recorded in audit_events.
+        // Closing locks a period against posting; closing and reopening (with the
+        // approver) are recorded in audit_events. `close_approved_by` is who authorised
+        // the lock. Months locked before the ledger was migrated keep only a summary
+        // of the entries posted in them (`archived_journals`, `archived_value`).
         $this->table('periods', [
-            'id'             => $this->id(),
-            'entity_id'      => $this->fk(),
-            'fiscal_year_id' => $this->fk(),
-            'code'           => $this->string(7),
-            'name'           => $this->string(20),
-            'starts_on'      => $this->date(),
-            'ends_on'        => $this->date(),
-            'status'         => $this->string(6, false, 'open'),
-            'closed_by'      => $this->fk(true),
-            'closed_at'      => $this->datetime(),
+            'id'                => $this->id(),
+            'entity_id'         => $this->fk(),
+            'fiscal_year_id'    => $this->fk(),
+            'code'              => $this->string(7),
+            'name'              => $this->string(20),
+            'starts_on'         => $this->date(),
+            'ends_on'           => $this->date(),
+            'status'            => $this->string(6, false, 'open'),
+            'closed_by'         => $this->fk(true),
+            'closed_at'         => $this->datetime(),
+            'close_approved_by' => $this->fk(true),
+            'archived_journals' => $this->int(false, 0),
+            'archived_value'    => $this->money(),
         ] + $this->timestamps(), [
             'unique' => [['entity_id', 'code']],
             'keys'   => ['fiscal_year_id', ['entity_id', 'starts_on', 'ends_on']],
-            'fks'    => ['entity_id' => 'entities', 'fiscal_year_id' => 'fiscal_years', 'closed_by' => 'users'],
+            'fks'    => ['entity_id' => 'entities', 'fiscal_year_id' => 'fiscal_years', 'closed_by' => 'users', 'close_approved_by' => 'users'],
             'checks' => [
-                'dates'  => 'ends_on >= starts_on',
-                'status' => $this->in('status', ['open', 'closed']),
-                'closed' => "status = 'open' OR (closed_by IS NOT NULL AND closed_at IS NOT NULL)",
+                'dates'    => 'ends_on >= starts_on',
+                'status'   => $this->in('status', ['open', 'closed']),
+                'closed'   => "status = 'open' OR (closed_by IS NOT NULL AND closed_at IS NOT NULL)",
+                'archived' => 'archived_journals >= 0 AND archived_value >= 0',
+            ],
+        ]);
+
+        // The close checklist. A `ledger` check is answered from the books each time it
+        // is read; a `confirmation` is ticked by someone holding `permission`, and is
+        // recorded per period in period_close_steps. `settled_note` is what the item
+        // says once the period is locked.
+        $this->table('period_close_checks', [
+            'id'            => $this->id(),
+            'key'           => $this->string(20),
+            'sort_order'    => $this->int(false, 0, 'SMALLINT'),
+            'label'         => $this->string(120),
+            'kind'          => $this->string(12),
+            'owner_user_id' => $this->fk(true),
+            'owner_title'   => $this->string(40),
+            'permission'    => $this->string(40, true),
+            'settled_note'  => $this->string(255),
+        ] + $this->timestamps(), [
+            'unique' => ['key'],
+            'fks'    => ['owner_user_id' => 'users'],
+            'checks' => [
+                'kind'       => $this->in('kind', ['ledger', 'confirmation']),
+                'permission' => "kind = 'ledger' OR permission IS NOT NULL",
             ],
         ]);
 
         $this->table('period_close_steps', [
             'id'           => $this->id(),
             'period_id'    => $this->fk(),
-            'step'         => $this->string(20),
+            'check_id'     => $this->fk(),
             'completed_by' => $this->fk(),
             'completed_at' => $this->datetime(false),
             'note'         => $this->text(),
         ], [
-            'unique' => [['period_id', 'step']],
-            'fks'    => ['period_id' => ['periods', 'CASCADE'], 'completed_by' => 'users'],
-            'checks' => ['step' => $this->in('step', ['bank_reconciled', 'mpesa_reconciled', 'accruals_posted',
-                'depreciation_run', 'payroll_posted', 'management_review', 'sign_off'])],
+            'unique' => [['period_id', 'check_id']],
+            'keys'   => ['check_id'],
+            'fks'    => ['period_id' => ['periods', 'CASCADE'], 'check_id' => 'period_close_checks', 'completed_by' => 'users'],
         ]);
 
         $this->table('funders', [
@@ -197,6 +225,18 @@ class CreateChartAndDimensions extends SchemaMigration
             ],
         ]);
 
+        // The ledger funds an award's agreement lets a line be charged to. Most awards
+        // have one; DANIDA also carries the capital fund its equipment is bought from.
+        // An award's programmes are those of its funds, so they need no table.
+        $this->table('grant_funds', [
+            'grant_id' => $this->fk(),
+            'fund_id'  => $this->fk(),
+        ], [
+            'primary' => ['grant_id', 'fund_id'],
+            'keys'    => ['fund_id'],
+            'fks'     => ['grant_id' => ['grants', 'CASCADE'], 'fund_id' => ['funds', 'CASCADE']],
+        ]);
+
         // The award's agreed budget, as the donor sees it.
         $this->table('grant_budget_lines', [
             'id'         => $this->id(),
@@ -252,8 +292,8 @@ class CreateChartAndDimensions extends SchemaMigration
 
     public function down(): void
     {
-        $this->dropTables(['document_types', 'grant_conditions', 'grant_tranches', 'grant_budget_lines', 'grants',
-            'accounts', 'counties', 'fund_programmes', 'funds', 'programmes', 'funders', 'period_close_steps',
+        $this->dropTables(['document_types', 'grant_conditions', 'grant_tranches', 'grant_budget_lines', 'grant_funds', 'grants',
+            'accounts', 'counties', 'fund_programmes', 'funds', 'programmes', 'funders', 'period_close_steps', 'period_close_checks',
             'periods', 'fiscal_years']);
     }
 }

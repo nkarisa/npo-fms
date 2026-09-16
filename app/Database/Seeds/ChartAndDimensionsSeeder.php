@@ -6,18 +6,22 @@ use App\Database\Seeds\Support\SeedContext;
 use CodeIgniter\Database\Seeder;
 
 /**
- * FY2026 and its periods, funders, programmes, funds, the chart of accounts,
+ * FY2021–FY2026 and their periods, funders, programmes, funds, the chart of accounts,
  * grants and bank accounts.
  *
- * Sources: SEED (chart), FUNDS, PROGS, GRANTS, BR_ACCOUNTS, DREPORTS and DR_FUNDERS
+ * Sources: SEED (chart), FUNDS (including the funds each award may be charged
+ * to), PROGS, GRANTS, BR_ACCOUNTS, DREPORTS and DR_FUNDERS
  * (for funder names and grant short names), AR.
  *
  * Every period is seeded open so the ledger can be posted; PeriodCloseSeeder closes
- * January to July once the journals are in.
+ * the earlier years and January to July 2026 once the journals are in.
  */
 class ChartAndDimensionsSeeder extends Seeder
 {
     private const LEDGER_GROUPS = ['General Fund' => 'general', 'Grant Fund' => 'grant', 'Capital Fund' => 'capital', 'Endowment Fund' => 'endowment'];
+
+    /** When the chart was last edited, and by whom ("Last edited 12 Aug 2026 by W. Kamau"): the archiving of 1395. */
+    private const LAST_CHART_EDIT = ['2026-08-12 10:00:00', 'W. Kamau'];
 
     /** GL code → bank account detail the prototype gives only in prose. */
     private const BANKS = [
@@ -65,20 +69,27 @@ class ChartAndDimensionsSeeder extends Seeder
         }
     }
 
+    /**
+     * FY2026, the year the ledger holds, and the five years before it. The earlier
+     * years exist only as locked months with a summary of what was posted in them;
+     * PeriodCloseSeeder closes them.
+     */
     private function seedPeriods(SeedContext $ctx, int $entity, string $now): void
     {
-        $fy = $ctx->insert('fiscal_years', ['entity_id' => $entity, 'code' => 'FY2026', 'starts_on' => '2026-01-01', 'ends_on' => '2026-12-31', 'created_at' => $now]);
-        $ctx->remember('fiscal_years', 'FY2026', $fy);
+        for ($year = SeedContext::YEAR - 5; $year <= SeedContext::YEAR; $year++) {
+            $fy = $ctx->insert('fiscal_years', ['entity_id' => $entity, 'code' => 'FY' . $year, 'starts_on' => "{$year}-01-01", 'ends_on' => "{$year}-12-31", 'created_at' => $now]);
+            $ctx->remember('fiscal_years', 'FY' . $year, $fy);
 
-        for ($m = 1; $m <= 12; $m++) {
-            $start = sprintf('2026-%02d-01', $m);
-            $name  = date('M Y', strtotime($start));
-            $id    = $ctx->insert('periods', [
-                'entity_id' => $entity, 'fiscal_year_id' => $fy, 'code' => substr($start, 0, 7), 'name' => $name,
-                'starts_on' => $start, 'ends_on' => date('Y-m-t', strtotime($start)), 'created_at' => $now,
-            ]);
-            $ctx->remember('periods', substr($start, 0, 7), $id);
-            $ctx->remember('period_names', $name, $id);
+            for ($m = 1; $m <= 12; $m++) {
+                $start = sprintf('%d-%02d-01', $year, $m);
+                $name  = date('M Y', strtotime($start));
+                $id    = $ctx->insert('periods', [
+                    'entity_id' => $entity, 'fiscal_year_id' => $fy, 'code' => substr($start, 0, 7), 'name' => $name,
+                    'starts_on' => $start, 'ends_on' => date('Y-m-t', strtotime($start)), 'created_at' => $now,
+                ]);
+                $ctx->remember('periods', substr($start, 0, 7), $id);
+                $ctx->remember('period_names', $name, $id);
+            }
         }
     }
 
@@ -184,6 +195,14 @@ class ChartAndDimensionsSeeder extends Seeder
 
             $parents[$a['level']] = $id;
             $ctx->remember('accounts', $a['code'], $id);
+            if ($a['status'] === 'Archived') {
+                // The chart's last edit, as the prototype's chart footer records it.
+                $ctx->insert('audit_events', [
+                    'entity_id' => $ctx->entityId(), 'occurred_at' => self::LAST_CHART_EDIT[0], 'actor_user_id' => $ctx->userId(self::LAST_CHART_EDIT[1]),
+                    'action' => 'account.archived', 'object_type' => 'account', 'object_id' => $id, 'object_ref' => $a['code'],
+                    'summary' => $a['code'] . ' ' . $a['name'] . ' archived',
+                ]);
+            }
             if ($funderFund !== null) {
                 $ctx->remember('account_funds', $a['code'], $funderFund);
             }
@@ -244,11 +263,28 @@ class ChartAndDimensionsSeeder extends Seeder
         }
 
         // The grant each fund was set up for (FUNDS.grant), used to code ledger lines.
+        $allowed = [];
         foreach ($ctx->data('FUNDS') as $f) {
             $grant = $ctx->grantId($f['grant']);
             if ($grant !== null) {
-                $ctx->remember('fund_grants', (string) $ctx->require('funds', $f['code']), $grant);
+                $fund = $ctx->require('funds', $f['code']);
+                $ctx->remember('fund_grants', (string) $fund, $grant);
+                $allowed["{$grant}:{$fund}"] = ['grant_id' => $grant, 'fund_id' => $fund];
             }
+        }
+
+        // The funds each award may be charged to: those set up for it, and the fund
+        // the grant register holds it in (KAS and NED sit in the General Fund).
+        foreach ($ctx->data('GRANTS') as $g) {
+            $fund = $ctx->lookup('fund_names', $g['fund']);
+            if ($fund !== null) {
+                $grant = $ctx->require('grants', $g['ref']);
+                $allowed["{$grant}:{$fund}"] = ['grant_id' => $grant, 'fund_id' => $fund];
+            }
+        }
+
+        foreach ($allowed as $row) {
+            $ctx->db()->table('grant_funds')->insert($row);
         }
     }
 

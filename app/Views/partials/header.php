@@ -44,7 +44,7 @@ $current = $locale->locale();
       <?php foreach (Navigation::GROUPS as $group => $items): ?>
         <div class="nav-group-label"><?= esc($group) ?></div>
         <?php foreach ($items as $item): ?>
-          <a class="nav-item <?= $item['page'] === $page ? 'active' : '' ?>" href="<?= $item['url'] ?>" title="<?= esc($item['label']) ?>">
+          <a class="nav-item <?= $item['page'] === $page ? 'active' : '' ?>" href="<?= $item['url'] ?>" aria-label="<?= esc($item['label']) ?>" data-rail>
             <span class="nav-icon"><?= $item['icon'] ?></span><span class="nav-label"><?= esc($item['label']) ?></span>
           </a>
         <?php endforeach; ?>

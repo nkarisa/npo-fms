@@ -122,7 +122,7 @@ abstract class Repository
     }
 
     /** Appends an entry to a record's history (audit_events). */
-    protected function audit(string $objectType, int $objectId, string $ref, string $summary, ?int $actorId, string $action = 'history', ?int $entityId = null): void
+    protected function audit(string $objectType, ?int $objectId, ?string $ref, string $summary, ?int $actorId, string $action = 'history', ?int $entityId = null): void
     {
         $this->insert('audit_events', [
             'entity_id'     => $entityId,

@@ -184,6 +184,45 @@ final class Lookups extends Repository
         return count($held) === 1 && self::FUND_GROUPS[$this->funds()[$fundId]['ledger_group']] === 'Grant Fund' ? (int) array_key_first($held) : null;
     }
 
+    /** @return array<int, list<int>> the funds each award may be charged to, by grant id */
+    public function grantFunds(): array
+    {
+        return $this->cached('grant-funds', function () {
+            $out = [];
+            foreach ($this->rows('SELECT gf.grant_id, gf.fund_id FROM {grant_funds} gf JOIN {funds} f ON f.id = gf.fund_id ORDER BY gf.grant_id, f.code') as $r) {
+                $out[(int) $r['grant_id']][] = (int) $r['fund_id'];
+            }
+
+            return $out;
+        });
+    }
+
+    /** @return list<int> the programmes an award may be charged to: its own and its funds' */
+    public function grantProgrammes(int $grantId): array
+    {
+        return $this->cached("grant-programmes:{$grantId}", function () use ($grantId) {
+            $ids = array_map('intval', array_column($this->rows(
+                'SELECT DISTINCT fp.programme_id FROM {grant_funds} gf JOIN {fund_programmes} fp ON fp.fund_id = gf.fund_id WHERE gf.grant_id = ?',
+                [$grantId]
+            ), 'programme_id'));
+            $own = $this->grants()[$grantId]['programme_id'] ?? null;
+            if ($own !== null && !in_array((int) $own, $ids, true)) {
+                array_unshift($ids, (int) $own);
+            }
+
+            return $ids;
+        });
+    }
+
+    /** @return list<string> the ledger funds (General Fund, Grant Fund, …) an award may be charged to */
+    public function grantLedgerFunds(int $grantId): array
+    {
+        return array_values(array_unique(array_map(
+            fn ($fundId) => self::FUND_GROUPS[$this->funds()[$fundId]['ledger_group']],
+            $this->grantFunds()[$grantId] ?? []
+        )));
+    }
+
     /** @return array<int, array> funders by id */
     public function funders(): array
     {
@@ -205,10 +244,10 @@ final class Lookups extends Repository
      * The fund a posting line belongs to, from how a screen names it.
      *
      * A specific fund name or code is that fund. A ledger group with one fund
-     * (General, Capital, Endowment) is that fund. "Grant Fund" is one of several,
-     * chosen by, in order: the grant on the line; for income and expenditure lines
-     * the funder recorded on the account; the programme's grant fund; the
-     * account's funder.
+     * (General, Capital, Endowment) is that fund. A named grant picks its own fund
+     * in the group. Otherwise "Grant Fund" is one of several, chosen by, in order:
+     * for income and expenditure lines the funder recorded on the account; the
+     * programme's grant fund; the account's funder.
      */
     public function resolveFund(string $name, ?int $grantId = null, ?string $programme = null, ?string $accountCode = null, bool $accountFirst = false): int
     {
@@ -224,6 +263,14 @@ final class Lookups extends Repository
         }
 
         $inGroup = array_filter($this->funds(), static fn ($f) => $f['ledger_group'] === $group && $f['status'] === 'active');
+
+        // The award's own fund in that group, when the award is named.
+        foreach ($grantId === null ? [] : ($this->grantFunds()[$grantId] ?? []) as $fundId) {
+            if (isset($inGroup[$fundId])) {
+                return $fundId;
+            }
+        }
+
         if ($group !== 'grant') {
             // Board designated reserves share the general group; the general fund is the one postings default to.
             usort($inGroup, static fn ($a, $b) => strcmp($a['code'], $b['code']));
@@ -267,6 +314,23 @@ final class Lookups extends Repository
     public function periods(): array
     {
         return $this->cached('periods', fn () => $this->rows('SELECT * FROM {periods} WHERE entity_id = ? ORDER BY starts_on', [$this->entityId()]));
+    }
+
+    /**
+     * The periods of the working year: the fiscal year holding the earliest open
+     * period (the latest year when every period is closed).
+     *
+     * @return list<array>
+     */
+    public function yearPeriods(): array
+    {
+        return $this->cached('year-periods', function () {
+            $periods = $this->periods();
+            $open = array_values(array_filter($periods, static fn ($p) => $p['status'] === 'open'));
+            $year = ($open[0] ?? end($periods) ?: [])['fiscal_year_id'] ?? null;
+
+            return array_values(array_filter($periods, static fn ($p) => $p['fiscal_year_id'] === $year));
+        });
     }
 
     public function periodByName(string $name): ?array

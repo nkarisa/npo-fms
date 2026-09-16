@@ -15,10 +15,10 @@ final class PeriodRepository extends Repository
         $this->lookups = new Lookups();
     }
 
-    /** @return list<string> e.g. "Aug 2026" */
+    /** @return list<string> the working year's periods, e.g. "Aug 2026" */
     public function names(): array
     {
-        return array_column($this->lookups->periods(), 'name');
+        return array_column($this->lookups->yearPeriods(), 'name');
     }
 
     /** @return list<string> */

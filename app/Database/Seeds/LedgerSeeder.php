@@ -21,6 +21,17 @@ use RuntimeException;
  * cover its lowest running balance, and the remainder is shared across the grant
  * funds in proportion to their opening balances in FUNDS.
  *
+ * The prototype's general ledger shows each account's year as a run of postings
+ * rather than one opening figure: 38% of the balance brought forward and the rest
+ * as 10–15 postings through the months, each against a contra account (its
+ * buildLedger). The same history is seeded here, dated January to July (the closed
+ * months, so the open month's bank reconciliations and close are untouched). Every
+ * posting keeps the coding of the account's opening line, and the opening journal
+ * carries the opposite of each contra line in that coding, so no balance by
+ * account, fund, programme or grant changes. These postings are the detail of
+ * the closed months (`source_type` "archive"): the general ledger lists them, the
+ * journal register does not.
+ *
  * Journals are inserted as drafts, given their lines, and then moved to their
  * status through the same transitions the application uses, so every posting
  * passes the integrity triggers.
@@ -35,6 +46,17 @@ class LedgerSeeder extends Seeder
     private const DERIVED = ['3900'];
 
     private const OPENING_DATE = '2026-01-01';
+
+    /** Share of an account's balance brought forward; the rest is its history of postings. */
+    private const BROUGHT_FORWARD = 0.38;
+
+    /** History is dated in these months (January to July), the closed part of the year. */
+    private const HISTORY_MONTHS = 7;
+
+    /** The prototype's preparers of historical postings, and who approved them. */
+    private const PREPARERS = ['J. Achieng', 'M. Otieno', 'S. Njeri', 'P. Mwangi'];
+
+    private const APPROVER = 'W. Kamau';
 
     private SeedContext $ctx;
 
@@ -53,11 +75,35 @@ class LedgerSeeder extends Seeder
         $lines  = array_map(fn ($j) => $this->resolveLines($j), array_column($journals, null, 'ref'));
         $posted = array_values(array_filter($journals, static fn ($j) => in_array($j['status'], self::POSTED, true)));
 
-        $opening = $this->openingLines($posted, $lines);
-        $opening = array_merge($opening, $this->restrictedBalanceLines($opening, $posted, $lines));
+        $fullOpening = $this->openingLines($posted, $lines);
+        // The restricted balance is split as the ledger stood before its history was drawn out,
+        // so every fund keeps the balance it has always had.
+        $restrictedBalance = $this->restrictedBalanceLines($fullOpening, array_map(static fn ($j) => $lines[$j['ref']], $posted));
+        [$opening, $history] = $this->history($fullOpening, array_column($journals, 'ref'));
+
+        // Everything after the opening journal posts in date order, history and JOURNALS together.
+        $sequence = array_merge(
+            array_map(static fn ($h) => ['date' => $h['header']['journal_date'], 'ref' => $h['header']['reference'], 'history' => $h], $history),
+            array_map(fn ($j) => ['date' => $ctx->date($j['date']), 'ref' => $j['ref'], 'journal' => $j], $journals),
+        );
+        usort($sequence, static fn ($a, $b) => [$a['date'], $a['ref']] <=> [$b['date'], $b['ref']]);
+        $sequence = $this->fundedOrder($sequence, array_merge($opening, $restrictedBalance), $lines);
+        $postedLines = [];
+        foreach ($sequence as $item) {
+            if (isset($item['history'])) {
+                $postedLines[] = $item['history']['lines'];
+            } elseif (in_array($item['journal']['status'], self::POSTED, true)) {
+                $postedLines[] = $lines[$item['ref']];
+            }
+        }
+
+        $opening = array_merge($opening, $restrictedBalance);
+        $this->assertFundsStayFunded($opening, $postedLines);
 
         $openingId = $this->createJournal([
             'reference' => 'OB-26-0001', 'journal_date' => self::OPENING_DATE, 'type' => 'adjustment',
+            // The year's opening balances: the chart reads its brought-forward figures from this journal.
+            'source_type' => 'fiscal_year', 'source_id' => $ctx->require('fiscal_years', 'FY' . SeedContext::YEAR),
             'memo' => 'Loaded from the prototype chart of accounts (SEED)',
             'narration' => 'Balances brought forward — FY2026 year to date, less journals loaded separately',
             'prepared_by' => $ctx->systemUserId(),
@@ -65,7 +111,12 @@ class LedgerSeeder extends Seeder
         $ctx->writeTrail('journal', $openingId, 'OB-26-0001', [['when' => '01 Jan 2026', 'what' => 'Opening balances loaded by data migration']], $entity);
 
         $ids = [];
-        foreach ($journals as $j) {
+        foreach ($sequence as $item) {
+            if (isset($item['history'])) {
+                $this->createJournal($item['history']['header'], $item['history']['lines'], 'posted', $item['history']['approval']);
+                continue;
+            }
+            $j = $item['journal'];
             $ids[$j['ref']] = $id = $this->createJournal($this->header($j, $ids), $lines[$j['ref']], $this->status($j), $this->approval($j));
             $ctx->writeTrail('journal', $id, $j['ref'], $j['trail'], $entity);
         }
@@ -159,8 +210,244 @@ class LedgerSeeder extends Seeder
         return $result;
     }
 
+    /**
+     * Splits each account's opening line into the share brought forward and a
+     * history of postings; see the class comment.
+     *
+     * @param list<string> $takenRefs references already used by JOURNALS
+     * @return array{0: list<array>, 1: list<array{header: array, lines: list<array>, approval: array}>}
+     */
+    private function history(array $opening, array $takenRefs): array
+    {
+        $ctx = $this->ctx;
+        $sources = $ctx->data('SOURCES');
+        $narrations = $ctx->data('NARRATION');
+        $taken = array_flip(array_merge($takenRefs, ['OB-26-0001']));
+        $approver = $ctx->userId(self::APPROVER);
+        $offsets = [];
+        $journals = [];
+        $kept = [];
+
+        foreach ($opening as $line) {
+            $account = $this->chart[$line['code']];
+            $debitNormal = in_array($account['type'], ['Asset', 'Expense'], true);
+            $net = $debitNormal ? $line['debit'] - $line['credit'] : $line['credit'] - $line['debit'];
+            if ($account['type'] === 'Equity' || round($net) == 0) {
+                $kept[] = $line;
+                continue;
+            }
+
+            $r = self::rng($line['code'] . $account['name']);
+            $broughtForward = round($net * self::BROUGHT_FORWARD / 1000) * 1000;
+            $movement = $net - $broughtForward;
+            $kept[] = $this->signedLine($line, $debitNormal ? $broughtForward : -$broughtForward);
+
+            $n = 10 + (int) floor($r() * 6);
+            $weights = [];
+            for ($i = 0; $i < $n; $i++) {
+                $weights[] = (0.4 + $r()) * ($r() < 0.16 ? -0.35 : 1);
+            }
+            $sum = array_sum($weights) ?: 1;
+            $choices = $narrations[$line['code']] ?? $narrations[substr($line['code'], 0, 2)] ?? $narrations[substr($line['code'], 0, 1)] ?? $narrations['5'];
+            $lastNarration = -1;
+            $posted = 0.0;
+
+            for ($i = 0; $i < $n; $i++) {
+                $amount = $i === $n - 1 ? $movement - $posted : round($movement * $weights[$i] / $sum / 100) * 100;
+                $posted += $amount;
+                $month = min(self::HISTORY_MONTHS - 1, (int) floor($i / $n * self::HISTORY_MONTHS + $r() * 0.8));
+                $day = min(2 + (int) floor($r() * 26), (int) date('t', mktime(0, 0, 0, $month + 1, 1, SeedContext::YEAR)));
+                $source = $sources[(int) floor($r() * count($sources)) % count($sources)];
+                $number = 140 + (int) floor($r() * 800);
+                $k = (int) floor($r() * count($choices)) % count($choices);
+                if ($k === $lastNarration) {
+                    $k = ($k + 1) % count($choices);
+                }
+                $lastNarration = $k;
+                $preparer = self::PREPARERS[(int) floor($r() * count(self::PREPARERS)) % count(self::PREPARERS)];
+                $contra = $this->contraFor($account['type'], $r(), $line['code']);
+                if (round($amount) == 0) {
+                    continue;
+                }
+
+                do {
+                    $ref = sprintf('%s-%02d-%04d', $source['ref'], SeedContext::YEAR % 100, $number++);
+                } while (isset($taken[$ref]));
+                $taken[$ref] = true;
+
+                // The account moves by $amount on its normal side; the contra takes the other side.
+                $accountLine = $this->signedLine($line, $debitNormal ? $amount : -$amount);
+                $contraLine = ['code' => $contra, 'description' => $this->chart[$contra]['name']] + $this->signedLine($line, $debitNormal ? -$amount : $amount);
+                $offsetKey = $contra . '|' . $line['fund_id'] . '|' . $line['programme'];
+                $offsets[$offsetKey] = ($offsets[$offsetKey] ?? 0) + $contraLine['credit'] - $contraLine['debit'];
+
+                $date = sprintf('%d-%02d-%02d', SeedContext::YEAR, $month + 1, $day);
+                $journals[] = [
+                    'header' => [
+                        'reference' => $ref, 'journal_date' => $date, 'type' => 'standard',
+                        'document_type_id' => $ctx->lookup('document_types', $source['ref']),
+                        'document_ref' => 'ELOG/' . $line['code'] . '/' . (10 + $number % 89),
+                        'source_type' => 'archive', 'source_id' => $ctx->periodId($date),
+                        'narration' => $choices[$k], 'prepared_by' => $ctx->userOrSystem($preparer),
+                    ],
+                    'lines' => [$accountLine, $contraLine],
+                    'approval' => ['approved_by' => $approver, 'approved_at' => $date . ' 17:00:00', 'posted_at' => $date . ' 17:00:00'],
+                ];
+            }
+        }
+
+        // The opening journal carries the opposite of every contra line, in the same coding.
+        foreach ($offsets as $key => $net) {
+            [$code, $fund, $programme] = explode('|', $key, 3);
+            if (round($net, 2) != 0) {
+                $kept[] = ['code' => $code, 'fund_id' => (int) $fund, 'programme' => $programme, 'description' => $this->chart[$code]['name'],
+                    'debit' => max($net, 0), 'credit' => max(-$net, 0)];
+            }
+        }
+
+        return [$kept, $journals];
+    }
+
+    /** A copy of a line carrying a signed amount: positive is a debit, negative a credit. */
+    private function signedLine(array $line, float $debit): array
+    {
+        return ['debit' => round(max($debit, 0), 2), 'credit' => round(max(-$debit, 0), 2)] + $line;
+    }
+
+    /** The prototype's contra accounts: grants received or receivable for income, bank or payables for spend. */
+    private function contraFor(string $type, float $draw, string $code): string
+    {
+        $contra = match ($type) {
+            'Income'    => $draw < 0.55 ? '1120' : '1210',
+            'Expense'   => $draw < 0.6 ? '1110' : '2110',
+            'Asset'     => $draw < 0.5 ? '1110' : '2110',
+            default     => '1110',
+        };
+
+        return $contra === $code ? ($code === '1110' ? '2110' : '1110') : $contra;
+    }
+
+    /** The prototype's seeded generator (mulberry32 over an FNV-1a hash), so the history is the same on every load. */
+    private static function rng(string $seed): callable
+    {
+        $int32 = static fn (int $x): int => ($x & 0xFFFFFFFF) >= 0x80000000 ? ($x & 0xFFFFFFFF) - 0x100000000 : ($x & 0xFFFFFFFF);
+        $imul = static function (int $a, int $b) use ($int32): int {
+            $a &= 0xFFFFFFFF;
+            $b &= 0xFFFFFFFF;
+
+            return $int32((($a & 0xFFFF) * $b) + ((((($a >> 16) & 0xFFFF) * $b) & 0xFFFF) << 16));
+        };
+
+        $h = 2166136261;
+        foreach (str_split($seed) as $char) {
+            $h = $imul($h ^ ord($char), 16777619);
+        }
+        $state = $h & 0xFFFFFFFF;
+
+        return static function () use (&$state, $int32, $imul): float {
+            $state = $int32($state + 0x6D2B79F5);
+            $t = $imul($state ^ (($state & 0xFFFFFFFF) >> 15), 1 | $state);
+            $t = $int32(($t + $imul($t ^ (($t & 0xFFFFFFFF) >> 7), 61 | $t)) ^ $t);
+
+            return (($t ^ (($t & 0xFFFFFFFF) >> 14)) & 0xFFFFFFFF) / 4294967296;
+        };
+    }
+
+    /**
+     * Posts history no earlier than the fund can bear it: a historical posting that
+     * would take a restricted fund below zero waits until the fund has received
+     * more, and takes the date of the posting that funded it. JOURNALS keep their
+     * dates.
+     */
+    private function fundedOrder(array $sequence, array $opening, array $lines): array
+    {
+        $running = [];
+        foreach ($this->ctx->db()->table('funds')->whereIn('restriction', ['restricted', 'endowment'])->get()->getResultArray() as $f) {
+            $running[(int) $f['id']] = 0.0;
+        }
+        $effect = function (array $journalLines) use (&$running): array {
+            $delta = [];
+            foreach ($journalLines as $l) {
+                if (isset($running[$l['fund_id']]) && !in_array($this->chart[$l['code']]['type'], ['Asset', 'Liability'], true)) {
+                    $delta[$l['fund_id']] = ($delta[$l['fund_id']] ?? 0) + $l['credit'] - $l['debit'];
+                }
+            }
+
+            return $delta;
+        };
+        $bears = static function (array $delta) use (&$running): bool {
+            foreach ($delta as $fund => $d) {
+                if ($running[$fund] + $d < -0.005) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+        $apply = static function (array $delta) use (&$running): void {
+            foreach ($delta as $fund => $d) {
+                $running[$fund] += $d;
+            }
+        };
+
+        $apply($effect($opening));
+        $ordered = [];
+        $waiting = [];
+        foreach ($sequence as $item) {
+            $journalLines = isset($item['history']) ? $item['history']['lines']
+                : (in_array($item['journal']['status'], self::POSTED, true) ? $lines[$item['ref']] : []);
+            $delta = $effect($journalLines);
+            if (isset($item['history']) && !$bears($delta)) {
+                $waiting[] = $item + ['delta' => $delta];
+                continue;
+            }
+            $apply($delta);
+            $ordered[] = $item;
+
+            foreach ($waiting as $k => $w) {
+                if ($bears($w['delta'])) {
+                    $apply($w['delta']);
+                    $w['date'] = $item['date'];
+                    $w['history']['header']['journal_date'] = $item['date'];
+                    $w['history']['header']['source_id'] = $this->ctx->periodId($item['date']);
+                    $w['history']['approval'] = ['approved_at' => $item['date'] . ' 17:00:00', 'posted_at' => $item['date'] . ' 17:00:00'] + $w['history']['approval'];
+                    unset($w['delta']);
+                    $ordered[] = $w;
+                    unset($waiting[$k]);
+                }
+            }
+        }
+
+        if ($waiting !== []) {
+            throw new RuntimeException(count($waiting) . ' historical postings could not be funded; adjust BROUGHT_FORWARD.');
+        }
+
+        return $ordered;
+    }
+
+    /** The history must not take a restricted fund below zero at any point, or the database would refuse it. */
+    private function assertFundsStayFunded(array $opening, array $postedLines): void
+    {
+        $running = [];
+        foreach ($this->ctx->db()->table('funds')->whereIn('restriction', ['restricted', 'endowment'])->get()->getResultArray() as $f) {
+            $running[(int) $f['id']] = 0.0;
+        }
+        foreach ([$opening, ...$postedLines] as $journalLines) {
+            foreach ($journalLines as $l) {
+                if (isset($running[$l['fund_id']]) && !in_array($this->chart[$l['code']]['type'], ['Asset', 'Liability'], true)) {
+                    $running[$l['fund_id']] += $l['credit'] - $l['debit'];
+                }
+            }
+            foreach ($running as $fund => $balance) {
+                if ($balance < -0.005) {
+                    throw new RuntimeException("The seeded history takes fund {$fund} below zero; adjust BROUGHT_FORWARD.");
+                }
+            }
+        }
+    }
+
     /** Splits 3200 across restricted funds; see the class comment. */
-    private function restrictedBalanceLines(array $opening, array $posted, array $lines): array
+    private function restrictedBalanceLines(array $opening, array $postedLines): array
     {
         $restricted = [];
         foreach ($this->ctx->db()->table('funds')->whereIn('restriction', ['restricted', 'endowment'])->get()->getResultArray() as $f) {
@@ -168,7 +455,7 @@ class LedgerSeeder extends Seeder
         }
 
         $running = $lowest = $restricted;
-        foreach ([$opening, ...array_map(static fn ($j) => $lines[$j['ref']], $posted)] as $journalLines) {
+        foreach ([$opening, ...$postedLines] as $journalLines) {
             foreach ($journalLines as $l) {
                 if (isset($running[$l['fund_id']]) && !in_array($this->chart[$l['code']]['type'], ['Asset', 'Liability'], true)) {
                     $running[$l['fund_id']] += $l['credit'] - $l['debit'];

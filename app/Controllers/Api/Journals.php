@@ -11,6 +11,11 @@ use App\Repositories\RuleViolation;
 
 class Journals extends BaseApiController
 {
+    /** Supporting documents the form accepts: at most this many bytes each. */
+    private const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+    private const ATTACHMENT_TYPES = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'msg', 'eml'];
+
     public static function validateAllocationFundTransfer(array $lines): string
     {
         if ($lines === []) {
@@ -121,10 +126,53 @@ class Journals extends BaseApiController
             : $this->json($journal);
     }
 
-    /** Creates a new journal document as a Draft or submits it straight for approval. */
+    /** What the new-journal form offers the acting user. */
+    public function form()
+    {
+        return $this->json((new JournalRepository())->formOptions($this->actor()));
+    }
+
+    /** Downloads one of a journal's supporting documents. */
+    public function attachment($ref, $id)
+    {
+        $file = (new JournalRepository())->attachment((string) $ref, (int) $id);
+        if ($file === null || !is_file($file['path'])) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
+        }
+
+        return $this->response->download($file['path'], null)->setFileName($file['filename'])->setContentType($file['mime_type']);
+    }
+
+    /**
+     * Creates a new journal document as a Draft or submits it straight for approval.
+     *
+     * Accepts JSON, or a multipart form whose `payload` field is that JSON and whose
+     * `attachments[]` are the supporting documents.
+     */
     public function create()
     {
-        $body   = $this->request->getJSON(true) ?? [];
+        $multipart = str_starts_with($this->request->getHeaderLine('Content-Type'), 'multipart/form-data');
+        $body   = $multipart ? (json_decode((string) $this->request->getPost('payload'), true) ?? []) : ($this->request->getJSON(true) ?? []);
+
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->response->setStatusCode(403)->setJSON(['error' => $actor['role'] . ' cannot raise journal entries. Switch to a preparer in the account menu.']);
+        }
+
+        $files = [];
+        foreach ($multipart ? ($this->request->getFileMultiple('attachments') ?? []) : [] as $file) {
+            if (!$file->isValid()) {
+                return $this->response->setStatusCode(422)->setJSON(['error' => $file->getClientName() . ' did not upload: ' . $file->getErrorString()]);
+            }
+            if ($file->getSize() > self::ATTACHMENT_MAX_BYTES) {
+                return $this->response->setStatusCode(422)->setJSON(['error' => $file->getClientName() . ' is larger than 10 MB.']);
+            }
+            if (!in_array(strtolower($file->getClientExtension()), self::ATTACHMENT_TYPES, true)) {
+                return $this->response->setStatusCode(422)->setJSON(['error' => $file->getClientName() . ' is not a document type the audit file accepts (PDF, image, Office, CSV, text or email).']);
+            }
+            $files[] = ['path' => $file->getTempName(), 'name' => $file->getClientName(), 'size' => $file->getSize(), 'mime' => $file->getMimeType()];
+        }
+
         $status = (string) ($body['status'] ?? 'Draft');
         if (!in_array($status, ['Draft', 'Pending approval'], true)) {
             $status = 'Draft';
@@ -180,7 +228,8 @@ class Journals extends BaseApiController
             $grants[$grant['ref']] = $grant;
         }
 
-        foreach ($lines as &$line) {
+        // The fund and programme are the preparer's choice; the repository holds them to what the award covers.
+        foreach ($lines as $line) {
             $grantRef = trim((string) ($line['grantRef'] ?? ''));
             if ($grantRef !== '') {
                 if (!isset($grants[$grantRef])) {
@@ -189,12 +238,8 @@ class Journals extends BaseApiController
                 if (!in_array($grants[$grantRef]['status'], ['Active', 'Closing'], true)) {
                     return $this->response->setStatusCode(422)->setJSON(['error' => 'Selected grant ' . $grantRef . ' is not available for journal postings.']);
                 }
-
-                $line['fund'] = $grants[$grantRef]['fund'];
-                $line['program'] = $grants[$grantRef]['program'];
             }
         }
-        unset($line);
 
         $lines = array_map(fn ($l) => [
             'code'     => trim((string) ($l['code'] ?? '')),
@@ -236,12 +281,11 @@ class Journals extends BaseApiController
         }
 
         $journal = [
-            'date'      => trim((string) ($body['date'] ?? '')) ?: Clock::today()->format('d M Y'),
+            'date'      => trim((string) ($body['date'] ?? '')) ?: Clock::date(),
             'type'      => $type,
             'period'    => $body['period'] ?? (new PeriodRepository())->currentName(),
             'status'    => $status,
-            'preparer'  => $body['preparer'] ?? null,
-            'doc'       => trim((string) ($body['doc'] ?? '')),
+            'docLink'   => trim((string) ($body['docLink'] ?? 'auto')),
             'memo'      => trim((string) ($body['memo'] ?? '')),
             'narration' => $narration,
             'lines'     => $lines,
@@ -252,7 +296,7 @@ class Journals extends BaseApiController
         }
 
         try {
-            $journal = (new JournalRepository())->create($journal, $this->actorId());
+            $journal = (new JournalRepository())->create($journal, $this->actorId(), $files);
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }

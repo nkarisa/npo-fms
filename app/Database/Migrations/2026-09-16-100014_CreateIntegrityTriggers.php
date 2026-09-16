@@ -17,6 +17,7 @@ use RuntimeException;
  *   draws on ends below zero (rule 8).
  * - A posted journal is immutable (rule 4). The only change allowed is marking it
  *   reversed once a reversal has been posted; its lines never change.
+ * - A closed period's close confirmations are fixed until the period is reopened.
  * - The audit trail and the personal-data access log are append-only (rule 10).
  *
  * Written for MySQL 8 and SQLite; other drivers are refused rather than migrated
@@ -32,6 +33,7 @@ class CreateIntegrityTriggers extends SchemaMigration
     private const MSG_ACCOUNT        = 'Only active leaf accounts can be posted to.';
     private const MSG_RESTRICTED     = 'This posting would take a restricted fund below zero.';
     private const MSG_LINES_LOCKED   = 'Journal lines can only change while the journal is a draft or rejected.';
+    private const MSG_CLOSE_LOCKED   = 'The close confirmations of a closed period are fixed. Reopen the period to change them.';
     private const MSG_APPEND_ONLY    = 'This log is append-only. Entries cannot be changed or deleted.';
 
     /** Columns of a posted journal that must never change. */
@@ -42,6 +44,7 @@ class CreateIntegrityTriggers extends SchemaMigration
     private const TRIGGERS = [
         'journals'                 => ['insert_guard', 'update_guard', 'delete_guard'],
         'journal_lines'            => ['insert_guard', 'update_guard', 'delete_guard'],
+        'period_close_steps'       => ['insert_guard', 'update_guard', 'delete_guard'],
         'audit_events'             => ['update_guard', 'delete_guard'],
         'personal_data_access_log' => ['update_guard', 'delete_guard'],
     ];
@@ -131,6 +134,12 @@ class CreateIntegrityTriggers extends SchemaMigration
             . " AND (NOT (OLD.status = 'posted' AND NEW.status = 'reversed') OR " . $this->frozenColumnsChanged($nullSafeEquals) . ')';
     }
 
+    /** True when the period is closed, so its close confirmations may not change. */
+    private function periodClosed(string $periodId): string
+    {
+        return "EXISTS (SELECT 1 FROM {periods} p WHERE p.id = {$periodId} AND p.status = 'closed')";
+    }
+
     private function linesLocked(string $journalId): string
     {
         return "EXISTS (SELECT 1 FROM {journals} j WHERE j.id = {$journalId} AND j.status NOT IN ('draft', 'rejected'))";
@@ -186,6 +195,18 @@ class CreateIntegrityTriggers extends SchemaMigration
                 . $guard($this->linesLocked('OLD.journal_id'), self::MSG_LINES_LOCKED)
                 . ' END',
 
+            'CREATE TRIGGER {period_close_steps}_insert_guard BEFORE INSERT ON {period_close_steps} FOR EACH ROW BEGIN '
+                . $guard($this->periodClosed('NEW.period_id'), self::MSG_CLOSE_LOCKED)
+                . ' END',
+
+            'CREATE TRIGGER {period_close_steps}_update_guard BEFORE UPDATE ON {period_close_steps} FOR EACH ROW BEGIN '
+                . $guard($this->periodClosed('OLD.period_id') . ' OR ' . $this->periodClosed('NEW.period_id'), self::MSG_CLOSE_LOCKED)
+                . ' END',
+
+            'CREATE TRIGGER {period_close_steps}_delete_guard BEFORE DELETE ON {period_close_steps} FOR EACH ROW BEGIN '
+                . $guard($this->periodClosed('OLD.period_id'), self::MSG_CLOSE_LOCKED)
+                . ' END',
+
             ...$appendOnly,
         ];
     }
@@ -231,6 +252,15 @@ class CreateIntegrityTriggers extends SchemaMigration
 
             'CREATE TRIGGER {journal_lines}_delete_guard BEFORE DELETE ON {journal_lines} BEGIN '
                 . $raise($this->linesLocked('OLD.journal_id'), self::MSG_LINES_LOCKED) . ' END',
+
+            'CREATE TRIGGER {period_close_steps}_insert_guard BEFORE INSERT ON {period_close_steps} BEGIN '
+                . $raise($this->periodClosed('NEW.period_id'), self::MSG_CLOSE_LOCKED) . ' END',
+
+            'CREATE TRIGGER {period_close_steps}_update_guard BEFORE UPDATE ON {period_close_steps} BEGIN '
+                . $raise($this->periodClosed('OLD.period_id') . ' OR ' . $this->periodClosed('NEW.period_id'), self::MSG_CLOSE_LOCKED) . ' END',
+
+            'CREATE TRIGGER {period_close_steps}_delete_guard BEFORE DELETE ON {period_close_steps} BEGIN '
+                . $raise($this->periodClosed('OLD.period_id'), self::MSG_CLOSE_LOCKED) . ' END',
 
             ...$appendOnly,
         ];

@@ -2,14 +2,14 @@
 
 namespace App\Database\Seeds\Support;
 
-use App\Libraries\Prototype;
 use CodeIgniter\Database\BaseConnection;
 use DateTimeImmutable;
 use RuntimeException;
 
 /**
  * State and translation rules shared by the seeders that load the prototype data
- * (app/Data/*.json) into the database.
+ * (app/Data/OLD/*.json) into the database. The application reads the database;
+ * the JSON is kept only as the seed source.
  *
  * The prototype stores names where the schema stores keys ("Grant Fund", "M. Otieno",
  * "USAID / Uraia 2026"). Every such name is resolved here, once, so all seeders
@@ -39,6 +39,9 @@ final class SeedContext
     /** @var array<string, array<string, mixed>> */
     private array $maps = [];
 
+    /** @var array<string, array> seed datasets by name */
+    private array $data = [];
+
     private function __construct(private BaseConnection $db)
     {
     }
@@ -64,7 +67,15 @@ final class SeedContext
 
     public function data(string $name): array
     {
-        return Prototype::load($name);
+        if (!isset($this->data[$name])) {
+            $path = APPPATH . 'Data/OLD/' . $name . '.json';
+            if (!is_file($path)) {
+                throw new RuntimeException("Seed data {$path} is missing.");
+            }
+            $this->data[$name] = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+        }
+
+        return $this->data[$name];
     }
 
     public function insert(string $table, array $row): int

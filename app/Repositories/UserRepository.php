@@ -65,6 +65,7 @@ final class UserRepository extends Repository
                     'since'      => '—',
                     'canPrepare' => $canPrepare,
                     'canApprove' => $canApprove,
+                    'permissions' => $permissions,
                 ];
             }
 

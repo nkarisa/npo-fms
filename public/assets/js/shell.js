@@ -48,10 +48,37 @@
     syncToggle();
     toggle.addEventListener('click', () => {
       const collapsed = document.documentElement.classList.toggle('nav-collapsed');
+      hideTip();
       try { localStorage.setItem('elog.nav', collapsed ? 'collapsed' : 'open'); } catch (e) { /* private mode */ }
       syncToggle();
     });
   }
+
+  // ---- Menu tooltips while the sidebar is collapsed ----
+  // The tip lives on <body> so the collapsed menu keeps its own scrollbar and the tip is never clipped by it.
+
+  const tip = document.createElement('div');
+  tip.id = 'rail-tip';
+  tip.setAttribute('role', 'tooltip');
+  document.body.appendChild(tip);
+
+  function showTip(el) {
+    const label = el.getAttribute('aria-label');
+    if (!label || !document.documentElement.classList.contains('nav-collapsed')) return;
+    const r = el.getBoundingClientRect();
+    const rtl = document.documentElement.dir === 'rtl';
+    tip.textContent = label;
+    tip.style.top = Math.round(r.top + r.height / 2 - tip.offsetHeight / 2) + 'px';
+    tip.style.left = rtl ? Math.round(r.left - 8 - tip.offsetWidth) + 'px' : Math.round(r.right + 8) + 'px';
+    tip.dataset.on = '1';
+  }
+  const hideTip = () => { delete tip.dataset.on; };
+  const railItem = (e) => (e.target.closest ? e.target.closest('[data-rail]') : null);
+
+  document.addEventListener('mouseover', (e) => { const el = railItem(e); el ? showTip(el) : hideTip(); });
+  document.addEventListener('focusin', (e) => { const el = railItem(e); el ? showTip(el) : hideTip(); });
+  document.addEventListener('focusout', hideTip);
+  window.addEventListener('scroll', hideTip, true);
 
   // ---- Interface language ----
 

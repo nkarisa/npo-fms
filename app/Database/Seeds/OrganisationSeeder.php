@@ -31,11 +31,14 @@ class OrganisationSeeder extends Seeder
         'requisition.raise' => 'Raise purchase requisitions',
         'payroll.view'      => 'View payroll records (personal data; every read is logged)',
         'settings.manage'   => 'Change organisation, ledger and approval settings',
+        'period.close'      => 'Confirm the management review and close a period',
+        'period.authorise'  => 'Authorise a period close and reopen a closed period',
+        'chart.manage'      => 'Add, change, import and archive accounts in the chart',
     ];
 
     private const ROLE_PERMISSIONS = [
-        'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view', 'settings.manage'],
-        'Executive Director'  => ['ledger.view', 'journal.approve', 'journal.post', 'payroll.view'],
+        'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view', 'settings.manage', 'period.close', 'chart.manage'],
+        'Executive Director'  => ['ledger.view', 'journal.approve', 'journal.post', 'payroll.view', 'period.authorise'],
         'Senior Accountant'   => ['ledger.view', 'journal.prepare', 'requisition.raise'],
         'Accountant'          => ['ledger.view', 'journal.prepare', 'requisition.raise'],
         'Programme Officer'   => ['requisition.raise'],

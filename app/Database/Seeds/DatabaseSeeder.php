@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
         ReferenceDataSeeder::class,
         ChartAndDimensionsSeeder::class,
         LedgerSeeder::class,
+        RecurringTemplateSeeder::class,
         ProcurementSeeder::class,
         PayablesSeeder::class,
         ReceivablesSeeder::class,
