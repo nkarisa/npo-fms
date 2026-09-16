@@ -1,0 +1,78 @@
+[
+    {
+        "funder": "European Union",
+        "ref": "EU-2024-117",
+        "locale": "fr",
+        "note": "Award EU-2024-117 · agreement requires French",
+        "project": {
+            "en-GB": "Strengthening Electoral Accountability",
+            "fr": "Renforcement de la redevabilité électorale",
+            "es": "Fortalecimiento de la rendición de cuentas electoral",
+            "ar": "تعزيز المساءلة الانتخابية",
+            "sw": "Kuimarisha uwajibikaji wa uchaguzi"
+        },
+        "figures": [
+            "48,000,000.00",
+            "12,480,000.00",
+            "31,940,000.00",
+            "16,060,000.00"
+        ]
+    },
+    {
+        "funder": "Ford Foundation",
+        "ref": "FF-2025-042",
+        "locale": "en-GB",
+        "note": "Award FF-2025-042 · English (UK)",
+        "project": {
+            "en-GB": "Civic Data and Long-term Observation",
+            "fr": "Données civiques et observation de long terme",
+            "es": "Datos cívicos y observación de largo plazo",
+            "ar": "البيانات المدنية والمراقبة طويلة الأمد",
+            "sw": "Data za kiraia na uangalizi wa muda mrefu"
+        },
+        "figures": [
+            "22,500,000.00",
+            "5,310,000.00",
+            "9,870,000.00",
+            "12,630,000.00"
+        ]
+    },
+    {
+        "funder": "UNDP Kenya",
+        "ref": "UNDP-2025-008",
+        "locale": "ar",
+        "note": "Award UNDP-2025-008 · Arabic requested for the regional annex",
+        "project": {
+            "en-GB": "Regional Election Observation Annex",
+            "fr": "Annexe régionale d'observation électorale",
+            "es": "Anexo regional de observación electoral",
+            "ar": "الملحق الإقليمي لمراقبة الانتخابات",
+            "sw": "Kiambatisho cha kikanda cha uangalizi wa uchaguzi"
+        },
+        "figures": [
+            "31,200,000.00",
+            "8,940,000.00",
+            "18,410,000.00",
+            "12,790,000.00"
+        ]
+    },
+    {
+        "funder": "Embassy of Sweden",
+        "ref": "SIDA-2024-311",
+        "locale": "en-GB",
+        "note": "Award SIDA-2024-311 · English (UK)",
+        "project": {
+            "en-GB": "County Voter Education Programme",
+            "fr": "Programme d'éducation des électeurs au niveau des comtés",
+            "es": "Programa de educación al votante en los condados",
+            "ar": "برنامج تثقيف الناخبين على مستوى المقاطعات",
+            "sw": "Programu ya elimu ya wapiga kura ngazi ya kaunti"
+        },
+        "figures": [
+            "18,750,000.00",
+            "4,220,000.00",
+            "13,980,000.00",
+            "4,770,000.00"
+        ]
+    }
+]

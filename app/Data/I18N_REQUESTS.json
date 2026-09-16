@@ -1,0 +1,35 @@
+[
+    {
+        "id": "RQ-3",
+        "str": "Asset verification",
+        "area": "Navigation",
+        "locale": "ar",
+        "kind": "Suggestion",
+        "what": "التحقق من الأصول",
+        "who": "H. Nasser",
+        "when": "02 Sep 14:12",
+        "status": "With reviewer"
+    },
+    {
+        "id": "RQ-2",
+        "str": "Encumbrance",
+        "area": "Locked terminology",
+        "locale": "sw",
+        "kind": "Unlock request",
+        "what": "Unlock requested — no common Swahili equivalent in use by county teams",
+        "who": "J. Otieno",
+        "when": "28 Aug 10:38",
+        "status": "Raised"
+    },
+    {
+        "id": "RQ-1",
+        "str": "Budget revision",
+        "area": "Budgets",
+        "locale": "fr",
+        "kind": "Report",
+        "what": "Too long for the layout · Not the finance meaning",
+        "who": "A. Mbaye",
+        "when": "21 Aug 09:05",
+        "status": "Approved"
+    }
+]

@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\I18n as I18nLib;
 use App\Libraries\Prototype;
 
 class DonorReports extends BaseApiController
@@ -70,5 +71,130 @@ class DonorReports extends BaseApiController
             }
         }
         return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
+    }
+
+    /**
+     * Delivery language by funder, plus the cover page as that funder will receive it.
+     *
+     * Each agreement names the language the pack is delivered in, so this is a
+     * property of the funder rather than of whoever runs the report. Headings and
+     * narrative translate; the figures, dates and currency do not — they are lifted
+     * from the posted ledger and stay in the reporting locale so the pack still
+     * reconciles line-for-line against the accounts.
+     */
+    public function languages()
+    {
+        $funders  = Prototype::load('DR_FUNDERS');
+        $selected = $this->request->getGet('funder') ?: ($funders[0]['funder'] ?? '');
+
+        $rows = array_map(static fn ($d) => [
+            'funder'   => $d['funder'],
+            'ref'      => $d['ref'],
+            'note'     => $d['note'],
+            'locale'   => $d['locale'],
+            'native'   => I18nLib::find($d['locale'])['native'] ?? $d['locale'],
+            'selected' => $d['funder'] === $selected,
+        ], $funders);
+
+        return $this->json([
+            'rows'    => $rows,
+            'choices' => array_map(static fn ($l) => [
+                'code'     => $l['code'],
+                'native'   => $l['native'],
+                'short'    => $l['code'] === I18nLib::SOURCE_LOCALE ? 'EN' : strtoupper($l['code']),
+                'coverage' => $l['coverage'],
+                'reviewer' => $l['reviewer'],
+            ], I18nLib::locales()),
+            'preview' => $this->coverPreview($selected),
+            'note'    => 'Each funder receives its report in its own agreed language. The narrative and headings are translated; the figures are not — they are lifted from the posted ledger and stay in the reporting locale so the report still reconciles line-for-line.',
+        ]);
+    }
+
+    /** Sets the delivery language an agreement requires for a funder's pack. */
+    public function setLanguage()
+    {
+        $body   = $this->request->getJSON(true) ?? [];
+        $funder = trim((string) ($body['funder'] ?? ''));
+        $code   = (string) ($body['locale'] ?? '');
+
+        if (!I18nLib::isKnown($code)) {
+            return $this->response->setStatusCode(422)->setJSON(['error' => '"' . $code . '" is not a language the system publishes.']);
+        }
+
+        $funders = Prototype::load('DR_FUNDERS');
+        foreach ($funders as $i => $d) {
+            if ($d['funder'] !== $funder) {
+                continue;
+            }
+            $funders[$i]['locale'] = $code;
+            Prototype::save('DR_FUNDERS', $funders);
+
+            return $this->json([
+                'funder'  => $funders[$i],
+                'preview' => $this->coverPreview($funder),
+            ]);
+        }
+
+        return $this->response->setStatusCode(404)->setJSON(['error' => $funder . ' is not a funder on the reporting calendar.']);
+    }
+
+    /**
+     * The cover page as the funder sees it: translated wording around figures that
+     * never move. Where a heading has no approved translation it stays in English
+     * and is named to the reviewer, rather than being machine-translated into a
+     * document a funder will hold ELOG to.
+     */
+    private function coverPreview(string $funder): array
+    {
+        $funders = Prototype::load('DR_FUNDERS');
+        $fd      = null;
+        foreach ($funders as $d) {
+            if ($d['funder'] === $funder) {
+                $fd = $d;
+                break;
+            }
+        }
+        $fd ??= $funders[0];
+
+        $code   = $fd['locale'];
+        $locale = I18nLib::find($code) ?? I18nLib::locales()[0];
+        $covers = Prototype::load('DR_COVER');
+        $cover  = $covers[$code] ?? $covers[I18nLib::SOURCE_LOCALE];
+
+        $project     = $fd['project'][$code] ?? $fd['project'][I18nLib::SOURCE_LOCALE];
+        $projectBack = !isset($fd['project'][$code]) && $code !== I18nLib::SOURCE_LOCALE;
+
+        return [
+            'dir'      => $locale['dir'],
+            'lang'     => $locale['code'],
+            'org'      => $cover['org'],
+            'title'    => $cover['prefix'] . ' — ' . $project,
+            'subtitle' => $cover['period'] . ' · ' . $cover['awardWord'] . ' ' . $fd['ref'],
+            'lines'    => array_map(
+                static fn ($label, $i) => ['label' => $label, 'value' => I18nLib::REPORTING_CURRENCY . ' ' . $fd['figures'][$i]],
+                $cover['labels'],
+                array_keys($cover['labels'])
+            ),
+            'footnote' => $cover['foot'],
+            'status'   => $fd['funder'] . ' → ' . $locale['native'] . ' · ' . $locale['coverage'] . '% translated',
+            'warning'  => $this->previewWarning($fd, $locale, $projectBack),
+        ];
+    }
+
+    private function previewWarning(array $fd, array $locale, bool $projectBack): string
+    {
+        if ($locale['code'] === I18nLib::SOURCE_LOCALE) {
+            return $fd['funder'] . ' receives the source language. Nothing is translated, and the report ties to the ledger as posted.';
+        }
+
+        $tail = $projectBack
+            ? 'the project title has no approved ' . $locale['native'] . ' wording yet and stays in English, flagged to ' . $locale['reviewer'] . '.'
+            : ($locale['coverage'] < 90
+                ? $locale['native'] . ' is only ' . $locale['coverage'] . '% reviewed, so any unapproved heading will appear in English and is flagged to ' . $locale['reviewer'] . ' before submission.'
+                : 'the wording is signed off by ' . $locale['reviewer'] . '.');
+
+        return 'Headings and narrative for ' . $fd['funder'] . ' (' . $fd['ref'] . ') are translated into ' . $locale['native']
+            . '. Figures, dates and the currency stay in the reporting locale (' . I18nLib::REPORTING_LOCALE . ' · ' . I18nLib::REPORTING_CURRENCY
+            . ') so the report still ties to the ledger — ' . $tail;
     }
 }
