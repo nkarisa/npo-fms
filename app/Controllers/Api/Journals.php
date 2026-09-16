@@ -121,7 +121,10 @@ class Journals extends BaseApiController
     public function create()
     {
         $body   = $this->request->getJSON(true) ?? [];
-        $status = in_array($body['status'] ?? 'Draft', ['Draft', 'Pending approval'], true) ? $body['status'] : 'Draft';
+        $status = (string) ($body['status'] ?? 'Draft');
+        if (!in_array($status, ['Draft', 'Pending approval'], true)) {
+            $status = 'Draft';
+        }
         $type   = (string) ($body['type'] ?? 'Standard');
         $narration = trim((string) ($body['narration'] ?? ''));
 
