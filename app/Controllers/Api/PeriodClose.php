@@ -3,21 +3,25 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\JournalRepository;
+use App\Repositories\PayablesRepository;
+use App\Repositories\PeriodRepository;
 
 class PeriodClose extends BaseApiController
 {
     public function index()
     {
-        $period  = $this->request->getGet('period') ?: 'Aug 2026';
-        $months  = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026'];
-        $closed  = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026'];
+        $periods = new PeriodRepository();
+        $period  = $this->request->getGet('period') ?: $periods->currentName();
+        $months  = $periods->names();
+        $closed  = $periods->closed();
 
-        $journals = Prototype::load('JOURNALS');
+        $journals = (new JournalRepository())->all();
         $inPeriod = array_values(array_filter($journals, fn ($j) => $j['period'] === $period));
         $posted   = array_values(array_filter($inPeriod, fn ($j) => $j['status'] === 'Posted'));
         $open     = array_values(array_filter($inPeriod, fn ($j) => in_array($j['status'], ['Draft', 'Pending approval'], true)));
 
-        $bills    = Prototype::load('BILLS');
+        $bills    = (new PayablesRepository())->all();
         $awaiting = count(array_filter($bills, fn ($b) => $b['status'] === 'Awaiting approval'));
         $overdue  = count(array_filter($bills, fn ($b) => $b['dueIn'] < 0 && !in_array($b['status'], ['Paid', 'Rejected'], true)));
 

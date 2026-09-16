@@ -4,13 +4,15 @@ namespace App\Controllers\Api;
 
 use App\Controllers\BaseController;
 use App\Libraries\I18n;
-use App\Libraries\Prototype;
+use App\Repositories\Lookups;
+use App\Repositories\RuleViolation;
+use App\Repositories\UserRepository;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Common JSON response helper for the prototype-data API endpoints.
+ * Common JSON response helper for the API endpoints.
  *
  * Every response carries the locale it was rendered in, and its display strings
  * are translated on the way out. Figures, account codes, references and dates are
@@ -88,16 +90,24 @@ abstract class BaseApiController extends BaseController
      */
     protected function actor(): array
     {
-        $actors = Prototype::load('ACTORS');
-        $email  = $this->request->getCookie('elog_actor') ?: 'w.kamau@elog.or.ke';
+        $users = new UserRepository();
+        $email = $this->request->getCookie('elog_actor') ?: self::DEFAULT_ACTOR;
 
-        foreach ($actors as $a) {
-            if ($a['email'] === $email) {
-                return $a;
-            }
-        }
+        return $users->actor($email) ?? $users->actor(self::DEFAULT_ACTOR) ?? $users->actors()[0];
+    }
 
-        return $actors[0];
+    protected const DEFAULT_ACTOR = 'w.kamau@elog.or.ke';
+
+    /** The acting user's id, for recording who did what. */
+    protected function actorId(): int
+    {
+        return (int) (new Lookups())->userId($this->actor()['email']);
+    }
+
+    /** A refused write, in the rule's own words. */
+    protected function refused(RuleViolation $e)
+    {
+        return $this->response->setStatusCode(422)->setJSON(['error' => $e->getMessage()]);
     }
 
     protected function t(string $s): string

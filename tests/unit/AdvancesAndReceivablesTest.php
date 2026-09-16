@@ -2,8 +2,12 @@
 
 use App\Controllers\Api\Advances;
 use App\Controllers\Api\Receivables;
-use App\Libraries\Prototype;
+use App\Database\Seeds\DatabaseSeeder;
+use App\Repositories\AdvancesRepository;
+use App\Repositories\ReceivablesRepository;
+use App\Repositories\Repository;
 use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\DatabaseTestTrait;
 
 /**
  * The two balance-carrying registers. Both have to agree to a control account,
@@ -11,19 +15,36 @@ use CodeIgniter\Test\CIUnitTestCase;
  */
 final class AdvancesAndReceivablesTest extends CIUnitTestCase
 {
+    use DatabaseTestTrait;
+
+    // The books are loaded into the test database once for this class.
+    protected $namespace   = 'App';
+    protected $refresh     = true;
+    protected $migrateOnce = true;
+    protected $seedOnce    = true;
+    protected $seed        = DatabaseSeeder::class;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Figures that depend on "today" are measured from the date the data describes.
+        $_ENV['app.asOf'] = '2026-08-31';
+        Repository::forget();
+    }
+
     /**
-     * The seeded register must tie to the balance held on 1220. If this breaks,
-     * either the seed changed or the definition of outstanding drifted — both are
-     * exactly the drift the screen exists to report.
+     * The register must tie to the balance posted on 1220. If this breaks, either
+     * the books changed or the definition of outstanding drifted — both are exactly
+     * the drift the screen exists to report.
      */
     public function testAdvancesRegisterTiesToTheControlAccount(): void
     {
-        $outstanding = array_sum(array_map(
-            static fn ($a) => Advances::outstanding($a),
-            Prototype::load('ADVANCES')
-        ));
+        $repo = new AdvancesRepository();
+        $outstanding = array_sum(array_map(static fn ($a) => Advances::outstanding($a), $repo->all()));
 
         $this->assertSame(3184000.0, (float) $outstanding);
+        $this->assertSame($repo->controlBalance(), (float) $outstanding);
     }
 
     public function testOnlyIssuedAdvancesAreOutstanding(): void
@@ -57,10 +78,10 @@ final class AdvancesAndReceivablesTest extends CIUnitTestCase
         $this->assertSame(0.0, (float) Receivables::outstanding(['amount' => 1000, 'received' => 1500]));
     }
 
-    /** Every seeded claim reconciles to the sum of its own lines. */
+    /** Every claim reconciles to the sum of its own lines. */
     public function testReceivableLinesSumToTheClaimValue(): void
     {
-        foreach (Prototype::load('AR') as $i) {
+        foreach ((new ReceivablesRepository())->all() as $i) {
             $lines = array_sum(array_map(static fn ($l) => $l['amount'], $i['lines']));
 
             $this->assertSame(

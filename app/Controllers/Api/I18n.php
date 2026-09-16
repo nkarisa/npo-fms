@@ -3,7 +3,8 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\I18n as I18nLib;
-use App\Libraries\Prototype;
+use App\Repositories\RuleViolation;
+use App\Repositories\TranslationRepository;
 
 /**
  * Language and translation — the v5 addition.
@@ -158,7 +159,7 @@ class I18n extends BaseApiController
                 'reviewer' => $l['reviewer'] ?? '',
                 'open' => in_array($q['status'], self::OPEN_STATUSES, true),
             ];
-        }, Prototype::load('I18N_REQUESTS'));
+        }, (new TranslationRepository())->requests());
 
         return $rows;
     }
@@ -204,28 +205,18 @@ class I18n extends BaseApiController
             return $this->response->setStatusCode(422)->setJSON(['error' => 'Say what is wrong with the wording before reporting it.']);
         }
 
-        $all = Prototype::load('I18N_REQUESTS');
-        // Number from the highest issued, not the count — a decided item is never
-        // removed, but nor should a gap ever hand out an id twice.
-        $next = 1 + (int) max(array_merge([0], array_map(
-            static fn ($q) => (int) substr($q['id'], 3),
-            $all
-        )));
-
-        $request = [
-            'id'     => 'RQ-' . $next,
-            'str'    => $string,
-            'area'   => trim((string) ($body['area'] ?? 'Language catalogue')),
-            'locale' => $target,
-            'kind'   => $mode === 'unlock' ? 'Unlock request' : ($mode === 'suggest' ? 'Suggestion' : 'Report'),
-            'what'   => $mode === 'report' ? implode(' · ', $reasons) : $text,
-            'who'    => trim((string) ($body['who'] ?? 'J. Achieng')),
-            'when'   => date('d M H:i'),
-            'status' => 'Raised',
-        ];
-
-        array_unshift($all, $request);
-        Prototype::save('I18N_REQUESTS', $all);
+        try {
+            $request = (new TranslationRepository())->raise(
+                $string,
+                $target,
+                $mode === 'unlock' ? 'Unlock request' : ($mode === 'suggest' ? 'Suggestion' : 'Report'),
+                $mode === 'report' ? implode(' · ', $reasons) : $text,
+                trim((string) ($body['who'] ?? '')),
+                $this->actorId()
+            );
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
 
         return $this->response->setStatusCode(201)->setJSON([
             'request' => $request,
@@ -246,34 +237,25 @@ class I18n extends BaseApiController
         return $this->decide($id, false);
     }
 
-    /** Only an open item can be decided, and a decision is final in one direction. */
+    /** Only an open item can be decided, and a decision is final in one direction. The acting user decides. */
     private function decide(string $id, bool $approved)
     {
-        $all = Prototype::load('I18N_REQUESTS');
-
-        foreach ($all as $i => $q) {
-            if ($q['id'] !== $id) {
-                continue;
-            }
-            if (!in_array($q['status'], self::OPEN_STATUSES, true)) {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => $id . ' has already been decided. Current status: ' . $q['status'] . '.',
-                ]);
-            }
-
-            $all[$i]['status'] = $approved ? 'Approved' : 'Declined';
-            $all[$i]['decidedBy'] = trim((string) (($this->request->getJSON(true) ?? [])['by'] ?? 'W. Kamau'));
-            $all[$i]['decidedAt'] = date('d M H:i');
-            Prototype::save('I18N_REQUESTS', $all);
-
-            return $this->json([
-                'request' => $all[$i],
-                'note'    => $approved
-                    ? 'Published and written to the audit log.'
-                    : 'Declined. The approved wording stays in place.',
-            ]);
+        $repo = new TranslationRepository();
+        if ($repo->findRequest($id) === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $id . ' was not found in the translation queue.']);
         }
 
-        return $this->response->setStatusCode(404)->setJSON(['error' => $id . ' was not found in the translation queue.']);
+        try {
+            $request = $repo->decide($id, $approved, $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json([
+            'request' => $request,
+            'note'    => $approved
+                ? 'Published and written to the audit log.'
+                : 'Declined. The approved wording stays in place.',
+        ]);
     }
 }

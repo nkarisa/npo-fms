@@ -3,11 +3,10 @@
 namespace App\Database\Seeds;
 
 use App\Database\Seeds\Support\SeedContext;
-use App\Libraries\Ledger;
 use CodeIgniter\Database\Seeder;
 
 /**
- * Closes the periods the prototype shows as closed (Ledger::CLOSED), last, so the
+ * Closes the periods the prototype shows as closed (January to July 2026), last, so the
  * journals dated in them could be posted first.
  *
  * July's close is in the settings audit log ("July 2026 period closed…", with who
@@ -18,6 +17,8 @@ use CodeIgniter\Database\Seeder;
  */
 class PeriodCloseSeeder extends Seeder
 {
+    private const CLOSED = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026'];
+
     public function run(): void
     {
         $ctx = SeedContext::get();
@@ -29,7 +30,7 @@ class PeriodCloseSeeder extends Seeder
             }
         }
 
-        foreach (Ledger::CLOSED as $month) {
+        foreach (self::CLOSED as $month) {
             $closedAt = $logged[$month]['at'] ?? date('Y-m-d 00:00:00', strtotime('first day of next month', strtotime('1 ' . $month)));
             $closedBy = $logged[$month]['by'] ?? $ctx->systemUserId();
 

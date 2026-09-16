@@ -1,10 +1,31 @@
 <?php
 
+use App\Database\Seeds\DatabaseSeeder;
 use App\Libraries\I18n;
+use App\Repositories\Repository;
 use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\DatabaseTestTrait;
 
 final class I18nTest extends CIUnitTestCase
 {
+    use DatabaseTestTrait;
+
+    // The books are loaded into the test database once for this class.
+    protected $namespace   = 'App';
+    protected $refresh     = true;
+    protected $migrateOnce = true;
+    protected $seedOnce    = true;
+    protected $seed        = DatabaseSeeder::class;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Figures that depend on "today" are measured from the date the data describes.
+        $_ENV['app.asOf'] = '2026-08-31';
+        Repository::forget();
+    }
+
     public function testSourceLocalePassesEverythingThrough(): void
     {
         $en = new I18n(I18n::SOURCE_LOCALE);

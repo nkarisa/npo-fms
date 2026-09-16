@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\CashflowRepository;
 
 /**
  * Thirteen-week rolling cash forecast.
@@ -25,11 +26,14 @@ class Cashflow extends BaseApiController
         }
         $hold = filter_var($this->request->getGet('hold') ?? 'false', FILTER_VALIDATE_BOOLEAN);
 
-        $cash       = Prototype::load('CF_OPENING');
+        $cash       = (new CashflowRepository())->latest();
         $opening    = $cash['opening'];
         $restricted = $cash['restricted'];
 
-        $weeks = $this->applyScenario(Prototype::load('CF_WEEKS'), $scenario, $hold);
+        $weeks = $this->applyScenario($cash['weeks'], $scenario, $hold);
+        if ($weeks === []) {
+            return $this->json(['rows' => [], 'scenario' => $scenario, 'scenarioOptions' => self::SCENARIOS, 'hold' => $hold, 'weeks' => 0, 'stats' => [], 'warning' => '', 'hint' => 'No cashflow forecast has been prepared.']);
+        }
 
         $peak = max(array_map(static fn ($w) => max($w['inflow'], $w['outflow']), $weeks));
         $run  = $opening;

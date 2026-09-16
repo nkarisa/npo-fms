@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\PayablesRepository;
 
 class Payables extends BaseApiController
 {
@@ -32,7 +33,8 @@ class Payables extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('BILLS');
+        $repo   = new PayablesRepository();
+        $all    = $repo->all();
         $status = $this->request->getGet('status') ?: 'All';
         $age    = $this->request->getGet('age') ?: 'All';
         $fund   = $this->request->getGet('fund') ?: 'All funds';
@@ -87,7 +89,7 @@ class Payables extends BaseApiController
             'rows'  => $rows,
             'total' => count($all),
             'fundOptions' => ['All funds', 'General Fund', 'Grant Fund', 'Capital Fund'],
-            'methodOptions' => Prototype::load('METHODS'),
+            'methodOptions' => $repo->methods(),
             'aging' => $buckets,
             'tabs'  => array_map(fn ($s) => ['label' => $s, 'count' => $s === 'All' ? count($all) : ($s === 'Overdue' ? count($overdue) : count(array_filter($all, fn ($b) => $b['status'] === $s)))], ['All', 'Awaiting approval', 'Approved', 'Scheduled', 'Paid', 'Overdue']),
             'stats' => [
@@ -102,12 +104,12 @@ class Payables extends BaseApiController
 
     public function show($no)
     {
-        foreach (Prototype::load('BILLS') as $b) {
-            if ($b['no'] === $no) {
-                $b['totals'] = self::totals($b);
-                return $this->json($b);
-            }
+        $b = (new PayablesRepository())->find($no);
+        if ($b === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
         }
-        return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
+        $b['totals'] = self::totals($b);
+
+        return $this->json($b);
     }
 }

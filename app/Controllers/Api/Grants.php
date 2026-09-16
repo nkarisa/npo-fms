@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\GrantRepository;
 
 class Grants extends BaseApiController
 {
@@ -13,7 +14,7 @@ class Grants extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('GRANTS');
+        $all    = (new GrantRepository())->all();
         $status = $this->request->getGet('status') ?: 'All';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -55,7 +56,7 @@ class Grants extends BaseApiController
 
     public function show($ref)
     {
-        foreach (Prototype::load('GRANTS') as $g) {
+        foreach ((new GrantRepository())->all() as $g) {
             if ($g['ref'] === $ref) {
                 $g['burnPct'] = self::burn($g);
                 return $this->json($g);

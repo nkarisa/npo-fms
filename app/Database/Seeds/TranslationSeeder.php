@@ -74,7 +74,7 @@ class TranslationSeeder extends Seeder
         foreach ($ctx->data('I18N_AREAS') as $locale => $areas) {
             foreach ($areas as $a) {
                 $ctx->insert('locale_area_reviews', [
-                    'locale_id' => $ctx->require('locales', $locale), 'area' => $a['area'], 'note' => $a['note'],
+                    'locale_id' => $ctx->require('locales', $locale), 'area' => $a['area'], 'note' => $a['note'], 'coverage_pct' => $a['coverage'],
                     'reviewed_at' => preg_match('/^Reviewed (.+)$/', $a['note'], $m) === 1 ? $ctx->date($m[1]) . ' 00:00:00' : null,
                     'created_at' => $this->now,
                 ]);

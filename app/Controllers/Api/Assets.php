@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\AssetRepository;
 
 class Assets extends BaseApiController
 {
@@ -18,7 +19,7 @@ class Assets extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('ASSETS');
+        $all    = (new AssetRepository())->register();
         $filter = $this->request->getGet('filter') ?: 'All';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -62,13 +63,13 @@ class Assets extends BaseApiController
 
     public function show($tag)
     {
-        foreach (Prototype::load('ASSETS') as $a) {
-            if ($a['tag'] === $tag) {
-                $a['nbv'] = self::nbv($a);
-                $a['monthly'] = self::monthlyCharge($a);
-                return $this->json($a);
-            }
+        $a = (new AssetRepository())->find($tag);
+        if ($a === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $tag . ' was not found on the asset register.']);
         }
-        return $this->response->setStatusCode(404)->setJSON(['error' => $tag . ' was not found on the asset register.']);
+        $a['nbv'] = self::nbv($a);
+        $a['monthly'] = self::monthlyCharge($a);
+
+        return $this->json($a);
     }
 }

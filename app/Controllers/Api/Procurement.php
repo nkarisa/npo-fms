@@ -3,6 +3,8 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\ProcurementRepository;
+use App\Repositories\RuleViolation;
 
 /**
  * Requisition → quotation → purchase order → goods received → bill.
@@ -94,7 +96,7 @@ class Procurement extends BaseApiController
 
     private function requisitions(): array
     {
-        $all = Prototype::load('PQ');
+        $all = (new ProcurementRepository())->requisitions();
         $tab = $this->request->getGet('tab') ?: 'Open';
         $q   = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -160,7 +162,7 @@ class Procurement extends BaseApiController
 
     private function purchaseOrders(): array
     {
-        $withPo = array_values(array_filter(Prototype::load('PQ'), fn ($p) => !empty($p['po'])));
+        $withPo = array_values(array_filter((new ProcurementRepository())->requisitions(), fn ($p) => !empty($p['po'])));
 
         $rows = array_map(fn ($p) => [
             'po'        => $p['po'],
@@ -194,7 +196,7 @@ class Procurement extends BaseApiController
 
     private function goodsReceived(): array
     {
-        $withGrn = array_values(array_filter(Prototype::load('PQ'), fn ($p) => !empty($p['grn'])));
+        $withGrn = array_values(array_filter((new ProcurementRepository())->requisitions(), fn ($p) => !empty($p['grn'])));
 
         $rows = array_map(fn ($p) => [
             'grn'        => $p['grn'],
@@ -225,7 +227,7 @@ class Procurement extends BaseApiController
 
     private function suppliers(): array
     {
-        $all = Prototype::load('SUPPLIERS');
+        $all = (new ProcurementRepository())->suppliers();
         $q   = strtolower(trim($this->request->getGet('q') ?? ''));
 
         $filtered = array_values(array_filter(
@@ -254,7 +256,7 @@ class Procurement extends BaseApiController
 
     public function show($no)
     {
-        foreach (Prototype::load('PQ') as $p) {
+        foreach ((new ProcurementRepository())->requisitions() as $p) {
             if ($p['no'] !== $no) {
                 continue;
             }
@@ -276,8 +278,9 @@ class Procurement extends BaseApiController
 
     public function budgetLines()
     {
-        $lines = Prototype::load('PQ_BUDGET_LINES');
-        $reqs  = Prototype::load('PQ');
+        $repo  = new ProcurementRepository();
+        $lines = $repo->budgetLines();
+        $reqs  = $repo->requisitions();
 
         $rows = array_map(function ($l) use ($reqs) {
             // Commitments live on the requisitions, so read them back per account.
@@ -312,11 +315,10 @@ class Procurement extends BaseApiController
      */
     public function approve($no)
     {
-        $body     = $this->request->getJSON(true) ?? [];
-        $approver = trim((string) ($body['approver'] ?? 'W. Kamau'));
+        $repo     = new ProcurementRepository();
+        $approver = $this->actor()['short'];
 
-        $all = Prototype::load('PQ');
-        foreach ($all as $idx => $p) {
+        foreach ($repo->requisitions() as $p) {
             if ($p['no'] !== $no) {
                 continue;
             }
@@ -346,11 +348,11 @@ class Procurement extends BaseApiController
                 ]);
             }
 
-            $all[$idx]['status']  = 'Approved';
-            $all[$idx]['trail'][] = ['when' => date('d M'), 'what' => 'Approved by ' . $approver . ' within delegated limit'];
-            Prototype::save('PQ', $all);
-
-            return $this->json(['requisition' => $all[$idx]]);
+            try {
+                return $this->json(['requisition' => $repo->approve($no, $this->actorId())]);
+            } catch (RuleViolation $e) {
+                return $this->refused($e);
+            }
         }
 
         return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
@@ -366,8 +368,8 @@ class Procurement extends BaseApiController
         $supplier = trim((string) ($body['supplier'] ?? ''));
         $waiver   = trim((string) ($body['waiver'] ?? ''));
 
-        $all = Prototype::load('PQ');
-        foreach ($all as $idx => $p) {
+        $repo = new ProcurementRepository();
+        foreach ($repo->requisitions() as $p) {
             if ($p['no'] !== $no) {
                 continue;
             }
@@ -395,23 +397,11 @@ class Procurement extends BaseApiController
                 ]);
             }
 
-            $seq = 115 + count(array_filter($all, static fn ($x) => !empty($x['po'])));
-
-            $all[$idx]['status']    = 'PO raised';
-            $all[$idx]['supplier']  = $supplier;
-            $all[$idx]['po']        = 'PO-26-' . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
-            $all[$idx]['poDate']    = date('d M');
-            $all[$idx]['expected']  = $body['expected'] ?? $p['needBy'];
-            // Commitment accounting: the money is not spent, but it is no longer available.
-            $all[$idx]['committed'] = $p['committed'] + $p['amount'];
-            $all[$idx]['trail'][]   = [
-                'when' => date('d M'),
-                'what' => $all[$idx]['po'] . ' issued to ' . $supplier . ($waiver !== '' ? ' · single-source waiver: ' . $waiver : ''),
-            ];
-
-            Prototype::save('PQ', $all);
-
-            return $this->json(['requisition' => $all[$idx]]);
+            try {
+                return $this->json(['requisition' => $repo->raisePurchaseOrder($no, $supplier, $waiver, $body['expected'] ?? null, $this->actorId())]);
+            } catch (RuleViolation $e) {
+                return $this->refused($e);
+            }
         }
 
         return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
@@ -425,8 +415,8 @@ class Procurement extends BaseApiController
     {
         $body = $this->request->getJSON(true) ?? [];
 
-        $all = Prototype::load('PQ');
-        foreach ($all as $idx => $p) {
+        $repo = new ProcurementRepository();
+        foreach ($repo->requisitions() as $p) {
             if ($p['no'] !== $no) {
                 continue;
             }
@@ -441,24 +431,11 @@ class Procurement extends BaseApiController
                 return $this->response->setStatusCode(422)->setJSON(['error' => 'A goods received note must name who took delivery.']);
             }
 
-            $seq = 89 + count(array_filter($all, static fn ($x) => !empty($x['grn'])));
-
-            $all[$idx]['status']     = 'Goods received';
-            $all[$idx]['grn']        = 'GRN-' . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
-            $all[$idx]['grnDate']    = date('d M');
-            $all[$idx]['receivedBy'] = $receivedBy;
-            $all[$idx]['grnNote']    = trim((string) ($body['note'] ?? '')) ?: 'Received in full';
-            // The commitment converts to actual expenditure on receipt.
-            $all[$idx]['committed']  = max(0, $p['committed'] - $p['amount']);
-            $all[$idx]['spent']      = $p['spent'] + $p['amount'];
-            $all[$idx]['trail'][]    = [
-                'when' => date('d M'),
-                'what' => 'Goods received note ' . $all[$idx]['grn'] . ' signed by ' . $receivedBy . ' · supplier payable recognised',
-            ];
-
-            Prototype::save('PQ', $all);
-
-            return $this->json(['requisition' => $all[$idx]]);
+            try {
+                return $this->json(['requisition' => $repo->receive($no, $receivedBy, trim((string) ($body['note'] ?? '')), $this->actorId())]);
+            } catch (RuleViolation $e) {
+                return $this->refused($e);
+            }
         }
 
         return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
@@ -466,7 +443,7 @@ class Procurement extends BaseApiController
 
     private function supplierNamed(string $name): ?array
     {
-        foreach (Prototype::load('SUPPLIERS') as $s) {
+        foreach ((new ProcurementRepository())->suppliers() as $s) {
             if ($s['name'] === $name) {
                 return $s;
             }

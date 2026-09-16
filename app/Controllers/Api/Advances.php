@@ -3,6 +3,8 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\AdvancesRepository;
+use App\Repositories\RuleViolation;
 
 /**
  * Staff and observer advances — the float that sits on account 1220.
@@ -18,9 +20,6 @@ use App\Libraries\Prototype;
  */
 class Advances extends BaseApiController
 {
-    /** The balance on 1220 as last posted. Drift against this is the control check. */
-    private const CONTROL_BALANCE = 3184000;
-
     private const BUCKETS = ['Not due', '1–30 days', '31–60 days', '60+ days'];
 
     /** Only an issued advance is outstanding; requested and cleared ones are not. */
@@ -41,7 +40,10 @@ class Advances extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('ADVANCES');
+        $repo   = new AdvancesRepository();
+        $all    = $repo->all();
+        // The balance on 1220 as posted. Drift against this is the control check.
+        $control = $repo->controlBalance();
         $filter = $this->request->getGet('filter') ?: 'Outstanding';
         $age    = $this->request->getGet('age') ?: 'All';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
@@ -112,7 +114,7 @@ class Advances extends BaseApiController
             return ['label' => $b, 'value' => Prototype::fmt($sumOut($in)), 'count' => count($in)];
         }, self::BUCKETS);
 
-        $drift = $outTotal - self::CONTROL_BALANCE;
+        $drift = round($outTotal - $control, 2);
 
         return $this->json([
             'rows'  => $rows,
@@ -136,7 +138,7 @@ class Advances extends BaseApiController
                 ['label' => 'Observer float', 'value' => Prototype::fmt($sumOut($observers)), 'note' => count($observers) . ' deployment batches'],
             ],
             'control' => [
-                'balance'    => Prototype::fmt(self::CONTROL_BALANCE),
+                'balance'    => Prototype::fmt($control),
                 'register'   => Prototype::fmt($outTotal),
                 'reconciled' => $drift === 0.0,
                 'note'       => $drift === 0.0
@@ -144,7 +146,7 @@ class Advances extends BaseApiController
                         . ' agree to the balance on 1220 staff and observer advances. A difference here means expenditure '
                         . 'has been coded straight out of the control account without a surrender.'
                     : 'Outstanding advances now total ' . Prototype::fmt($outTotal) . ', against '
-                        . Prototype::fmt(self::CONTROL_BALANCE) . ' last posted to 1220 — a movement of '
+                        . Prototype::fmt($control) . ' last posted to 1220 — a movement of '
                         . Prototype::fmt(abs($drift)) . ' from issues and surrenders not yet posted. '
                         . 'The control account picks the movement up as each voucher and journal posts; until then the register leads the ledger.',
             ],
@@ -153,7 +155,7 @@ class Advances extends BaseApiController
 
     public function show($ref)
     {
-        foreach (Prototype::load('ADVANCES') as $a) {
+        foreach ((new AdvancesRepository())->all() as $a) {
             if ($a['ref'] === $ref) {
                 $a['outstanding'] = self::outstanding($a);
                 $a['bucket']      = self::bucket($a);
@@ -187,8 +189,8 @@ class Advances extends BaseApiController
             $mode = 'refund';
         }
 
-        $all = Prototype::load('ADVANCES');
-        foreach ($all as $idx => $a) {
+        $repo = new AdvancesRepository();
+        foreach ($repo->all() as $a) {
             if ($a['ref'] !== $ref) {
                 continue;
             }
@@ -215,33 +217,13 @@ class Advances extends BaseApiController
                 $lines[] = ['code' => $code, 'desc' => trim((string) ($r['desc'] ?? '')), 'amount' => $amount];
             }
 
-            $accounted = array_sum(array_map(static fn ($l) => $l['amount'], $lines));
-            $balance   = $a['amount'] - $accounted;
-
-            $all[$idx]['receipts']  = $lines;
-            $all[$idx]['accounted'] = $accounted;
-
-            if ($balance > 0 && $mode === 'outstanding') {
-                // Part surrender: the cash has not come back, so it keeps ageing.
-                $all[$idx]['trail'][] = [
-                    'when' => date('d M'),
-                    'what' => 'Part surrender of ' . Prototype::fmt($accounted) . ' with receipts · '
-                        . Prototype::fmt($balance) . ' still outstanding against the holder',
-                ];
-            } else {
-                $all[$idx]['status']  = 'Surrendered';
-                $all[$idx]['trail'][] = ['when' => date('d M'), 'what' => 'Surrendered with receipts of ' . Prototype::fmt($accounted)];
-
-                if ($balance > 0) {
-                    $all[$idx]['trail'][] = ['when' => date('d M'), 'what' => 'Unspent ' . Prototype::fmt($balance) . ' refunded to bank'];
-                } elseif ($balance < 0) {
-                    $all[$idx]['trail'][] = ['when' => date('d M'), 'what' => 'Overspend of ' . Prototype::fmt(-$balance) . ' reimbursed to holder on the next payment run'];
-                }
+            try {
+                $balance = $repo->surrender($ref, $lines, $mode, $this->actorId());
+            } catch (RuleViolation $e) {
+                return $this->refused($e);
             }
 
-            Prototype::save('ADVANCES', $all);
-
-            $result = $all[$idx];
+            $result = $repo->find($ref);
             $result['outstanding'] = self::outstanding($result);
             $result['balance']     = $balance;
             $result['verdict']     = $balance > 0

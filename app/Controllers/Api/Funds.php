@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\FundRepository;
 
 class Funds extends BaseApiController
 {
@@ -24,7 +25,7 @@ class Funds extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('FUNDS');
+        $all    = (new FundRepository())->all();
         $cls    = $this->request->getGet('class') ?: 'All';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -66,7 +67,7 @@ class Funds extends BaseApiController
 
     public function show($code)
     {
-        foreach (Prototype::load('FUNDS') as $f) {
+        foreach ((new FundRepository())->all() as $f) {
             if ($f['code'] === $code) {
                 $f['closing'] = self::closing($f);
                 $f['pct']     = self::pct($f);

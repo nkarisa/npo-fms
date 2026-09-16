@@ -2,7 +2,12 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Clock;
 use App\Libraries\Prototype;
+use App\Repositories\GrantRepository;
+use App\Repositories\JournalRepository;
+use App\Repositories\PeriodRepository;
+use App\Repositories\RuleViolation;
 
 class Journals extends BaseApiController
 {
@@ -51,7 +56,7 @@ class Journals extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('JOURNALS');
+        $all    = (new JournalRepository())->all();
         $status = $this->request->getGet('status') ?: 'All';
         $type   = $this->request->getGet('type') ?: 'All types';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
@@ -96,7 +101,7 @@ class Journals extends BaseApiController
         return $this->json([
             'rows'        => $rows,
             'total'       => count($all),
-            'typeOptions' => array_merge(['All types'], Prototype::load('J_TYPES')),
+            'typeOptions' => array_merge(['All types'], JournalRepository::types()),
             'tabs'        => array_map(fn ($s) => ['label' => $s, 'count' => $s === 'All' ? count($all) : $countBy($s)], ['All', 'Draft', 'Pending approval', 'Posted', 'Reversed']),
             'stats' => [
                 ['label' => 'Awaiting approval', 'value' => (string) $countBy('Pending approval'), 'note' => 'oldest 11 days'],
@@ -109,12 +114,11 @@ class Journals extends BaseApiController
 
     public function show($ref)
     {
-        foreach (Prototype::load('JOURNALS') as $j) {
-            if ($j['ref'] === $ref) {
-                return $this->json($j);
-            }
-        }
-        return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
+        $journal = (new JournalRepository())->find($ref);
+
+        return $journal === null
+            ? $this->response->setStatusCode(404)->setJSON(['error' => 'not found'])
+            : $this->json($journal);
     }
 
     /** Creates a new journal document as a Draft or submits it straight for approval. */
@@ -129,13 +133,13 @@ class Journals extends BaseApiController
         $narration = trim((string) ($body['narration'] ?? ''));
 
         // Validate journal type
-        $validTypes = Prototype::load('J_TYPES');
+        $validTypes = JournalRepository::types();
         if (!in_array($type, $validTypes, true)) {
             return $this->response->setStatusCode(422)->setJSON(['error' => 'Invalid journal type. Must be one of: ' . implode(', ', $validTypes) . '.']);
         }
 
-        // Load all journals once for referral checks and final save
-        $all = Prototype::load('JOURNALS');
+        // Load all journals once for the reversal checks
+        $all = (new JournalRepository())->all();
 
         // For reversing entries, require a reference to the original entry
         if ($type === 'Reversing') {
@@ -172,7 +176,7 @@ class Journals extends BaseApiController
             return trim((string) ($l['code'] ?? '')) !== '' || (float) ($l['dr'] ?? 0) !== 0.0 || (float) ($l['cr'] ?? 0) !== 0.0;
         }));
         $grants = [];
-        foreach (Prototype::load('GRANTS') as $grant) {
+        foreach ((new GrantRepository())->all() as $grant) {
             $grants[$grant['ref']] = $grant;
         }
 
@@ -225,110 +229,65 @@ class Journals extends BaseApiController
             return $this->response->setStatusCode(422)->setJSON(['error' => 'A narration is required before the entry leaves draft.']);
         }
 
-        $seq = 312 + count(array_filter($all, fn ($j) => str_starts_with($j['ref'], 'JV-26')));
-        $ref = 'JV-26-' . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
-        $date = trim((string) ($body['date'] ?? '')) ?: date('d M Y');
-
-        $trail = [['when' => substr($date, 0, 6), 'what' => 'Draft created by ' . ($body['preparer'] ?? 'J. Achieng')]];
-        if ($status === 'Pending approval') {
-            $trail[] = ['when' => substr($date, 0, 6), 'what' => 'Submitted for approval to W. Kamau'];
+        foreach ($lines as $l) {
+            if (($l['dr'] > 0) === ($l['cr'] > 0)) {
+                return $this->response->setStatusCode(422)->setJSON(['error' => 'Each line needs either a debit or a credit — ' . ($l['code'] ?: 'a line') . ' has ' . ($l['dr'] > 0 ? 'both' : 'neither') . '.']);
+            }
         }
 
         $journal = [
-            'ref'       => $ref,
-            'date'      => $date,
+            'date'      => trim((string) ($body['date'] ?? '')) ?: Clock::today()->format('d M Y'),
             'type'      => $type,
-            'period'    => $body['period'] ?? 'Aug 2026',
+            'period'    => $body['period'] ?? (new PeriodRepository())->currentName(),
             'status'    => $status,
-            'preparer'  => $body['preparer'] ?? 'J. Achieng',
+            'preparer'  => $body['preparer'] ?? null,
             'doc'       => trim((string) ($body['doc'] ?? '')),
             'memo'      => trim((string) ($body['memo'] ?? '')),
             'narration' => $narration,
             'lines'     => $lines,
-            'trail'     => $trail,
         ];
 
-        // Add reversalOf reference if this is a reversing entry
         if ($type === 'Reversing') {
             $journal['reversalOf'] = trim((string) ($body['reversalOf'] ?? ''));
         }
 
-        array_unshift($all, $journal);
-        Prototype::save('JOURNALS', $all);
+        try {
+            $journal = (new JournalRepository())->create($journal, $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
 
         return $this->response->setStatusCode(201)->setJSON(['journal' => $journal]);
     }
 
-    /** Approves and posts a journal entry from Pending approval status. */
+    /** Approves and posts a journal entry from Pending approval status, as the acting user. */
     public function approve($ref)
     {
-        $all = Prototype::load('JOURNALS');
-        $journalIndex = null;
-        $journal = null;
-
-        foreach ($all as $i => $j) {
-            if ($j['ref'] === $ref) {
-                $journalIndex = $i;
-                $journal = $j;
-                break;
-            }
-        }
-
-        if (!$journal) {
+        if ((new JournalRepository())->find($ref) === null) {
             return $this->response->setStatusCode(404)->setJSON(['error' => 'Journal not found']);
         }
 
-        if ($journal['status'] !== 'Pending approval') {
-            return $this->response->setStatusCode(422)->setJSON(['error' => 'Only entries awaiting approval can be approved. Current status: ' . $journal['status']]);
+        try {
+            return $this->json(['journal' => (new JournalRepository())->approve($ref, $this->actorId())]);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
         }
-
-        $journal['status'] = 'Posted';
-        $date = trim($journal['date']) ?: date('d M Y');
-        $journal['trail'][] = ['when' => substr($date, 0, 6), 'what' => 'Approved and posted by W. Kamau'];
-
-        $all[$journalIndex] = $journal;
-        Prototype::save('JOURNALS', $all);
-
-        return $this->json(['journal' => $journal]);
     }
 
-    /** Rejects a journal entry, reverting it to Draft status. */
+    /** Rejects a journal entry, returning it to Draft with the reason on record. */
     public function reject($ref)
     {
-        $body = $this->request->getJSON(true) ?? [];
+        $body   = $this->request->getJSON(true) ?? [];
         $reason = trim((string) ($body['reason'] ?? ''));
 
-        $all = Prototype::load('JOURNALS');
-        $journalIndex = null;
-        $journal = null;
-
-        foreach ($all as $i => $j) {
-            if ($j['ref'] === $ref) {
-                $journalIndex = $i;
-                $journal = $j;
-                break;
-            }
-        }
-
-        if (!$journal) {
+        if ((new JournalRepository())->find($ref) === null) {
             return $this->response->setStatusCode(404)->setJSON(['error' => 'Journal not found']);
         }
 
-        if ($journal['status'] !== 'Pending approval') {
-            return $this->response->setStatusCode(422)->setJSON(['error' => 'Only entries awaiting approval can be rejected. Current status: ' . $journal['status']]);
+        try {
+            return $this->json(['journal' => (new JournalRepository())->reject($ref, $this->actorId(), $reason)]);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
         }
-
-        $journal['status'] = 'Draft';
-        $date = trim($journal['date']) ?: date('d M Y');
-        $rejectMsg = 'Rejected by W. Kamau';
-        if ($reason !== '') {
-            $rejectMsg .= ': ' . $reason;
-        }
-        $journal['trail'][] = ['when' => substr($date, 0, 6), 'what' => $rejectMsg];
-
-        $all[$journalIndex] = $journal;
-        Prototype::save('JOURNALS', $all);
-
-        return $this->json(['journal' => $journal]);
     }
 }

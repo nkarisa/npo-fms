@@ -2,8 +2,7 @@
 
 namespace App\Controllers\Api;
 
-use App\Libraries\Navigation;
-use App\Libraries\Prototype;
+use App\Repositories\NotificationRepository;
 
 /**
  * The top-bar bell. In-app only — email and SMS delivery are a known gap in the
@@ -14,23 +13,10 @@ class Notifications extends BaseApiController
     public function index()
     {
         $unreadOnly = filter_var($this->request->getGet('unread') ?? 'false', FILTER_VALIDATE_BOOLEAN);
-        $read       = Prototype::load('NOTIF_READ');
-        $all        = Prototype::load('NOTIFS');
+        $all        = (new NotificationRepository())->forUser($this->actorId());
 
-        $unread = count(array_filter($all, static fn ($n) => empty($read[$n['id']])));
-        $shown  = $unreadOnly ? array_filter($all, static fn ($n) => empty($read[$n['id']])) : $all;
-
-        $rows = array_values(array_map(static fn ($n) => [
-            'id'     => $n['id'],
-            'kind'   => $n['kind'],
-            'tone'   => $n['tone'],
-            'title'  => $n['title'],
-            'body'   => $n['body'],
-            'when'   => $n['when'],
-            'day'    => $n['day'],
-            'href'   => Navigation::url($n['page']),
-            'unread' => empty($read[$n['id']]),
-        ], $shown));
+        $unread = count(array_filter($all, static fn ($n) => $n['unread']));
+        $rows   = array_values($unreadOnly ? array_filter($all, static fn ($n) => $n['unread']) : $all);
 
         return $this->json([
             'rows'    => $rows,
@@ -45,23 +31,13 @@ class Notifications extends BaseApiController
     {
         $body = $this->request->getJSON(true) ?? [];
         $id   = trim((string) ($body['id'] ?? ''));
-        $all  = Prototype::load('NOTIFS');
-        $read = Prototype::load('NOTIF_READ');
+        $repo = new NotificationRepository();
 
-        if ($id === '') {
-            foreach ($all as $n) {
-                $read[$n['id']] = true;
-            }
-        } else {
-            if (!in_array($id, array_column($all, 'id'), true)) {
-                return $this->response->setStatusCode(404)->setJSON(['error' => $id . ' is not a notification.']);
-            }
-            $read[$id] = true;
+        if (!$repo->markRead($this->actorId(), $id === '' ? null : $id)) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $id . ' is not a notification.']);
         }
 
-        Prototype::save('NOTIF_READ', $read);
-
-        $unread = count(array_filter($all, static fn ($n) => empty($read[$n['id']])));
+        $unread = count(array_filter($repo->forUser($this->actorId()), static fn ($n) => $n['unread']));
 
         return $this->json(['unread' => $unread]);
     }

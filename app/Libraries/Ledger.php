@@ -4,6 +4,16 @@ namespace App\Libraries;
 
 use App\Controllers\Api\Assets;
 use App\Controllers\Api\Payables;
+use App\Repositories\AssetRepository;
+use App\Repositories\BudgetRepository;
+use App\Repositories\ChartRepository;
+use App\Repositories\DonorReportRepository;
+use App\Repositories\FundRepository;
+use App\Repositories\GrantRepository;
+use App\Repositories\JournalRepository;
+use App\Repositories\PayablesRepository;
+use App\Repositories\PeriodRepository;
+use App\Repositories\SettingsRepository;
 
 /**
  * Cross-cutting facts about the book that more than one screen needs to agree on:
@@ -13,32 +23,41 @@ use App\Controllers\Api\Payables;
  */
 class Ledger
 {
-    public const MONTHS = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026'];
+    // ---- Periods ----
 
     /** Periods locked against further posting. */
-    public const CLOSED = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026'];
+    public static function closedPeriods(): array
+    {
+        return (new PeriodRepository())->closed();
+    }
 
-    public const CURRENT_PERIOD = 'Aug 2026';
+    /** The earliest open period. */
+    public static function currentPeriod(): string
+    {
+        return (new PeriodRepository())->currentName();
+    }
 
-    /** Months of the financial year elapsed at the current period. */
-    public const MONTHS_ELAPSED = 8;
+    /** Months of the financial year up to and including the current period. */
+    public static function monthsElapsed(): int
+    {
+        return (new PeriodRepository())->monthsElapsed();
+    }
 
     // ---- Chart of accounts ----
 
+    public static function chart(): array
+    {
+        return (new ChartRepository())->accounts();
+    }
+
     public static function leaves(): array
     {
-        return array_values(array_filter(Prototype::load('SEED'), fn ($a) => $a['level'] === 2));
+        return array_values(array_filter(self::chart(), fn ($a) => $a['level'] === 2));
     }
 
     public static function acctBal(string $code): float
     {
-        foreach (Prototype::load('SEED') as $a) {
-            if ($a['code'] === $code) {
-                return (float) $a['balance'];
-            }
-        }
-
-        return 0.0;
+        return (float) ((new ChartRepository())->find($code)['balance'] ?? 0);
     }
 
     public static function sumCodes(array $codes): float
@@ -81,7 +100,7 @@ class Ledger
     {
         return array_sum(array_map(
             fn ($f) => self::fundClose($f),
-            array_filter(Prototype::load('FUNDS'), fn ($f) => $f['cls'] === $cls)
+            array_filter((new FundRepository())->all(), fn ($f) => $f['cls'] === $cls)
         ));
     }
 
@@ -89,14 +108,14 @@ class Ledger
     public static function expiringFunds(): array
     {
         return array_values(array_filter(
-            Prototype::load('FUNDS'),
+            (new FundRepository())->all(),
             fn ($f) => $f['daysLeft'] <= 90 && $f['cls'] === 'Restricted'
         ));
     }
 
     public static function restrictedUtilisation(): int
     {
-        $restricted = array_filter(Prototype::load('FUNDS'), fn ($f) => $f['cls'] === 'Restricted');
+        $restricted = array_filter((new FundRepository())->all(), fn ($f) => $f['cls'] === 'Restricted');
         $spend = array_sum(array_map(fn ($f) => $f['spend'], $restricted));
         $avail = array_sum(array_map(fn ($f) => self::fundAvailable($f), $restricted));
 
@@ -108,7 +127,7 @@ class Ledger
     public static function openBills(): array
     {
         return array_values(array_filter(
-            Prototype::load('BILLS'),
+            (new PayablesRepository())->all(),
             fn ($b) => !in_array($b['status'], ['Paid', 'Rejected'], true)
         ));
     }
@@ -120,7 +139,7 @@ class Ledger
 
     public static function awaitingBills(): array
     {
-        return array_values(array_filter(Prototype::load('BILLS'), fn ($b) => $b['status'] === 'Awaiting approval'));
+        return array_values(array_filter((new PayablesRepository())->all(), fn ($b) => $b['status'] === 'Awaiting approval'));
     }
 
     public static function billsNet(array $bills): float
@@ -132,7 +151,7 @@ class Ledger
 
     public static function journalsByStatus(string $status): array
     {
-        return array_values(array_filter(Prototype::load('JOURNALS'), fn ($j) => $j['status'] === $status));
+        return array_values(array_filter((new JournalRepository())->all(), fn ($j) => $j['status'] === $status));
     }
 
     public static function isBalanced(array $j): bool
@@ -164,14 +183,14 @@ class Ledger
     public static function untiedReports(): array
     {
         return array_values(array_filter(
-            Prototype::load('DREPORTS'),
+            (new DonorReportRepository())->all(),
             fn ($r) => self::reportReported($r) !== self::reportCumulative($r)
         ));
     }
 
     public static function overdueReports(): array
     {
-        return array_values(array_filter(Prototype::load('DREPORTS'), fn ($r) => $r['status'] === 'Overdue'));
+        return array_values(array_filter((new DonorReportRepository())->all(), fn ($r) => $r['status'] === 'Overdue'));
     }
 
     // ---- Budget ----
@@ -180,7 +199,7 @@ class Ledger
     public static function budgetLines(): array
     {
         return array_map(static function ($l) {
-            $phased = (int) round($l['annual'] * self::MONTHS_ELAPSED / 12);
+            $phased = (int) round($l['annual'] * self::monthsElapsed() / 12);
             $status = $l['actual'] > $l['annual'] ? 'Over'
                 : ($l['actual'] > $phased * 1.1 ? 'Watch'
                 : ($l['actual'] < $phased * 0.7 ? 'Underspent' : 'On track'));
@@ -191,7 +210,7 @@ class Ledger
                 'pct'      => $l['annual'] > 0 ? (int) round($l['actual'] / $l['annual'] * 100) : 0,
                 'status'   => $status,
             ]);
-        }, Prototype::load('BUDGET'));
+        }, (new BudgetRepository())->lines());
     }
 
     public static function overBudgetLines(): array
@@ -205,7 +224,7 @@ class Ledger
     {
         return array_sum(array_map(
             fn ($a) => Assets::monthlyCharge($a),
-            array_filter(Prototype::load('ASSETS'), fn ($a) => $a['status'] === 'In use')
+            array_filter((new AssetRepository())->register(), fn ($a) => $a['status'] === 'In use')
         ));
     }
 
@@ -214,7 +233,7 @@ class Ledger
     public static function liveGrants(): array
     {
         return array_values(array_filter(
-            Prototype::load('GRANTS'),
+            (new GrantRepository())->all(),
             fn ($g) => in_array($g['status'], ['Active', 'Closing'], true)
         ));
     }
@@ -241,7 +260,7 @@ class Ledger
      */
     public static function trialBalanceAccounts(): array
     {
-        return array_values(array_filter(Prototype::load('SEED'), static fn ($a) => ($a['status'] ?? 'Active') === 'Active'
+        return array_values(array_filter(self::chart(), static fn ($a) => ($a['status'] ?? 'Active') === 'Active'
                 && ($a['level'] === 2 || $a['type'] === 'Equity')
                 && $a['code'] !== '3000'
                 && !in_array($a['code'], self::DERIVED_CODES, true)));
@@ -283,7 +302,7 @@ class Ledger
      */
     public static function statementLeaves(string $type): array
     {
-        $chart = Prototype::load('SEED');
+        $chart = self::chart();
         $out   = [];
         $group = '';
 
@@ -345,19 +364,13 @@ class Ledger
     public static function openSegments(): array
     {
         return array_values(array_filter(
-            Prototype::load('ST_SEGMENTS'),
+            (new SettingsRepository())->segments(),
             fn ($s) => !$s['required'] && in_array($s['key'], ['fund', 'grant', 'restriction'], true)
         ));
     }
 
     public static function earliestOpenPeriod(): string
     {
-        foreach (self::MONTHS as $m) {
-            if (!in_array($m, self::CLOSED, true)) {
-                return $m;
-            }
-        }
-
-        return 'none';
+        return self::currentPeriod();
     }
 }

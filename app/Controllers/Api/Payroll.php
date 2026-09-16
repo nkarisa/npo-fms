@@ -3,44 +3,74 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\PayrollRepository;
+use App\Repositories\PeriodRepository;
 
 class Payroll extends BaseApiController
 {
-    private const PR_NITA = 50;
+    private PayrollRepository $repo;
+
+    private function repo(): PayrollRepository
+    {
+        return $this->repo ??= new PayrollRepository();
+    }
 
     private function gross(array $s): float
     {
         return $s['basic'] + $s['house'] + $s['transport'] + ($s['acting'] ?? 0);
     }
 
+    /** Applies banded rates in force: each band's percentage on the slice of pay within it. */
+    private function banded(float $pay, string $scheme): float
+    {
+        $tax = 0.0;
+        foreach ($this->repo()->rates($scheme) as $band) {
+            if ($pay <= $band['lower']) {
+                break;
+            }
+            $slice = ($band['upper'] === null ? $pay : min($pay, $band['upper'])) - $band['lower'];
+            $tax  += $band['fixed'] ?? $slice * $band['pct'] / 100;
+        }
+
+        return $tax;
+    }
+
+    private function relief(): float
+    {
+        return (float) ($this->repo()->rates('personal_relief')[0]['fixed'] ?? 0);
+    }
+
     private function paye(array $s): float
     {
-        $taxable = max(0, $this->gross($s) - 0);
-        $bands = [[24000, 0.10], [8333, 0.25], [467667, 0.30], [300000, 0.325], [PHP_INT_MAX, 0.35]];
-        $left = $taxable;
-        $tax = 0;
-        foreach ($bands as [$width, $rate]) {
-            $amt = min($left, $width);
-            $tax += $amt * $rate;
-            $left -= $amt;
-            if ($left <= 0) break;
-        }
-        return max(0, round($tax - 2400));
+        return max(0, round($this->banded($this->gross($s), 'paye') - $this->relief()));
     }
 
     private function nssf(array $s): float
     {
-        return round(min($this->gross($s), 72000) * 0.06);
+        return round($this->banded($this->gross($s), 'nssf'));
     }
 
     private function shif(array $s): float
     {
-        return max(300, round($this->gross($s) * 0.0275));
+        // A fixed minimum band followed by a percentage: the charge is whichever band pay falls in.
+        $gross = $this->gross($s);
+        foreach (array_reverse($this->repo()->rates('shif')) as $band) {
+            if ($gross >= $band['lower']) {
+                return round($band['fixed'] ?? $gross * $band['pct'] / 100);
+            }
+        }
+
+        return 0.0;
     }
 
     private function ahl(array $s): float
     {
-        return round($this->gross($s) * 0.015);
+        return round($this->banded($this->gross($s), 'housing_levy'));
+    }
+
+    private function nita(): float
+    {
+        return (float) ($this->repo()->rates('nita')[0]['fixed'] ?? 0);
     }
 
     private function net(array $s): float
@@ -50,7 +80,7 @@ class Payroll extends BaseApiController
 
     private function employerTotal(array $s): float
     {
-        return $this->nssf($s) + $this->ahl($s) + self::PR_NITA;
+        return $this->nssf($s) + $this->ahl($s) + $this->nita();
     }
 
     private function cost(array $s): float
@@ -60,7 +90,12 @@ class Payroll extends BaseApiController
 
     public function index()
     {
-        $staff  = Prototype::load('PSTAFF');
+        $staff  = $this->repo()->staff();
+        // Payroll is personal data: every read of the register is logged against the reader.
+        $this->repo()->logView($this->actorId(), (string) $this->request->getIPAddress(), (string) $this->request->getUserAgent());
+        $period = (new PeriodRepository())->today();
+        $names  = (new PeriodRepository())->names();
+        $at     = array_search($period['name'] ?? '', $names, true);
         $filter = $this->request->getGet('filter') ?: 'All';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -99,8 +134,8 @@ class Payroll extends BaseApiController
         return $this->json([
             'rows'  => $rows,
             'total' => count($staff),
-            'period' => 'Aug 2026',
-            'periodOptions' => ['Jun 2026', 'Jul 2026', 'Aug 2026'],
+            'period' => $period['name'] ?? '',
+            'periodOptions' => $at === false ? [] : array_slice($names, max(0, $at - 2), min(3, $at + 1)),
             'tabs' => ['All', 'Grant funded', 'Core funded', 'Changes this month'],
             'stats' => [
                 ['label' => 'Gross pay', 'value' => Prototype::fmt($grossTotal), 'note' => count($staff) . ' staff on the run'],

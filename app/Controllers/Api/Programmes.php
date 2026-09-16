@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\ProgrammeRepository;
 
 /**
  * The programme register.
@@ -30,7 +31,7 @@ class Programmes extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('PROGS');
+        $all    = (new ProgrammeRepository())->all();
         $filter = $this->request->getGet('filter') ?: 'All';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -98,7 +99,7 @@ class Programmes extends BaseApiController
 
     public function show($code)
     {
-        foreach (Prototype::load('PROGS') as $p) {
+        foreach ((new ProgrammeRepository())->all() as $p) {
             if ($p['code'] !== $code) {
                 continue;
             }

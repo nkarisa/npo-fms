@@ -4,6 +4,7 @@ namespace App\Controllers\Api;
 
 use App\Libraries\I18n as I18nLib;
 use App\Libraries\Prototype;
+use App\Repositories\DonorReportRepository;
 
 class DonorReports extends BaseApiController
 {
@@ -19,7 +20,7 @@ class DonorReports extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('DREPORTS');
+        $all    = (new DonorReportRepository())->all();
         $status = $this->request->getGet('status') ?: 'All';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -63,7 +64,7 @@ class DonorReports extends BaseApiController
 
     public function show($ref)
     {
-        foreach (Prototype::load('DREPORTS') as $r) {
+        foreach ((new DonorReportRepository())->all() as $r) {
             if ($r['ref'] === $ref) {
                 $r['cumulative'] = self::cumOf($r);
                 $r['reported']   = self::reportedOf($r);
@@ -84,7 +85,7 @@ class DonorReports extends BaseApiController
      */
     public function languages()
     {
-        $funders  = Prototype::load('DR_FUNDERS');
+        $funders  = (new DonorReportRepository())->funderLanguages();
         $selected = $this->request->getGet('funder') ?: ($funders[0]['funder'] ?? '');
 
         $rows = array_map(static fn ($d) => [
@@ -121,18 +122,16 @@ class DonorReports extends BaseApiController
             return $this->response->setStatusCode(422)->setJSON(['error' => '"' . $code . '" is not a language the system publishes.']);
         }
 
-        $funders = Prototype::load('DR_FUNDERS');
-        foreach ($funders as $i => $d) {
-            if ($d['funder'] !== $funder) {
-                continue;
+        $repo = new DonorReportRepository();
+        if ($repo->setLanguage($funder, $code)) {
+            foreach ($repo->funderLanguages() as $d) {
+                if ($d['funder'] === $funder) {
+                    return $this->json([
+                        'funder'  => $d,
+                        'preview' => $this->coverPreview($funder),
+                    ]);
+                }
             }
-            $funders[$i]['locale'] = $code;
-            Prototype::save('DR_FUNDERS', $funders);
-
-            return $this->json([
-                'funder'  => $funders[$i],
-                'preview' => $this->coverPreview($funder),
-            ]);
         }
 
         return $this->response->setStatusCode(404)->setJSON(['error' => $funder . ' is not a funder on the reporting calendar.']);
@@ -146,7 +145,8 @@ class DonorReports extends BaseApiController
      */
     private function coverPreview(string $funder): array
     {
-        $funders = Prototype::load('DR_FUNDERS');
+        $repo    = new DonorReportRepository();
+        $funders = $repo->funderLanguages();
         $fd      = null;
         foreach ($funders as $d) {
             if ($d['funder'] === $funder) {
@@ -158,8 +158,7 @@ class DonorReports extends BaseApiController
 
         $code   = $fd['locale'];
         $locale = I18nLib::find($code) ?? I18nLib::locales()[0];
-        $covers = Prototype::load('DR_COVER');
-        $cover  = $covers[$code] ?? $covers[I18nLib::SOURCE_LOCALE];
+        $cover  = $repo->cover($locale['code']);
 
         $project     = $fd['project'][$code] ?? $fd['project'][I18nLib::SOURCE_LOCALE];
         $projectBack = !isset($fd['project'][$code]) && $code !== I18nLib::SOURCE_LOCALE;

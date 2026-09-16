@@ -3,6 +3,8 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\AssetRepository;
+use App\Repositories\RuleViolation;
 
 /**
  * Physical verification of the asset register.
@@ -14,8 +16,6 @@ use App\Libraries\Prototype;
  */
 class AssetVerification extends BaseApiController
 {
-    public const ROUND = 'AV-2026-02';
-
     public const RESULTS = ['Sighted', 'Not found', 'Condition issue'];
 
     private const PENDING = 'Not yet checked';
@@ -27,8 +27,10 @@ class AssetVerification extends BaseApiController
 
     public function index()
     {
-        $assets  = Prototype::load('AV_ASSETS');
-        $results = Prototype::load('AV_INITIAL');
+        $repo    = new AssetRepository();
+        $assets  = $repo->countSheet();
+        $results = $repo->results();
+        $round   = $repo->round();
 
         $location = $this->request->getGet('location') ?: 'All locations';
         $filter   = $this->request->getGet('filter') ?: 'All';
@@ -75,7 +77,7 @@ class AssetVerification extends BaseApiController
         return $this->json([
             'rows'            => $rows,
             'total'           => count($assets),
-            'round'           => self::ROUND,
+            'round'           => $round['reference'] ?? '—',
             'location'        => $location,
             'locationOptions' => array_merge(['All locations'], $locations),
             'resultOptions'   => self::RESULTS,
@@ -89,7 +91,7 @@ class AssetVerification extends BaseApiController
                 'pct'     => count($assets) > 0 ? (int) round($checked / count($assets) * 100) : 0,
             ],
             'stats' => [
-                ['label' => 'Round', 'value' => self::ROUND, 'note' => 'half-year count, opened 28 Aug'],
+                ['label' => 'Round', 'value' => $round['reference'] ?? '—', 'note' => $round === null ? 'no count open' : strtolower($round['name']) . ', opened ' . date('d M', strtotime($round['opened_on']))],
                 ['label' => 'Progress', 'value' => $checked . ' of ' . count($assets), 'note' => (count($assets) > 0 ? (int) round($checked / count($assets) * 100) : 0) . '% of the register checked'],
                 ['label' => 'Sighted', 'value' => Prototype::fmt($nbvOf('Sighted')), 'note' => $countOf('Sighted') . ' assets agreed to the register'],
                 ['label' => 'Not found', 'value' => Prototype::fmt($nbvOf('Not found')), 'note' => $missing . ' to write off if unresolved'],
@@ -107,8 +109,9 @@ class AssetVerification extends BaseApiController
     /** The exceptions report — the part of a count that has an accounting consequence. */
     public function exceptions()
     {
-        $assets  = Prototype::load('AV_ASSETS');
-        $results = Prototype::load('AV_INITIAL');
+        $repo    = new AssetRepository();
+        $assets  = $repo->countSheet();
+        $results = $repo->results();
 
         $rows = [];
         foreach ($assets as $a) {
@@ -133,7 +136,7 @@ class AssetVerification extends BaseApiController
 
         return $this->json([
             'rows'  => $rows,
-            'round' => self::ROUND,
+            'round' => $repo->round()['reference'] ?? '—',
             'total' => count($rows),
             'value' => Prototype::fmt(array_sum(array_map(
                 static fn ($a) => in_array(self::resultOf($a, $results), ['Not found', 'Condition issue'], true) ? $a['nbv'] : 0,
@@ -164,17 +167,6 @@ class AssetVerification extends BaseApiController
             ]);
         }
 
-        $known = false;
-        foreach (Prototype::load('AV_ASSETS') as $a) {
-            if ($a['tag'] === $tag) {
-                $known = true;
-                break;
-            }
-        }
-        if (!$known) {
-            return $this->response->setStatusCode(404)->setJSON(['error' => $tag . ' is not on the verification list for ' . self::ROUND . '.']);
-        }
-
         $note = trim((string) ($body['note'] ?? ''));
         // An exception without a reason is not evidence — the auditor will ask why.
         if ($result !== 'Sighted' && $note === '') {
@@ -183,10 +175,17 @@ class AssetVerification extends BaseApiController
             ]);
         }
 
-        $results        = Prototype::load('AV_INITIAL');
-        $results[$tag]  = ['result' => $result, 'note' => $note ?: 'Sighted and tag verified'];
-        Prototype::save('AV_INITIAL', $results);
+        $repo = new AssetRepository();
+        if (!in_array($tag, array_column($repo->countSheet(), 'tag'), true)) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $tag . ' is not on the verification list for ' . ($repo->round()['reference'] ?? 'the open count') . '.']);
+        }
 
-        return $this->json(['tag' => $tag, 'result' => $results[$tag]]);
+        try {
+            $recorded = $repo->record($tag, $result, $note !== '' ? $note : 'Sighted and tag verified', $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['tag' => $tag, 'result' => $recorded]);
     }
 }

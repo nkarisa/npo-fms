@@ -5,6 +5,14 @@ namespace App\Controllers\Api;
 use App\Libraries\Ledger;
 use App\Libraries\Navigation;
 use App\Libraries\Prototype;
+use App\Repositories\AssetRepository;
+use App\Repositories\FundRepository;
+use App\Repositories\GrantRepository;
+use App\Repositories\JournalRepository;
+use App\Repositories\PayablesRepository;
+use App\Repositories\PayrollRepository;
+use App\Repositories\ProcurementRepository;
+use App\Repositories\ReceivablesRepository;
 
 /**
  * "Search everything" in the top bar.
@@ -33,7 +41,7 @@ class Search extends BaseApiController
         $hit = static fn (array $fields) => str_contains(strtolower(implode(' ', array_map('strval', $fields))), $q);
 
         $groups = array_values(array_filter([
-            $this->group('Journals', Prototype::load('JOURNALS'), $hit,
+            $this->group('Journals', (new JournalRepository())->all(), $hit,
                 static fn ($j) => [$j['ref'], $j['narration'] ?? '', $j['memo'] ?? '', $j['preparer'], $j['type'], $j['status']],
                 static fn ($j) => [
                     'ref'   => $j['ref'],
@@ -53,7 +61,7 @@ class Search extends BaseApiController
                     'href'  => '/gl?account=' . rawurlencode($a['code']),
                 ]),
 
-            $this->group('Payables', Prototype::load('BILLS'), $hit,
+            $this->group('Payables', (new PayablesRepository())->all(), $hit,
                 static fn ($b) => [$b['no'], $b['supplier'], $b['pin'], $b['category'], $b['status']],
                 static fn ($b) => [
                     'ref'   => $b['no'],
@@ -63,7 +71,7 @@ class Search extends BaseApiController
                     'href'  => Navigation::url('payables'),
                 ]),
 
-            $this->group('Receivables', Prototype::load('AR'), $hit,
+            $this->group('Receivables', (new ReceivablesRepository())->all(), $hit,
                 static fn ($i) => [$i['no'], $i['donor'], $i['grantRef'], $i['status'], $i['type']],
                 static fn ($i) => [
                     'ref'   => $i['no'],
@@ -73,7 +81,7 @@ class Search extends BaseApiController
                     'href'  => Navigation::url('receivables'),
                 ]),
 
-            $this->group('Procurement', Prototype::load('PQ'), $hit,
+            $this->group('Procurement', (new ProcurementRepository())->requisitions(), $hit,
                 static fn ($p) => [$p['no'], $p['title'], $p['requester'], $p['status'], $p['supplier'] ?? ''],
                 static fn ($p) => [
                     'ref'   => $p['no'],
@@ -83,7 +91,7 @@ class Search extends BaseApiController
                     'href'  => Navigation::url('procure'),
                 ]),
 
-            $this->group('Asset register', Prototype::load('ASSETS'), $hit,
+            $this->group('Asset register', (new AssetRepository())->register(), $hit,
                 static fn ($a) => [$a['tag'], $a['name'], $a['cls'], $a['funder'], $a['custodian']],
                 static fn ($a) => [
                     'ref'   => $a['tag'],
@@ -97,7 +105,7 @@ class Search extends BaseApiController
             // Payroll is personal data under Kenya's Data Protection Act 2019 and
             // a search palette open on a shared screen is the wrong place for a
             // salary; the prototype shows basic pay, the README restricts it.
-            $this->group('Payroll', Prototype::load('PSTAFF'), $hit,
+            $this->group('Payroll', (new PayrollRepository())->staff(), $hit,
                 static fn ($s) => [$s['no'], $s['name'], $s['role'], $s['grade']],
                 static fn ($s) => [
                     'ref'   => $s['no'],
@@ -107,7 +115,7 @@ class Search extends BaseApiController
                     'href'  => Navigation::url('payroll'),
                 ]),
 
-            $this->group('Awards', Prototype::load('GRANTS'), $hit,
+            $this->group('Awards', (new GrantRepository())->all(), $hit,
                 static fn ($g) => [$g['ref'], $g['title'], $g['funder'], $g['program']],
                 static fn ($g) => [
                     'ref'   => $g['ref'],
@@ -117,7 +125,7 @@ class Search extends BaseApiController
                     'href'  => Navigation::url('grants'),
                 ]),
 
-            $this->group('Funds', Prototype::load('FUNDS'), $hit,
+            $this->group('Funds', (new FundRepository())->all(), $hit,
                 static fn ($f) => [$f['code'], $f['name'], $f['funder'], $f['grant']],
                 static fn ($f) => [
                     'ref'   => $f['code'],

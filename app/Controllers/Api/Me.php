@@ -2,7 +2,7 @@
 
 namespace App\Controllers\Api;
 
-use App\Libraries\Prototype;
+use App\Repositories\UserRepository;
 
 /**
  * Who is signed in, for the user menu.
@@ -19,7 +19,7 @@ class Me extends BaseApiController
 
     public function index()
     {
-        $actors  = Prototype::load('ACTORS');
+        $actors  = (new UserRepository())->actors();
         $current = $this->actor();
 
         return $this->json([
@@ -41,7 +41,7 @@ class Me extends BaseApiController
         $body  = $this->request->getJSON(true) ?? [];
         $email = (string) ($body['email'] ?? '');
 
-        foreach (Prototype::load('ACTORS') as $a) {
+        foreach ((new UserRepository())->actors() as $a) {
             if ($a['email'] === $email) {
                 $this->response->setCookie(self::COOKIE, $email, 60 * 60 * 24 * 30, '', '/');
 

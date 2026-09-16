@@ -1,7 +1,10 @@
 <?php
 
+use App\Database\Seeds\DatabaseSeeder;
 use App\Libraries\Ledger;
+use App\Repositories\Repository;
 use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\DatabaseTestTrait;
 
 /**
  * The statements articulate: assets less liabilities equal the fund balances.
@@ -10,7 +13,25 @@ use CodeIgniter\Test\CIUnitTestCase;
  */
 final class StatementArticulationTest extends CIUnitTestCase
 {
-    public function testTheSeededStatementOfFinancialPositionBalances(): void
+    use DatabaseTestTrait;
+
+    // The books are loaded into the test database once for this class.
+    protected $namespace   = 'App';
+    protected $refresh     = true;
+    protected $migrateOnce = true;
+    protected $seedOnce    = true;
+    protected $seed        = DatabaseSeeder::class;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Figures that depend on "today" are measured from the date the data describes.
+        $_ENV['app.asOf'] = '2026-08-31';
+        Repository::forget();
+    }
+
+    public function testTheStatementOfFinancialPositionBalances(): void
     {
         $this->assertTrue(Ledger::positionBalanced());
     }

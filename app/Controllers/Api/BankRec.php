@@ -3,12 +3,13 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\BankRepository;
 
 class BankRec extends BaseApiController
 {
     public function index()
     {
-        $accounts = Prototype::load('BR_ACCOUNTS');
+        $accounts = (new BankRepository())->accounts();
         $code = $this->request->getGet('account') ?: ($accounts[0]['code'] ?? null);
 
         $acct = null;

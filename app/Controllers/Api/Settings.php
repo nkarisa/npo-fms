@@ -3,7 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\I18n as I18nLib;
-use App\Libraries\Prototype;
+use App\Repositories\SettingsRepository;
 
 class Settings extends BaseApiController
 {
@@ -26,16 +26,17 @@ class Settings extends BaseApiController
 
     public function index()
     {
-        $section = $this->request->getGet('section') ?: self::SECTIONS[0]['label'];
+        $section  = $this->request->getGet('section') ?: self::SECTIONS[0]['label'];
+        $settings = new SettingsRepository();
 
         return $this->json([
-            'roles'      => Prototype::load('ROLES'),
-            'entities'   => Prototype::load('ST_ENTITIES'),
-            'segments'   => Prototype::load('ST_SEGMENTS'),
-            'approvals'  => Prototype::load('ST_APPROVALS'),
-            'users'      => Prototype::load('ST_USERS'),
-            'audit'      => Prototype::load('ST_AUDIT'),
-            'toggles'    => Prototype::load('ST_TOGGLES'),
+            'roles'      => $settings->roles(),
+            'entities'   => $settings->entities(),
+            'segments'   => $settings->segments(),
+            'approvals'  => $settings->approvals(),
+            'users'      => $settings->users(),
+            'audit'      => $settings->auditLog(),
+            'toggles'    => $settings->toggles(),
             'section'    => $section,
             'sections'   => array_map(
                 static fn ($s) => $s + ['active' => $s['label'] === $section],

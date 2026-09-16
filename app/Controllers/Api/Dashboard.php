@@ -2,15 +2,19 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Clock;
 use App\Libraries\Ledger;
 use App\Libraries\Prototype;
+use App\Repositories\BankRepository;
+use App\Repositories\FundRepository;
+use App\Repositories\SettingsRepository;
 
 class Dashboard extends BaseApiController
 {
     public function index()
     {
         return $this->json([
-            'date'         => 'Thursday, 27 August 2026 · August open',
+            'date'         => Clock::today()->format('l, j F Y') . ' · ' . date('F', strtotime('1 ' . Ledger::currentPeriod())) . ' open',
             'subtitle'     => 'One reconciling book. What follows is drawn from the ledger as it stands this morning — nothing here is entered twice or kept on a side spreadsheet.',
             'stats'        => $this->stats(),
             'queue'        => $this->queue(),
@@ -22,7 +26,7 @@ class Dashboard extends BaseApiController
             'checks'       => $this->checks(),
             'activity'     => array_map(
                 static fn ($a) => $a + ['meta' => $a['when'] . ' · ' . $a['who'] . ' · ' . $a['area']],
-                array_slice(Prototype::load('ST_AUDIT'), 0, 4)
+                array_slice((new SettingsRepository())->auditLog(), 0, 4)
             ),
         ]);
     }
@@ -77,7 +81,7 @@ class Dashboard extends BaseApiController
         $lateDonor = Ledger::overdueReports();
         $overLines = Ledger::overBudgetLines();
         $expiring  = Ledger::expiringFunds();
-        $accounts  = Prototype::load('BR_ACCOUNTS');
+        $accounts  = (new BankRepository())->accounts();
 
         $plural = fn (int $n, string $one, string $many) => $n . ' ' . ($n === 1 ? $one : $many);
 
@@ -120,7 +124,7 @@ class Dashboard extends BaseApiController
             [
                 // No depreciation run has been posted for the open period yet.
                 'n' => 1, 'tone' => 'warn', 'cta' => 'Run',
-                'title' => 'Depreciation not yet run for ' . Ledger::CURRENT_PERIOD,
+                'title' => 'Depreciation not yet run for ' . Ledger::currentPeriod(),
                 'detail' => 'The asset register has calculated the charge but nothing is in the ledger',
                 'value' => Prototype::fmt(Ledger::depreciationRunRate()),
                 'href' => '/asset-register',
@@ -128,7 +132,7 @@ class Dashboard extends BaseApiController
             [
                 'n' => count($accounts), 'tone' => 'warn', 'cta' => 'Reconcile',
                 'title' => 'Bank and M-Pesa accounts not yet reconciled',
-                'detail' => 'August cannot be closed until every statement agrees to the cash book',
+                'detail' => date('F', strtotime('1 ' . Ledger::currentPeriod())) . ' cannot be closed until every statement agrees to the cash book',
                 'value' => count($accounts) . ' of ' . count($accounts) . ' accounts',
                 'href' => '/bank-rec',
             ],
@@ -208,7 +212,7 @@ class Dashboard extends BaseApiController
 
     private function funds(): array
     {
-        $all = Prototype::load('FUNDS');
+        $all = (new FundRepository())->all();
         $total = array_sum(array_map(fn ($f) => Ledger::fundClose($f), $all));
         usort($all, fn ($a, $b) => Ledger::fundClose($b) <=> Ledger::fundClose($a));
 
@@ -223,7 +227,7 @@ class Dashboard extends BaseApiController
 
     private function fundHint(): string
     {
-        $all = Prototype::load('FUNDS');
+        $all = (new FundRepository())->all();
         $total = array_sum(array_map(fn ($f) => Ledger::fundClose($f), $all));
 
         return Prototype::fmt($total) . ' across ' . count($all) . ' funds';
@@ -268,7 +272,7 @@ class Dashboard extends BaseApiController
             ],
             [
                 'label' => 'Closed periods',
-                'note'  => count(Ledger::CLOSED) . ' periods locked to further posting · earliest open is ' . Ledger::earliestOpenPeriod(),
+                'note'  => count(Ledger::closedPeriods()) . ' periods locked to further posting · earliest open is ' . Ledger::earliestOpenPeriod(),
                 'ok'    => true,
                 'href'  => '/period-close',
             ],
@@ -284,10 +288,10 @@ class Dashboard extends BaseApiController
         $cash     = Ledger::sumCodes(['1110', '1120', '1130', '1140']);
         $income   = Ledger::byType('Income');
         $spend    = Ledger::byType('Expense');
-        $burn     = (int) round($spend / max(1, Ledger::MONTHS_ELAPSED));
+        $burn     = (int) round($spend / max(1, Ledger::monthsElapsed()));
         // Whole months only: part of a month of cover is not a month of payroll.
         $runway   = $burn > 0 ? (int) floor($cash / $burn) : 0;
-        $funds    = Prototype::load('FUNDS');
+        $funds    = (new FundRepository())->all();
         $total    = array_sum(array_map(static fn ($f) => Ledger::fundClose($f), $funds));
         $restrict = Ledger::fundsByClass('Restricted');
         $payable  = Ledger::billsNet(Ledger::openBills());
@@ -331,7 +335,7 @@ class Dashboard extends BaseApiController
             ],
             [
                 'area' => 'Period close',
-                'note' => count(Ledger::CLOSED) . ' periods locked · earliest open is ' . Ledger::earliestOpenPeriod(),
+                'note' => count(Ledger::closedPeriods()) . ' periods locked · earliest open is ' . Ledger::earliestOpenPeriod(),
                 'ok'   => true,
             ],
             [

@@ -3,15 +3,19 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\BudgetRepository;
+use App\Repositories\ChartRepository;
+use App\Repositories\PeriodRepository;
 
 class Budgets extends BaseApiController
 {
-    private const MONTHS_ELAPSED = 8;
-
     public function index()
     {
-        $lines  = Prototype::load('BUDGET');
-        $seed   = Prototype::load('SEED');
+        $budget  = new BudgetRepository();
+        $lines   = $budget->lines();
+        $seed    = (new ChartRepository())->accounts();
+        $periods = new PeriodRepository();
+        $elapsed = $periods->monthsElapsed();
         $group  = $this->request->getGet('group') ?: 'Account group';
         $q      = strtolower(trim($this->request->getGet('q') ?? ''));
 
@@ -24,9 +28,9 @@ class Budgets extends BaseApiController
             return $c;
         };
 
-        $enriched = array_map(function ($l) use ($nameOf) {
+        $enriched = array_map(function ($l) use ($nameOf, $elapsed) {
             $annual = $l['annual'];
-            $phased = round($annual * self::MONTHS_ELAPSED / 12);
+            $phased = round($annual * $elapsed / 12);
             $variance = $phased - $l['actual'];
             $pct = $annual > 0 ? (int) round($l['actual'] / $annual * 100) : 0;
             $status = $l['actual'] > $annual ? 'Over'
@@ -74,10 +78,10 @@ class Budgets extends BaseApiController
             'groupOptions' => ['Account group', 'Programme', 'Fund'],
             'versionOptions' => ['FY2026 Original', 'FY2026 Revision 1 (approved)', 'FY2026 Revision 2 (working)'],
             'total'     => count($enriched),
-            'rules'     => Prototype::load('B_RULES'),
+            'rules'     => $budget->rules(),
             'stats' => [
                 ['label' => 'Annual budget', 'value' => Prototype::fmt($totalAnnual), 'note' => 'FY2026 Revision 1 (approved)'],
-                ['label' => 'Phased to Aug', 'value' => Prototype::fmt($totalPhased), 'note' => '8 of 12 months'],
+                ['label' => 'Phased to ' . substr($periods->currentName(), 0, 3), 'value' => Prototype::fmt($totalPhased), 'note' => $elapsed . ' of 12 months'],
                 ['label' => 'Actual to date', 'value' => Prototype::fmt($totalActual), 'note' => $totalAnnual > 0 ? round($totalActual / $totalAnnual * 100) . '% of annual' : '—'],
                 ['label' => 'Variance to phasing', 'value' => Prototype::fmt($totalPhased - $totalActual), 'note' => 'favourable if positive'],
                 ['label' => 'Lines needing attention', 'value' => (string) (count($overLines) + count($watchLines)), 'note' => count($overLines) . ' over, ' . count($watchLines) . ' on watch'],

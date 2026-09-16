@@ -3,6 +3,8 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\ReceivablesRepository;
+use App\Repositories\RuleViolation;
 
 /**
  * Amounts due to ELOG — overwhelmingly grant tranches and reimbursable claims
@@ -47,7 +49,7 @@ class Receivables extends BaseApiController
 
     public function index()
     {
-        $all    = Prototype::load('AR');
+        $all    = (new ReceivablesRepository())->all();
         $status = $this->request->getGet('status') ?: 'All';
         $age    = $this->request->getGet('age') ?: 'All';
         $fund   = $this->request->getGet('fund') ?: 'All funds';
@@ -104,7 +106,7 @@ class Receivables extends BaseApiController
 
         $bankedThisMonth = array_sum(array_map(
             static fn ($i) => array_sum(array_map(
-                static fn ($r) => str_contains($r['when'], 'Aug') ? $r['amount'] : 0,
+                static fn ($r) => str_contains($r['when'], \App\Libraries\Clock::today()->format('M')) ? $r['amount'] : 0,
                 $i['receipts']
             )),
             $all
@@ -133,7 +135,7 @@ class Receivables extends BaseApiController
                 ['label' => 'Total receivable', 'value' => Prototype::fmt($sumOut($open)), 'note' => count($open) . ' open invoices'],
                 ['label' => 'Overdue', 'value' => Prototype::fmt($sumOut($late)), 'note' => count($late) . ' past due date'],
                 ['label' => 'Due within 30 days', 'value' => Prototype::fmt($sumOut($due30)), 'note' => count($due30) . ' claims expected'],
-                ['label' => 'Received this month', 'value' => Prototype::fmt($bankedThisMonth), 'note' => 'banked in August'],
+                ['label' => 'Received this month', 'value' => Prototype::fmt($bankedThisMonth), 'note' => 'banked in ' . \App\Libraries\Clock::today()->format('F')],
                 ['label' => 'Draft, not yet issued', 'value' => Prototype::fmt($sumOut(array_filter($all, fn ($i) => $i['status'] === 'Draft'))), 'note' => 'nothing claimed until issued'],
             ],
         ]);
@@ -141,18 +143,17 @@ class Receivables extends BaseApiController
 
     public function show($no)
     {
-        foreach (Prototype::load('AR') as $i) {
-            if ($i['no'] === $no) {
-                $i['outstanding'] = self::outstanding($i);
-                $i['bucket']      = self::bucket($i);
-                $i['overdue']     = self::isLate($i);
-                $i['lineTotal']   = array_sum(array_map(static fn ($l) => $l['amount'], $i['lines']));
-
-                return $this->json($i);
-            }
+        $i = (new ReceivablesRepository())->find($no);
+        if ($i === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in receivables.']);
         }
 
-        return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in receivables.']);
+        $i['outstanding'] = self::outstanding($i);
+        $i['bucket']      = self::bucket($i);
+        $i['overdue']     = self::isLate($i);
+        $i['lineTotal']   = array_sum(array_map(static fn ($l) => $l['amount'], $i['lines']));
+
+        return $this->json($i);
     }
 
     /**
@@ -167,8 +168,8 @@ class Receivables extends BaseApiController
         $amount = round((float) ($body['amount'] ?? 0));
         $ref    = trim((string) ($body['ref'] ?? ''));
 
-        $all = Prototype::load('AR');
-        foreach ($all as $idx => $i) {
+        $repo = new ReceivablesRepository();
+        foreach ($repo->all() as $i) {
             if ($i['no'] !== $no) {
                 continue;
             }
@@ -192,21 +193,11 @@ class Receivables extends BaseApiController
                 ]);
             }
 
-            $i['received']   = $i['received'] + $amount;
-            $i['status']     = self::outstanding($i) > 0 ? 'Part received' : 'Received';
-            $i['receipts'][] = [
-                'when'   => date('d M'),
-                'ref'    => $ref,
-                'amount' => $amount,
-                'note'   => trim((string) ($body['note'] ?? '')) ?: 'Receipt posted',
-            ];
-            $i['trail'][] = [
-                'when' => date('d M'),
-                'what' => 'Receipt of ' . Prototype::fmt($amount) . ' posted to ' . ($body['account'] ?? '1110') . ' against ' . $i['fund'],
-            ];
-
-            $all[$idx] = $i;
-            Prototype::save('AR', $all);
+            try {
+                $i = $repo->recordReceipt($no, $amount, $ref, trim((string) ($body['note'] ?? '')), (string) ($body['account'] ?? '1110'), $this->actorId());
+            } catch (RuleViolation $e) {
+                return $this->refused($e);
+            }
 
             $i['outstanding'] = self::outstanding($i);
 

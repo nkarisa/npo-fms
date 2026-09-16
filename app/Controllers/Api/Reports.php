@@ -4,6 +4,7 @@ namespace App\Controllers\Api;
 
 use App\Libraries\Ledger;
 use App\Libraries\Prototype;
+use App\Repositories\ChartRepository;
 
 /** Statement of financial position, activities, cash flows and trial balance — all derived from the chart of accounts. */
 class Reports extends BaseApiController
@@ -45,7 +46,7 @@ class Reports extends BaseApiController
     public function index()
     {
         $report = $this->request->getGet('report') ?: 'Statement of financial position';
-        $seed   = Prototype::load('SEED');
+        $seed   = (new ChartRepository())->accounts();
 
         if ($report === 'Trial balance') {
             return $this->json($this->trialBalance($seed));

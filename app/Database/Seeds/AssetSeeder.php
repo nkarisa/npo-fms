@@ -2,7 +2,6 @@
 
 namespace App\Database\Seeds;
 
-use App\Controllers\Api\AssetVerification;
 use App\Database\Seeds\Support\SeedContext;
 use CodeIgniter\Database\Seeder;
 
@@ -43,6 +42,8 @@ class AssetSeeder extends Seeder
 
     private const COUNT_OPENED = '2026-08-28';
 
+    private const ROUND = 'AV-2026-02';
+
     public function run(): void
     {
         $ctx = SeedContext::get();
@@ -72,7 +73,7 @@ class AssetSeeder extends Seeder
         }
 
         $round = $ctx->insert('verification_rounds', [
-            'entity_id' => $ctx->entityId(), 'reference' => AssetVerification::ROUND, 'name' => 'Half-year asset count',
+            'entity_id' => $ctx->entityId(), 'reference' => self::ROUND, 'name' => 'Half-year asset count',
             'opened_on' => self::COUNT_OPENED, 'status' => 'counting', 'opened_by' => $ctx->systemUserId(), 'created_at' => $now,
         ]);
 

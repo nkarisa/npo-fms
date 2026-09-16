@@ -2,6 +2,10 @@
 
 namespace App\Libraries;
 
+use App\Repositories\TranslationRepository;
+use NumberFormatter;
+use IntlDateFormatter;
+
 /**
  * Interface localisation, as the v5 prototype specifies it.
  *
@@ -11,7 +15,7 @@ namespace App\Libraries;
  * line-for-line whichever language it is read in. Everything here therefore
  * touches display strings only — never a figure, a code or a date.
  *
- * A string is translatable only if it is in the source catalogue (I18N_SOURCE).
+ * A string is translatable only if it is in the language catalogue (translation_strings).
  * Anything else reaching an endpoint is data — a supplier name, an account
  * description — and is passed through untouched rather than marked or guessed at.
  */
@@ -65,7 +69,7 @@ class I18n
 
     public static function locales(): array
     {
-        return Prototype::load('LOCALES');
+        return (new TranslationRepository())->locales();
     }
 
     public static function isKnown(?string $code): bool
@@ -120,7 +124,7 @@ class I18n
     /** Every string the UI treats as translatable. */
     public static function catalogue(): array
     {
-        return Prototype::load('I18N_SOURCE');
+        return (new TranslationRepository())->catalogue();
     }
 
     public static function isTranslatable(string $s): bool
@@ -130,7 +134,7 @@ class I18n
 
     public static function strings(string $code): array
     {
-        return Prototype::load('I18N')[$code] ?? [];
+        return (new TranslationRepository())->strings($code);
     }
 
     /** Has this locale an approved translation for the string? */
@@ -202,7 +206,7 @@ class I18n
 
     public static function coverageAreas(string $code): array
     {
-        $areas = Prototype::load('I18N_AREAS');
+        $areas = (new TranslationRepository())->areas();
         if (isset($areas[$code])) {
             return $areas[$code];
         }
@@ -233,7 +237,7 @@ class I18n
      */
     public static function lockedTerms(): array
     {
-        return Prototype::load('I18N_LOCKED');
+        return (new TranslationRepository())->locked();
     }
 
     public static function lockOn(string $s): ?array
@@ -251,9 +255,19 @@ class I18n
 
     public static function formats(string $code): array
     {
-        $all = Prototype::load('I18N_FORMATS');
+        $locale = self::isKnown($code) ? $code : self::SOURCE_LOCALE;
 
-        return $all[$code] ?? $all[self::SOURCE_LOCALE];
+        $amount = new NumberFormatter($locale, NumberFormatter::DECIMAL);
+        $amount->setAttribute(NumberFormatter::FRACTION_DIGITS, 2);
+        $pct = new NumberFormatter($locale, NumberFormatter::PERCENT);
+        $pct->setAttribute(NumberFormatter::FRACTION_DIGITS, 1);
+        $date = new IntlDateFormatter($locale, IntlDateFormatter::NONE, IntlDateFormatter::NONE, 'Africa/Nairobi', null, 'd MMM y');
+
+        return [
+            'amount' => $amount->format(12480000),
+            'date'   => $date->format(strtotime('2026-09-30 12:00')),
+            'pct'    => $pct->format(0.084),
+        ];
     }
 
     /**

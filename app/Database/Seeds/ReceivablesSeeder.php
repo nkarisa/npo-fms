@@ -39,7 +39,8 @@ class ReceivablesSeeder extends Seeder
             $id = $ctx->insert('invoices', [
                 'entity_id' => $entity, 'reference' => $inv['no'], 'type' => self::TYPES[$inv['type']],
                 'funder_id' => $isOther ? null : $ctx->require('funders', $inv['donor']), 'bill_to' => $isOther ? $inv['donor'] : null,
-                'grant_id' => $grant, 'programme_id' => $ctx->programmeId($inv['program']), 'fund_id' => $fund,
+                'grant_id' => $grant, 'donor_reference' => $grant === null && $inv['grantRef'] !== '—' ? $inv['grantRef'] : null,
+                'programme_id' => $ctx->programmeId($inv['program']), 'fund_id' => $fund,
                 'issue_date' => $ctx->date($inv['issue']), 'due_date' => $ctx->date($inv['due']), 'currency' => $inv['ccy'], 'fx_rate' => $rate,
                 'amount_fc' => $inv['amountFc'] ?? $inv['amount'], 'amount' => $inv['amount'], 'status' => self::STATUSES[$inv['status']],
                 'basis' => $inv['basis'], 'prepared_by' => $ctx->userOrSystem($prepared['who'] ?? null),

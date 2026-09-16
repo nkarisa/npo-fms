@@ -3,10 +3,17 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\ChartRepository;
+use App\Repositories\RuleViolation;
+use App\Repositories\SettingsRepository;
 
 class Coa extends BaseApiController
 {
     private const CONTRA_RX = '/accumulated depreciation|provision for|allowance for|impairment/i';
+
+    private const TYPES = ['All', 'Asset', 'Liability', 'Equity', 'Income', 'Expense'];
+
+    private const TYPE_LABEL = ['All' => 'All', 'Asset' => 'Assets', 'Liability' => 'Liabilities', 'Equity' => 'Funds', 'Income' => 'Income', 'Expense' => 'Expenditure'];
 
     public static function normal(array $a): string
     {
@@ -53,7 +60,7 @@ class Coa extends BaseApiController
 
     public function index()
     {
-        $list = Prototype::load('SEED');
+        $list = (new ChartRepository())->accounts();
         $totals = self::rollup($list);
 
         $rows = array_map(function ($a) {
@@ -70,11 +77,11 @@ class Coa extends BaseApiController
         return $this->json([
             'accounts'  => $rows,
             'rollups'   => $totals,
-            'types'     => Prototype::load('TYPES'),
-            'typeLabel' => Prototype::load('TYPE_LABEL'),
+            'types'     => self::TYPES,
+            'typeLabel' => self::TYPE_LABEL,
             'stats' => [
                 ['label' => 'Accounts', 'value' => (string) count($list), 'note' => count($leaves) . ' postable'],
-                ['label' => 'Entities', 'value' => '5', 'note' => 'shared master chart'],
+                ['label' => 'Entities', 'value' => (string) count((new SettingsRepository())->entities()), 'note' => 'shared master chart'],
                 ['label' => 'Restricted funds', 'value' => '3', 'note' => 'grant, capital, endowment'],
                 ['label' => 'YTD income', 'value' => Prototype::fmt($income), 'note' => 'KES, all funds'],
                 ['label' => 'YTD expenditure', 'value' => Prototype::fmt($expense), 'note' => $income > 0 ? round($expense / $income * 100) . '% of income' : '—'],
@@ -85,7 +92,7 @@ class Coa extends BaseApiController
     /** Streams the full chart of accounts as a CSV download. */
     public function export()
     {
-        $list = Prototype::load('SEED');
+        $list = (new ChartRepository())->accounts();
 
         $out = fopen('php://temp', 'w+');
         fputcsv($out, ['Code', 'Name', 'Level', 'Type', 'Normal', 'Statement', 'Restriction', 'Fund', 'Programme', 'Funder', 'Balance', 'Status']);
@@ -118,121 +125,56 @@ class Coa extends BaseApiController
             ->setBody($csv);
     }
 
-    /** Adds a new leaf account to the chart, in code order, and persists it. */
+    /** Adds a new account to the chart under its parent. */
     public function create()
     {
         $body = $this->request->getJSON(true) ?? [];
 
         $code = trim((string) ($body['code'] ?? ''));
         $name = trim((string) ($body['name'] ?? ''));
-        $type = $body['type'] ?? 'Expense';
 
         if ($code === '' || $name === '') {
             return $this->response->setStatusCode(422)->setJSON(['error' => 'Account code and name are required.']);
         }
 
-        $list = Prototype::load('SEED');
-        foreach ($list as $a) {
-            if ($a['code'] === $code) {
-                return $this->response->setStatusCode(422)->setJSON(['error' => $code . ' already exists in the chart of accounts.']);
-            }
+        try {
+            $account = (new ChartRepository())->create($body + ['type' => 'Expense']);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
         }
 
-        $account = [
-            'code'        => $code,
-            'name'        => $name,
-            'level'       => 2,
-            'type'        => $type,
-            'restriction' => $body['restriction'] ?? 'Unrestricted',
-            'fund'        => $body['fund'] ?? 'General Fund',
-            'program'     => $body['program'] ?? 'Shared',
-            'funder'      => $body['funder'] ?? '—',
-            'balance'     => 0,
-            'status'      => 'Active',
-            'parent'      => $body['parent'] ?? '— (top level)',
-            'normal'      => $body['normal'] ?? self::normal(['type' => $type, 'name' => $name]),
-            'currency'    => $body['currency'] ?? 'KES',
-            'grant'       => $body['grant'] ?? 'Unassigned',
-            'notes'       => trim((string) ($body['notes'] ?? '')),
-            'postable'    => (bool) ($body['postable'] ?? true),
-            'reconcile'   => (bool) ($body['reconcile'] ?? false),
-            'donorReport' => (bool) ($body['donorReport'] ?? true),
-        ];
-
-        $at = count($list);
-        foreach ($list as $i => $a) {
-            if ($a['code'] > $code) {
-                $at = $i;
-                break;
-            }
-        }
-        array_splice($list, $at, 0, [$account]);
-
-        Prototype::save('SEED', $list);
-
+        $account['normal']    = self::normal($account);
         $account['statement'] = self::statement($account);
 
         return $this->response->setStatusCode(201)->setJSON(['account' => $account]);
     }
 
-    /** Updates an existing account's classification/dimensions (code and level are immutable). */
+    /** Updates an existing account's classification and dimensions (the code is immutable). */
     public function update($code)
     {
         $body = $this->request->getJSON(true) ?? [];
-        $list = Prototype::load('SEED');
 
-        foreach ($list as $i => $a) {
-            if ($a['code'] !== $code) {
-                continue;
-            }
-            $name = trim((string) ($body['name'] ?? $a['name']));
-            if ($name === '') {
-                return $this->response->setStatusCode(422)->setJSON(['error' => 'Account name is required.']);
-            }
-
-            $list[$i] = array_merge($a, [
-                'name'        => $name,
-                'type'        => $body['type'] ?? $a['type'],
-                'restriction' => $body['restriction'] ?? $a['restriction'],
-                'fund'        => $body['fund'] ?? $a['fund'],
-                'program'     => $body['program'] ?? $a['program'],
-                'funder'      => $body['funder'] ?? $a['funder'],
-                'parent'      => $body['parent'] ?? ($a['parent'] ?? '— (top level)'),
-                'normal'      => $body['normal'] ?? ($a['normal'] ?? self::normal($a)),
-                'currency'    => $body['currency'] ?? ($a['currency'] ?? 'KES'),
-                'grant'       => $body['grant'] ?? ($a['grant'] ?? 'Unassigned'),
-                'notes'       => trim((string) ($body['notes'] ?? ($a['notes'] ?? ''))),
-                'postable'    => array_key_exists('postable', $body) ? (bool) $body['postable'] : ($a['postable'] ?? true),
-                'reconcile'   => array_key_exists('reconcile', $body) ? (bool) $body['reconcile'] : ($a['reconcile'] ?? false),
-                'donorReport' => array_key_exists('donorReport', $body) ? (bool) $body['donorReport'] : ($a['donorReport'] ?? true),
-            ]);
-
-            Prototype::save('SEED', $list);
-
-            $updated = $list[$i];
-            $updated['statement'] = self::statement($updated);
-
-            return $this->json(['account' => $updated]);
+        try {
+            $account = (new ChartRepository())->update($code, $body);
+        } catch (RuleViolation $e) {
+            return str_contains($e->getMessage(), 'was not found')
+                ? $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage()])
+                : $this->refused($e);
         }
 
-        return $this->response->setStatusCode(404)->setJSON(['error' => $code . ' was not found in the chart of accounts.']);
+        $account['normal']    = self::normal($account);
+        $account['statement'] = self::statement($account);
+
+        return $this->json(['account' => $account]);
     }
 
     /** Marks an account as archived; historical postings are retained. */
     public function archive($code)
     {
-        $list = Prototype::load('SEED');
-
-        foreach ($list as $i => $a) {
-            if ($a['code'] !== $code) {
-                continue;
-            }
-            $list[$i]['status'] = 'Archived';
-            Prototype::save('SEED', $list);
-
-            return $this->json(['account' => $list[$i]]);
+        try {
+            return $this->json(['account' => (new ChartRepository())->archive($code)]);
+        } catch (RuleViolation $e) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage()]);
         }
-
-        return $this->response->setStatusCode(404)->setJSON(['error' => $code . ' was not found in the chart of accounts.']);
     }
 }

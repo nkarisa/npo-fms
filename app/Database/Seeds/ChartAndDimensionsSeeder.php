@@ -39,7 +39,8 @@ class ChartAndDimensionsSeeder extends Seeder
         foreach ($ctx->data('PROGS') as $p) {
             $ctx->remember('programmes', $p['name'], $ctx->insert('programmes', [
                 'code' => $p['code'], 'name' => $p['name'], 'manager_user_id' => $ctx->userId($p['manager']),
-                'status' => strtolower($p['status']), 'started_on' => $ctx->date($p['since']), 'purpose' => $p['purpose'], 'created_at' => $now,
+                'status' => strtolower($p['status']), 'started_on' => $ctx->date($p['since']), 'purpose' => $p['purpose'],
+                'cost_share_pct' => $p['share'], 'created_at' => $now,
             ]));
         }
 
@@ -48,6 +49,8 @@ class ChartAndDimensionsSeeder extends Seeder
         $this->seedGrants($ctx, $entity, $now);
 
         foreach (self::BANKS as $code => $bank) {
+            // PHP turns numeric string keys into integers; account codes are strings.
+            $code = (string) $code;
             $account = $this->chartRow($ctx, $code);
             $register = current(array_filter($ctx->data('BR_ACCOUNTS'), static fn ($b) => $b['code'] === $code)) ?: null;
             $ctx->remember('bank_accounts', $code, $ctx->insert('bank_accounts', [
@@ -174,7 +177,9 @@ class ChartAndDimensionsSeeder extends Seeder
                 'parent_id' => $a['level'] > 0 ? $parents[$a['level'] - 1] : null, 'level' => $a['level'],
                 'is_leaf' => (int) $isLeaf, 'restriction' => $a['restriction'] === '—' ? null : strtolower($a['restriction']),
                 'default_fund_id' => $defaultFund, 'default_programme_id' => $a['program'] === '—' ? null : $ctx->programmeId($a['program']),
-                'funder_id' => $ctx->lookup('funders', $a['funder']), 'status' => strtolower($a['status']), 'created_at' => $now,
+                'funder_id' => $ctx->lookup('funders', $a['funder']), 'status' => strtolower($a['status']),
+                // The chart names the currency only in the account name ("… (USD)").
+                'currency' => preg_match('/\((USD|EUR)\)$/', $a['name'], $m) === 1 ? $m[1] : 'KES', 'created_at' => $now,
             ]);
 
             $parents[$a['level']] = $id;

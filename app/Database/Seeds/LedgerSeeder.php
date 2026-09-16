@@ -3,7 +3,6 @@
 namespace App\Database\Seeds;
 
 use App\Database\Seeds\Support\SeedContext;
-use App\Libraries\Ledger;
 use CodeIgniter\Database\Seeder;
 use RuntimeException;
 
@@ -31,6 +30,9 @@ class LedgerSeeder extends Seeder
     private const POSTED = ['Posted', 'Reversed'];
 
     private const RESTRICTED_BALANCE = '3200';
+
+    /** Surplus for the year: derived from income and expenditure, never posted. */
+    private const DERIVED = ['3900'];
 
     private const OPENING_DATE = '2026-01-01';
 
@@ -132,7 +134,7 @@ class LedgerSeeder extends Seeder
         $result = [];
         foreach ($chart as $i => $a) {
             $isLeaf = !isset($chart[$i + 1]) || $chart[$i + 1]['level'] <= $a['level'];
-            if (!$isLeaf || in_array($a['code'], [...Ledger::DERIVED_CODES, self::RESTRICTED_BALANCE], true)) {
+            if (!$isLeaf || in_array($a['code'], [...self::DERIVED, self::RESTRICTED_BALANCE], true)) {
                 continue;
             }
 
