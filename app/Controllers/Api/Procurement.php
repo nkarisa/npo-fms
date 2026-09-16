@@ -44,6 +44,31 @@ class Procurement extends BaseApiController
         return $p['amount'] > self::QUOTE_THRESHOLD && count($p['quotes']) < 3;
     }
 
+    /** A requisition that can still be stopped by one of the controls. */
+    private static function stillLive(array $p): bool
+    {
+        // Once the PO exists the requisition's own amount sits inside `committed`,
+        // so testing it against what is left would count that money twice and
+        // report the requisition as over budget for the budget it itself reserved.
+        return empty($p['po']) && !in_array($p['status'], ['Rejected', 'Closed'], true);
+    }
+
+    /**
+     * Whether the budget check still stands between this requisition and its
+     * purchase order. True right through approval and RFQ, because none of those
+     * states has committed the money yet.
+     */
+    public static function budgetCheckPending(array $p): bool
+    {
+        return self::stillLive($p) && self::isOverBudget($p);
+    }
+
+    /** The three-quote rule bites at PO raising, so it is spent once one exists. */
+    public static function quotesOutstanding(array $p): bool
+    {
+        return self::stillLive($p) && self::needsQuotes($p);
+    }
+
     public function index()
     {
         $view = $this->request->getGet('view') ?: self::VIEWS[0];
@@ -98,8 +123,8 @@ class Procurement extends BaseApiController
             'amount'      => Prototype::fmt($p['amount']),
             'available'   => Prototype::fmt(self::available($p)),
             'status'      => $p['status'],
-            'overBudget'  => self::isOverBudget($p),
-            'needsQuotes' => self::needsQuotes($p),
+            'overBudget'  => self::budgetCheckPending($p),
+            'needsQuotes' => self::quotesOutstanding($p),
             'quotes'      => count($p['quotes']),
             'supplier'    => $p['supplier'] ?? '',
             'po'          => $p['po'] ?? '',
@@ -109,7 +134,7 @@ class Procurement extends BaseApiController
 
         $open      = array_values(array_filter($all, fn ($p) => in_array($p['status'], self::OPEN, true)));
         $awaiting  = array_values(array_filter($all, fn ($p) => $p['status'] === 'Awaiting approval'));
-        $blocked   = array_values(array_filter($open, fn ($p) => self::isOverBudget($p)));
+        $blocked   = array_values(array_filter($open, fn ($p) => self::budgetCheckPending($p)));
         $committed = array_sum(array_map(fn ($p) => $p['committed'], $all));
 
         return $this->viewBlock() + [
@@ -235,8 +260,8 @@ class Procurement extends BaseApiController
             }
 
             $p['available']   = self::available($p);
-            $p['overBudget']  = self::isOverBudget($p);
-            $p['needsQuotes'] = self::needsQuotes($p);
+            $p['overBudget']  = self::budgetCheckPending($p);
+            $p['needsQuotes'] = self::quotesOutstanding($p);
             $p['canApprove']  = $p['status'] === 'Awaiting approval';
             $p['canRaisePo']  = $p['status'] === 'Approved';
             $p['canReceive']  = $p['status'] === 'PO raised';
