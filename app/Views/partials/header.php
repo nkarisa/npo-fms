@@ -14,12 +14,17 @@ $navGroups = [
     ],
     'Accounting' => [
         ['label' => 'Chart of accounts', 'icon' => '☰', 'page' => 'coa', 'url' => '/coa'],
+        ['label' => 'Programmes', 'icon' => '◭', 'page' => 'programmes', 'url' => '/programmes'],
         ['label' => 'General ledger', 'icon' => '▤', 'page' => 'gl', 'url' => '/gl'],
         ['label' => 'Journals', 'icon' => '✎', 'page' => 'journals', 'url' => '/journals'],
         ['label' => 'Payables', 'icon' => '◇', 'page' => 'payables', 'url' => '/payables'],
+        ['label' => 'Receivables', 'icon' => '◆', 'page' => 'receivables', 'url' => '/receivables'],
+        ['label' => 'Procurement', 'icon' => '⊞', 'page' => 'procure', 'url' => '/procurement'],
         ['label' => 'Bank reconciliation', 'icon' => '⇄', 'page' => 'bankrec', 'url' => '/bank-rec'],
         ['label' => 'Asset register', 'icon' => '▣', 'page' => 'assets', 'url' => '/asset-register'],
+        ['label' => 'Asset verification', 'icon' => '◫', 'page' => 'verify', 'url' => '/asset-verification'],
         ['label' => 'Payroll', 'icon' => '◔', 'page' => 'payroll', 'url' => '/payroll'],
+        ['label' => 'Staff advances', 'icon' => '◎', 'page' => 'advances', 'url' => '/advances'],
     ],
     'Funds and grants' => [
         ['label' => 'Funds', 'icon' => '◈', 'page' => 'funds', 'url' => '/funds'],
@@ -28,6 +33,7 @@ $navGroups = [
         ['label' => 'Donor reports', 'icon' => '◐', 'page' => 'donor', 'url' => '/donor-reports'],
     ],
     'Insight' => [
+        ['label' => 'Cashflow forecast', 'icon' => '⌇', 'page' => 'cashflow', 'url' => '/cashflow'],
         ['label' => 'Reports', 'icon' => '◍', 'page' => 'reports', 'url' => '/reports'],
         ['label' => 'Settings', 'icon' => '⚙', 'page' => 'settings', 'url' => '/settings'],
     ],

@@ -62,6 +62,16 @@ class Pages extends BaseController
         return $this->render('pages/payables', 'payables', 'payables', 'Payables', 'Accounting');
     }
 
+    public function receivables()
+    {
+        return $this->render('pages/receivables', 'receivables', 'receivables', 'Receivables', 'Accounting');
+    }
+
+    public function procurement()
+    {
+        return $this->render('pages/procurement', 'procure', 'procurement', 'Procurement', 'Accounting');
+    }
+
     public function bankRec()
     {
         return $this->render('pages/bank_rec', 'bankrec', 'bank_rec', 'Bank reconciliation', 'Accounting');
@@ -72,9 +82,24 @@ class Pages extends BaseController
         return $this->render('pages/assets', 'assets', 'assets', 'Asset register', 'Accounting');
     }
 
+    public function assetVerification()
+    {
+        return $this->render('pages/asset_verification', 'verify', 'asset_verification', 'Asset verification', 'Accounting');
+    }
+
     public function payroll()
     {
         return $this->render('pages/payroll', 'payroll', 'payroll', 'Payroll', 'Accounting');
+    }
+
+    public function advances()
+    {
+        return $this->render('pages/advances', 'advances', 'advances', 'Staff advances', 'Accounting');
+    }
+
+    public function programmes()
+    {
+        return $this->render('pages/programmes', 'programmes', 'programmes', 'Programmes', 'Accounting');
     }
 
     public function funds()
@@ -95,6 +120,11 @@ class Pages extends BaseController
     public function donorReports()
     {
         return $this->render('pages/donor_reports', 'donor', 'donor_reports', 'Donor reports', 'Funds and grants');
+    }
+
+    public function cashflow()
+    {
+        return $this->render('pages/cashflow', 'cashflow', 'cashflow', 'Cashflow forecast', 'Insight');
     }
 
     public function reports()

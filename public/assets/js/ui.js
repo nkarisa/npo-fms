@@ -320,5 +320,64 @@ const UI = (() => {
     journalDrawer.style.display = 'flex';
   }
 
-  return { fmtMoney, fetchJSON, toast, statGrid, tabs, table, esc, badge, pageHead, openNewJournalDrawer };
+
+  // ---- Generic record drawer, shared by the modules added for the v5 nav ----
+
+  let recordDrawer;
+
+  /**
+   * POSTs JSON and surfaces the API's own message on failure.
+   *
+   * The controllers answer a rejected action with a reason rather than a generic
+   * error — a budget block names the shortfall, a blocked receipt names what is
+   * actually outstanding — so that text is what the user needs to see.
+   */
+  async function postJSON(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed: ${res.status}`);
+    return data;
+  }
+
+  function buildRecordDrawer() {
+    recordDrawer = document.createElement('div');
+    recordDrawer.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(13,27,24,.28);z-index:1000;align-items:flex-start;justify-content:flex-end;';
+    recordDrawer.innerHTML = `
+      <div class="rd-panel" style="background:#fff;width:432px;max-width:92vw;height:100%;overflow-y:auto;box-shadow:-18px 0 40px rgba(13,27,24,.14);display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid #E4E2DB;position:sticky;top:0;background:#fff;z-index:1;">
+          <span class="rd-title" style="font-size:13px;font-weight:600;"></span>
+          <button type="button" class="rd-close" style="margin-left:auto;border:1px solid #DDDAD2;background:#fff;border-radius:6px;width:26px;height:26px;cursor:pointer;color:#6E7873;font-size:14px;line-height:1;">&times;</button>
+        </div>
+        <div class="rd-body" style="flex:1;"></div>
+      </div>`;
+    document.body.appendChild(recordDrawer);
+    recordDrawer.addEventListener('click', (e) => { if (e.target === recordDrawer) closeDrawer(); });
+    recordDrawer.querySelector('.rd-close').addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+  }
+
+  function drawer(title, html) {
+    if (!recordDrawer) buildRecordDrawer();
+    recordDrawer.querySelector('.rd-title').textContent = title;
+    recordDrawer.querySelector('.rd-body').innerHTML = html;
+    recordDrawer.querySelector('.rd-panel').scrollTop = 0;
+    recordDrawer.style.display = 'flex';
+  }
+
+  function closeDrawer() {
+    if (recordDrawer) recordDrawer.style.display = 'none';
+  }
+
+  /** A labelled bar, used for budget consumption and verification progress. */
+  function bar(pct, tone) {
+    const width = Math.max(0, Math.min(100, pct));
+    const colour = tone === 'urgent' ? '#A6412F' : tone === 'warn' ? '#B4703A' : '#2C6B58';
+    return `<span class="bar-track" style="display:block;"><span class="bar-fill" style="width:${width}%;background:${colour};"></span></span>`;
+  }
+
+  return { fmtMoney, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer };
 })();
