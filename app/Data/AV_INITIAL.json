@@ -1,0 +1,26 @@
+{
+    "ELOG/IT/0041": {
+        "result": "Sighted",
+        "note": "Serial matched, in use"
+    },
+    "ELOG/IT/0042": {
+        "result": "Sighted",
+        "note": "Serial matched, in use"
+    },
+    "ELOG/VE/0009": {
+        "result": "Sighted",
+        "note": "Logbook and plate verified"
+    },
+    "ELOG/IT/0058": {
+        "result": "Condition issue",
+        "note": "Fuser unit failed; quote for repair exceeds carrying amount"
+    },
+    "ELOG/IT/0055": {
+        "result": "Not found",
+        "note": "Held by suspended user B. Omondi; not produced at count"
+    },
+    "ELOG/FF/0022": {
+        "result": "Sighted",
+        "note": ""
+    }
+}

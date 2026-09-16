@@ -1,0 +1,93 @@
+[
+    {
+        "wc": "31 Aug",
+        "inflow": 6400000,
+        "outflow": 9850000,
+        "note": "August payroll and KRA remittance by the 20th",
+        "grant": false
+    },
+    {
+        "wc": "07 Sep",
+        "inflow": 28468000,
+        "outflow": 5240000,
+        "note": "USAID Q3 claim INV-26-0041 expected",
+        "grant": true
+    },
+    {
+        "wc": "14 Sep",
+        "inflow": 13420800,
+        "outflow": 6180000,
+        "note": "EU interim claim INV-26-0042",
+        "grant": true
+    },
+    {
+        "wc": "21 Sep",
+        "inflow": 0,
+        "outflow": 12400000,
+        "note": "September payroll and statutory deductions",
+        "grant": false
+    },
+    {
+        "wc": "28 Sep",
+        "inflow": 9250000,
+        "outflow": 4900000,
+        "note": "UNDP milestone claim INV-26-0044",
+        "grant": true
+    },
+    {
+        "wc": "05 Oct",
+        "inflow": 1850000,
+        "outflow": 5600000,
+        "note": "Kisumu county MoU settlement chased",
+        "grant": false
+    },
+    {
+        "wc": "12 Oct",
+        "inflow": 0,
+        "outflow": 7300000,
+        "note": "Field deployment advances, 14 counties",
+        "grant": false
+    },
+    {
+        "wc": "19 Oct",
+        "inflow": 6400000,
+        "outflow": 12600000,
+        "note": "October payroll",
+        "grant": false
+    },
+    {
+        "wc": "26 Oct",
+        "inflow": 4800000,
+        "outflow": 4300000,
+        "note": "KAS claim, only if finding Q-2026-04 clears",
+        "grant": true
+    },
+    {
+        "wc": "02 Nov",
+        "inflow": 0,
+        "outflow": 5100000,
+        "note": "",
+        "grant": false
+    },
+    {
+        "wc": "09 Nov",
+        "inflow": 12400000,
+        "outflow": 6700000,
+        "note": "DANIDA second instalment INV-26-0038",
+        "grant": true
+    },
+    {
+        "wc": "16 Nov",
+        "inflow": 2400000,
+        "outflow": 12800000,
+        "note": "November payroll",
+        "grant": false
+    },
+    {
+        "wc": "23 Nov",
+        "inflow": 0,
+        "outflow": 4600000,
+        "note": "",
+        "grant": false
+    }
+]

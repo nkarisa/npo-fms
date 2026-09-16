@@ -69,6 +69,6 @@ class Assets extends BaseApiController
                 return $this->json($a);
             }
         }
-        return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
+        return $this->response->setStatusCode(404)->setJSON(['error' => $tag . ' was not found on the asset register.']);
     }
 }

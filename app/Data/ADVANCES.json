@@ -1,0 +1,567 @@
+[
+    {
+        "ref": "ADV-26-0052",
+        "holder": "Grace Muthoni",
+        "kind": "Staff",
+        "role": "Observer Coordinator",
+        "purpose": "Advance for Nakuru county LTO briefing and accreditation",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 180000,
+        "reqDate": "28 Aug 2026",
+        "dueDate": "20 Sep 2026",
+        "dueIn": 20,
+        "status": "Requested",
+        "method": "",
+        "issueDate": "",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "28 Aug",
+                "what": "Requested by G. Muthoni"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0051",
+        "holder": "Brian Omondi",
+        "kind": "Staff",
+        "role": "County Liaison Officer, Kisumu",
+        "purpose": "Kisumu partner accountability forum logistics",
+        "program": "Governance Advocacy",
+        "fund": "Grant Fund",
+        "amount": 95000,
+        "reqDate": "27 Aug 2026",
+        "dueDate": "24 Sep 2026",
+        "dueIn": 24,
+        "status": "Requested",
+        "method": "",
+        "issueDate": "",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "27 Aug",
+                "what": "Requested by B. Omondi"
+            }
+        ],
+        "grant": "Ford Foundation GA-24"
+    },
+    {
+        "ref": "ADV-26-0050",
+        "holder": "Fatuma Hassan",
+        "kind": "Staff",
+        "role": "Communications Officer",
+        "purpose": "Media monitoring field costs, three regional stations",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 60000,
+        "reqDate": "24 Aug 2026",
+        "dueDate": "18 Sep 2026",
+        "dueIn": 18,
+        "status": "Approved",
+        "method": "",
+        "issueDate": "",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "24 Aug",
+                "what": "Requested by F. Hassan"
+            },
+            {
+                "when": "26 Aug",
+                "what": "Approved by W. Kamau"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0047",
+        "holder": "Samuel Njoroge",
+        "kind": "Staff",
+        "role": "Logistics Officer",
+        "purpose": "Field kit distribution across six counties",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 254000,
+        "reqDate": "14 Aug 2026",
+        "dueDate": "06 Sep 2026",
+        "dueIn": 6,
+        "status": "Issued",
+        "method": "M-Pesa",
+        "issueDate": "18 Aug 2026",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "14 Aug",
+                "what": "Requested by S. Njoroge"
+            },
+            {
+                "when": "16 Aug",
+                "what": "Approved by W. Kamau"
+            },
+            {
+                "when": "18 Aug",
+                "what": "Issued via M-Pesa · PV-26-0289"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0044",
+        "holder": "Alice Wairimu",
+        "kind": "Staff",
+        "role": "Advocacy Manager",
+        "purpose": "Homa Bay county accountability forum",
+        "program": "Governance Advocacy",
+        "fund": "Grant Fund",
+        "amount": 130000,
+        "reqDate": "08 Aug 2026",
+        "dueDate": "28 Aug 2026",
+        "dueIn": -3,
+        "status": "Issued",
+        "method": "Bank",
+        "issueDate": "12 Aug 2026",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "08 Aug",
+                "what": "Requested by A. Wairimu"
+            },
+            {
+                "when": "11 Aug",
+                "what": "Approved by D. Kiptoo — above manager limit"
+            },
+            {
+                "when": "12 Aug",
+                "what": "Issued via bank transfer · PV-26-0283"
+            }
+        ],
+        "grant": "Ford Foundation GA-24"
+    },
+    {
+        "ref": "ADV-26-0041",
+        "holder": "STO batch — Rift Valley",
+        "kind": "Observer",
+        "role": "24 short-term observers",
+        "purpose": "Short-term observer deployment allowances, Rift Valley cluster",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 1440000,
+        "reqDate": "15 Aug 2026",
+        "dueDate": "04 Sep 2026",
+        "dueIn": 4,
+        "status": "Issued",
+        "method": "M-Pesa",
+        "issueDate": "20 Aug 2026",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "15 Aug",
+                "what": "Requested by P. Mwangi"
+            },
+            {
+                "when": "18 Aug",
+                "what": "Approved by D. Kiptoo — above manager limit"
+            },
+            {
+                "when": "20 Aug",
+                "what": "Issued as 24 M-Pesa transfers · PV-26-0291"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0039",
+        "holder": "Joseph Kimani",
+        "kind": "Observer",
+        "role": "Long-term observer, Kakamega",
+        "purpose": "Long-term observer deployment, month two",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 85000,
+        "reqDate": "31 Jul 2026",
+        "dueDate": "19 Aug 2026",
+        "dueIn": -12,
+        "status": "Issued",
+        "method": "M-Pesa",
+        "issueDate": "04 Aug 2026",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "31 Jul",
+                "what": "Requested by P. Mwangi"
+            },
+            {
+                "when": "02 Aug",
+                "what": "Approved by W. Kamau"
+            },
+            {
+                "when": "04 Aug",
+                "what": "Issued via M-Pesa · PV-26-0276"
+            },
+            {
+                "when": "24 Aug",
+                "what": "First surrender reminder sent"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0038",
+        "holder": "STO batch — Nyanza",
+        "kind": "Observer",
+        "role": "18 short-term observers",
+        "purpose": "Short-term observer deployment allowances, Nyanza cluster",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 1080000,
+        "reqDate": "24 Jul 2026",
+        "dueDate": "23 Aug 2026",
+        "dueIn": -8,
+        "status": "Issued",
+        "method": "M-Pesa",
+        "issueDate": "08 Aug 2026",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "24 Jul",
+                "what": "Requested by P. Mwangi"
+            },
+            {
+                "when": "01 Aug",
+                "what": "Approved by D. Kiptoo — above manager limit"
+            },
+            {
+                "when": "08 Aug",
+                "what": "Issued as 18 M-Pesa transfers · PV-26-0279"
+            },
+            {
+                "when": "26 Aug",
+                "what": "First surrender reminder sent"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0035",
+        "holder": "Ruth Chelangat",
+        "kind": "Observer",
+        "role": "Long-term observer, Bomet",
+        "purpose": "Long-term observer deployment, month two",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 85000,
+        "reqDate": "22 Jul 2026",
+        "dueDate": "12 Aug 2026",
+        "dueIn": -19,
+        "status": "Issued",
+        "method": "M-Pesa",
+        "issueDate": "28 Jul 2026",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "22 Jul",
+                "what": "Requested by P. Mwangi"
+            },
+            {
+                "when": "25 Jul",
+                "what": "Approved by W. Kamau"
+            },
+            {
+                "when": "28 Jul",
+                "what": "Issued via M-Pesa · PV-26-0271"
+            },
+            {
+                "when": "18 Aug",
+                "what": "First surrender reminder sent"
+            },
+            {
+                "when": "28 Aug",
+                "what": "Second reminder — escalated to programme director"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0031",
+        "holder": "Daniel Mutua",
+        "kind": "Staff",
+        "role": "M&E Officer — left 15 Aug 2026",
+        "purpose": "Civic education validation workshop, Machakos",
+        "program": "Civic Education",
+        "fund": "Grant Fund",
+        "amount": 110000,
+        "reqDate": "10 Jul 2026",
+        "dueDate": "24 Jul 2026",
+        "dueIn": -38,
+        "status": "Issued",
+        "method": "Bank",
+        "issueDate": "16 Jul 2026",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "10 Jul",
+                "what": "Requested by D. Mutua"
+            },
+            {
+                "when": "14 Jul",
+                "what": "Approved by D. Kiptoo — above manager limit"
+            },
+            {
+                "when": "16 Jul",
+                "what": "Issued via bank transfer · PV-26-0262"
+            },
+            {
+                "when": "01 Aug",
+                "what": "First surrender reminder sent"
+            },
+            {
+                "when": "15 Aug",
+                "what": "Holder left the organisation — final pay already settled"
+            }
+        ],
+        "grant": "DANIDA CE-2025/27"
+    },
+    {
+        "ref": "ADV-26-0028",
+        "holder": "Peter Mwangi",
+        "kind": "Staff",
+        "role": "Programme Director, Election Observation",
+        "purpose": "Regional coordination meetings, three counties",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 150000,
+        "reqDate": "26 Jun 2026",
+        "dueDate": "17 Jul 2026",
+        "dueIn": -45,
+        "status": "Surrendered",
+        "method": "Bank",
+        "issueDate": "01 Jul 2026",
+        "accounted": 142300,
+        "recovered": 0,
+        "receipts": [
+            {
+                "code": "5140",
+                "desc": "Road transport and fuel",
+                "amount": 61400
+            },
+            {
+                "code": "5140",
+                "desc": "Accommodation, three nights",
+                "amount": 48600
+            },
+            {
+                "code": "5120",
+                "desc": "Meeting venue and refreshments",
+                "amount": 32300
+            }
+        ],
+        "trail": [
+            {
+                "when": "26 Jun",
+                "what": "Requested by P. Mwangi"
+            },
+            {
+                "when": "28 Jun",
+                "what": "Approved by D. Kiptoo — above manager limit"
+            },
+            {
+                "when": "01 Jul",
+                "what": "Issued via bank transfer · PV-26-0251"
+            },
+            {
+                "when": "15 Jul",
+                "what": "Surrendered with receipts · JV-26-0268"
+            },
+            {
+                "when": "15 Jul",
+                "what": "Unspent 7,700 refunded to bank"
+            }
+        ],
+        "grant": "USAID / Uraia 2026"
+    },
+    {
+        "ref": "ADV-26-0022",
+        "holder": "Esther Wangui",
+        "kind": "Staff",
+        "role": "Office Administrator",
+        "purpose": "Office supplies run and courier charges",
+        "program": "Shared services",
+        "fund": "General Fund",
+        "amount": 45000,
+        "reqDate": "05 Jun 2026",
+        "dueDate": "19 Jun 2026",
+        "dueIn": -73,
+        "status": "Surrendered",
+        "method": "M-Pesa",
+        "issueDate": "09 Jun 2026",
+        "accounted": 48600,
+        "recovered": 0,
+        "receipts": [
+            {
+                "code": "5310",
+                "desc": "Office consumables",
+                "amount": 31200
+            },
+            {
+                "code": "5320",
+                "desc": "Courier and postage",
+                "amount": 17400
+            }
+        ],
+        "trail": [
+            {
+                "when": "05 Jun",
+                "what": "Requested by E. Wangui"
+            },
+            {
+                "when": "06 Jun",
+                "what": "Approved by W. Kamau"
+            },
+            {
+                "when": "09 Jun",
+                "what": "Issued via M-Pesa · PV-26-0238"
+            },
+            {
+                "when": "18 Jun",
+                "what": "Surrendered with receipts · JV-26-0244"
+            },
+            {
+                "when": "20 Jun",
+                "what": "Overspend of 3,600 reimbursed to holder"
+            }
+        ],
+        "grant": "Unrestricted — own income"
+    },
+    {
+        "ref": "ADV-26-0018",
+        "holder": "Sarah Njeri",
+        "kind": "Staff",
+        "role": "Payroll and Accounts Officer",
+        "purpose": "Civic education materials pilot, Kajiado",
+        "program": "Civic Education",
+        "fund": "Grant Fund",
+        "amount": 15000,
+        "reqDate": "12 May 2026",
+        "dueDate": "26 May 2026",
+        "dueIn": -97,
+        "status": "Recovered",
+        "method": "Bank",
+        "issueDate": "15 May 2026",
+        "accounted": 0,
+        "recovered": 15000,
+        "receipts": [],
+        "trail": [
+            {
+                "when": "12 May",
+                "what": "Requested by S. Njeri"
+            },
+            {
+                "when": "13 May",
+                "what": "Approved by W. Kamau"
+            },
+            {
+                "when": "15 May",
+                "what": "Issued via bank transfer · PV-26-0221"
+            },
+            {
+                "when": "20 Jun",
+                "what": "Not surrendered — converted to payroll recovery"
+            },
+            {
+                "when": "30 Jun",
+                "what": "Recovery scheduled over three payroll runs from June 2026"
+            }
+        ],
+        "grant": "DANIDA CE-2025/27"
+    },
+    {
+        "ref": "ADV-26-0011",
+        "holder": "Samuel Njoroge",
+        "kind": "Staff",
+        "role": "Logistics Officer",
+        "purpose": "Salary advance against May 2026 pay",
+        "program": "Shared services",
+        "fund": "General Fund",
+        "amount": 20000,
+        "reqDate": "18 Apr 2026",
+        "dueDate": "31 May 2026",
+        "dueIn": -92,
+        "status": "Recovered",
+        "method": "Bank",
+        "issueDate": "22 Apr 2026",
+        "accounted": 0,
+        "recovered": 20000,
+        "receipts": [],
+        "trail": [
+            {
+                "when": "18 Apr",
+                "what": "Requested by S. Njoroge"
+            },
+            {
+                "when": "20 Apr",
+                "what": "Approved by W. Kamau"
+            },
+            {
+                "when": "22 Apr",
+                "what": "Issued via bank transfer · PV-26-0206"
+            },
+            {
+                "when": "30 Jun",
+                "what": "Recovery scheduled over three payroll runs from June 2026"
+            }
+        ],
+        "grant": "Unrestricted — own income"
+    },
+    {
+        "ref": "ADV-26-0049",
+        "holder": "Mercy Chebet",
+        "kind": "Staff",
+        "role": "Call Centre Supervisor",
+        "purpose": "Call centre team building and transport",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "amount": 70000,
+        "reqDate": "22 Aug 2026",
+        "dueDate": "12 Sep 2026",
+        "dueIn": 12,
+        "status": "Rejected",
+        "method": "",
+        "issueDate": "",
+        "accounted": 0,
+        "receipts": [],
+        "recovered": 0,
+        "trail": [
+            {
+                "when": "22 Aug",
+                "what": "Requested by M. Chebet"
+            },
+            {
+                "when": "25 Aug",
+                "what": "Rejected by W. Kamau — no budget line; raise a requisition against 5150 instead"
+            }
+        ],
+        "grant": "UNDP Basket 2026"
+    }
+]
