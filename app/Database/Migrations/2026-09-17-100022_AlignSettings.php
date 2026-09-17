@@ -10,8 +10,9 @@ use App\Database\SchemaMigration;
  * - entities: the organisation's registered name, short name, KRA PIN and NGO
  *   Board registration, held on the head office entity.
  * - settings.kind: 'toggle' for the posting controls, 'choice' for the reporting
- *   basis (framework, financial year end, account code length), and 'language'
- *   for holding numbers, dates and currency in the reporting locale.
+ *   basis (framework, financial year end, account code length), 'language'
+ *   for holding numbers, dates and currency in the reporting locale, and
+ *   'appearance' for the interface theme.
  * - currencies: the currencies awards and donor claims may be stated in, with an
  *   indicative rate to the functional currency that seeds a new claim. Disabling
  *   one only removes it from future forms.
@@ -23,7 +24,7 @@ use App\Database\SchemaMigration;
  */
 class AlignSettings extends SchemaMigration
 {
-    public const SETTING_KINDS = ['toggle', 'choice', 'language'];
+    public const SETTING_KINDS = ['toggle', 'choice', 'language', 'appearance'];
 
     public function up(): void
     {

@@ -3476,7 +3476,7 @@ paths:
       summary: The full settings payload
       responses:
         '200':
-          description: Organisation, ledger, controls, currencies, approvals, payroll scales, users, audit and language.
+          description: Organisation, ledger, controls, currencies, approvals, payroll scales, appearance, users, audit and language.
           content:
             application/json:
               schema:
@@ -3485,6 +3485,20 @@ paths:
                 properties:
                   sections: { type: array, items: { type: object } }
                   canManage: { type: boolean }
+                  appearance:
+                    type: object
+                    description: The interface theme the organisation reads the shell in.
+                    properties:
+                      theme: { type: string, example: evergreen }
+                  themes:
+                    type: array
+                    description: The themes that may be chosen, in the order the picker lists them.
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string, example: deep-blue }
+                        name: { type: string, example: Deep blue }
+                        note: { type: string }
                   locale: { $ref: '#/components/schemas/Locale' }
     post:
       tags: [Settings]
@@ -3497,7 +3511,7 @@ paths:
             schema:
               type: object
               additionalProperties: true
-              description: Any subset of organisation, ledger, toggles, segments, currencies, approvals, payroll, users, language.
+              description: Any subset of organisation, ledger, toggles, segments, currencies, approvals, payroll, appearance, users, language.
       responses:
         '200':
           description: The saved settings with a message and change list.

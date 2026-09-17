@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Libraries\Clock;
 use App\Libraries\Prototype;
+use App\Libraries\Theme;
 
 /**
  * Organisation, ledger, segment, currency, approval, payroll, user and language
@@ -36,6 +37,9 @@ final class SettingsRepository extends Repository
         'Inter-fund transfers and sub-grants always need the Executive Director, regardless of amount.',
         'Auditors hold read-only access and cannot post, approve or change configuration.',
     ];
+
+    /** Held on the setting row so the seeded database and the screen say the same thing. */
+    public const THEME_NOTE = 'The colours the interface is drawn in. It changes what everyone reads on screen — never a figure, a code or a date.';
 
     private Lookups $lookups;
 
@@ -94,6 +98,19 @@ final class SettingsRepository extends Repository
     public function toggles(): array
     {
         return array_map(static fn ($s) => ['key' => $s['key'], 'label' => $s['label'], 'note' => $s['note'] ?? '', 'on' => $s['value'] === '1'], $this->settingRows('toggle'));
+    }
+
+    /** The interface theme the organisation reads the shell in. */
+    public function theme(): string
+    {
+        return $this->cached('theme', function () {
+            $held = $this->value(
+                'SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = ?',
+                [Lookups::SECRETARIAT, Theme::KEY]
+            );
+
+            return Theme::isKnown($held) ? (string) $held : Theme::DEFAULT;
+        });
     }
 
     public function formatsLocked(): bool
@@ -286,6 +303,9 @@ final class SettingsRepository extends Repository
         if (isset($draft['users'])) {
             $this->planUsers((array) $draft['users'], $plan);
         }
+        if (isset($draft['appearance']['theme'])) {
+            $this->planAppearance((string) $draft['appearance']['theme'], $plan);
+        }
         if (isset($draft['language']['formatsLocked'])) {
             $locked = (bool) $draft['language']['formatsLocked'];
             if ($locked !== $this->formatsLocked()) {
@@ -447,6 +467,20 @@ final class SettingsRepository extends Repository
             $on = (bool) $in[$t['key']];
             $plan('Ledger', $t['label'] . ' — turned ' . ($on ? 'on' : 'off'), fn () => $this->setSetting($t['key'], $on ? '1' : '0'));
         }
+    }
+
+    private function planAppearance(string $theme, callable $plan): void
+    {
+        $current = $this->theme();
+        if ($theme === $current) {
+            return;
+        }
+        if (!Theme::isKnown($theme)) {
+            throw new RuleViolation($theme . ' is not one of the themes the interface is drawn in.');
+        }
+
+        $plan('Appearance', 'Interface theme changed from ' . Theme::name($current) . ' to ' . Theme::name($theme) . ' for everyone',
+            fn () => $this->setTheme($theme));
     }
 
     private function planSegments(array $in, callable $plan): void
@@ -725,6 +759,31 @@ final class SettingsRepository extends Repository
         if ($managers === 0) {
             throw new RuleViolation('That would leave no active Finance Manager, and nobody else can change settings or approve above their thresholds. Assign the role to someone first.');
         }
+    }
+
+    /**
+     * Written rather than updated blind: a database seeded before the theme
+     * existed has no row to update, and a save that silently changed nothing
+     * would still have been logged as a change.
+     */
+    private function setTheme(string $theme): void
+    {
+        $entityId = $this->headOffice()['id'];
+        // Through the builder rather than raw SQL: "key" is a reserved word, and the
+        // builder quotes it for whichever database is behind this.
+        $held = $this->db->table('settings')->select('id')->where('entity_id', $entityId)->where('key', Theme::KEY)->get()->getRowArray();
+        $now = Clock::timestamp();
+
+        if ($held === null) {
+            $this->insert('settings', [
+                'entity_id' => $entityId, 'key' => Theme::KEY, 'kind' => 'appearance', 'value' => $theme,
+                'label' => 'Interface theme', 'note' => self::THEME_NOTE, 'created_at' => $now,
+            ]);
+
+            return;
+        }
+
+        $this->db->table('settings')->where('id', $held['id'])->update(['value' => $theme, 'updated_at' => $now]);
     }
 
     private function setSetting(string $key, string $value): void

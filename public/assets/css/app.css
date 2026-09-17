@@ -1,3 +1,16 @@
+/*
+ * Colour is held in two layers. The first is fixed: the paper, the ink and the
+ * three colours that mean something — urgent, warn and calm — which read the
+ * same whichever theme is on, so a refused posting never reads as a brand
+ * choice. The second is the theme: the accent, the brand green and the
+ * navigation rail, set by the Finance Manager in Settings and written onto
+ * <html> as data-theme before first paint.
+ *
+ * :root carries the Evergreen values, so a page with no data-theme still renders
+ * the house palette. The blocks below are plain attribute selectors rather than
+ * :root ones, so a swatch in the settings picker can carry data-theme itself and
+ * paint from the same tokens as the shell it is previewing.
+ */
 :root {
   --ink: #16211E;
   --muted: #7A857F;
@@ -5,12 +18,89 @@
   --border: #E4E2DB;
   --bg: #F6F5F1;
   --card: #FFFFFF;
-  --accent: #0F5C4A;
-  --accent-dark: #0A3F33;
-  --green: #1FA37E;
   --urgent: #A5442F;
   --warn: #C08A3E;
   --calm: #3E7A69;
+}
+[data-theme="evergreen"], :root {
+  --accent: #0F5C4A;
+  --accent-dark: #0A3F33;
+  --green: #1FA37E;
+  --on-accent: #052019;
+  --rail-bg: #0D1B18;
+  --rail-hover: #152925;
+  --rail-active: #1B3A32;
+  --rail-line: #1A2C27;
+  --rail-edge: #2A443C;
+  --rail-text: #B9C6C0;
+  --rail-bright: #F2F5F3;
+  --rail-dim: #546861;
+  --rail-sub: #6E8079;
+  --rail-value: #D7E0DC;
+}
+[data-theme="deep-blue"] {
+  --accent: #12507A;
+  --accent-dark: #0B3854;
+  --green: #2C87BE;
+  --on-accent: #04141F;
+  --rail-bg: #0D1822;
+  --rail-hover: #142634;
+  --rail-active: #1B3549;
+  --rail-line: #1A2A38;
+  --rail-edge: #2A3F52;
+  --rail-text: #B4C4D2;
+  --rail-bright: #F1F5F8;
+  --rail-dim: #53656F;
+  --rail-sub: #6C808E;
+  --rail-value: #D4E0E9;
+}
+[data-theme="indigo"] {
+  --accent: #433AA0;
+  --accent-dark: #2E2775;
+  --green: #6C5CE0;
+  --on-accent: #0C0A18;
+  --rail-bg: #14131F;
+  --rail-hover: #201E30;
+  --rail-active: #2C2947;
+  --rail-line: #221F33;
+  --rail-edge: #383453;
+  --rail-text: #BEBCD0;
+  --rail-bright: #F3F2F8;
+  --rail-dim: #5A5670;
+  --rail-sub: #736F8C;
+  --rail-value: #D9D7E6;
+}
+[data-theme="burgundy"] {
+  --accent: #7A2438;
+  --accent-dark: #551825;
+  --green: #B14A62;
+  --on-accent: #1B0A0E;
+  --rail-bg: #1B1013;
+  --rail-hover: #2A1A1E;
+  --rail-active: #3A2228;
+  --rail-line: #2A1B1F;
+  --rail-edge: #472E35;
+  --rail-text: #CDBBBF;
+  --rail-bright: #F8F2F3;
+  --rail-dim: #6B555A;
+  --rail-sub: #8A6E74;
+  --rail-value: #E6D8DA;
+}
+[data-theme="graphite"] {
+  --accent: #3C4A55;
+  --accent-dark: #26313A;
+  --green: #5C7488;
+  --on-accent: #0A0E10;
+  --rail-bg: #14181B;
+  --rail-hover: #1F2529;
+  --rail-active: #2B3339;
+  --rail-line: #222829;
+  --rail-edge: #39434A;
+  --rail-text: #C0C6CA;
+  --rail-bright: #F3F5F6;
+  --rail-dim: #5A6469;
+  --rail-sub: #737C81;
+  --rail-value: #DCE1E4;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); }
@@ -28,31 +118,31 @@ a:hover { text-decoration: underline; }
 .shell { display: flex; height: 100vh; min-height: 720px; overflow: hidden; }
 
 .sidebar {
-  width: 236px; flex: 0 0 236px; background: #0D1B18; color: #B9C6C0;
+  width: 236px; flex: 0 0 236px; background: var(--rail-bg); color: var(--rail-text);
   display: flex; flex-direction: column; overflow: hidden;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 16px; }
 .brand-mark {
-  width: 30px; height: 30px; border-radius: 7px; background: var(--green); color: #052019;
+  width: 30px; height: 30px; border-radius: 7px; background: var(--green); color: var(--on-accent);
   display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;
 }
 .brand-text { display: flex; flex-direction: column; gap: 1px; }
-.brand-name { color: #F2F5F3; font-weight: 600; font-size: 13px; }
-.brand-sub { font-size: 10.5px; color: #6E8079; letter-spacing: .04em; text-transform: uppercase; }
+.brand-name { color: var(--rail-bright); font-weight: 600; font-size: 13px; }
+.brand-sub { font-size: 10.5px; color: var(--rail-sub); letter-spacing: .04em; text-transform: uppercase; }
 
 .nav { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px; overflow-y: auto; }
-.nav-group-label { font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase; color: #546861; padding: 14px 8px 6px; }
+.nav-group-label { font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase; color: var(--rail-dim); padding: 14px 8px 6px; }
 .nav-item {
   display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 6px;
-  color: #B9C6C0; font-size: 13px; text-decoration: none;
+  color: var(--rail-text); font-size: 13px; text-decoration: none;
 }
-.nav-item:hover { background: #152925; color: #F2F5F3; text-decoration: none; }
-.nav-item.active { background: #1B3A32; color: #FFFFFF; font-weight: 600; box-shadow: inset 2px 0 0 var(--green); }
+.nav-item:hover { background: var(--rail-hover); color: var(--rail-bright); text-decoration: none; }
+.nav-item.active { background: var(--rail-active); color: #FFFFFF; font-weight: 600; box-shadow: inset 2px 0 0 var(--green); }
 .nav-icon { width: 14px; text-align: center; opacity: .85; }
 
-.sidebar-footer { margin-top: auto; padding: 14px 16px; border-top: 1px solid #1A2C27; display: flex; flex-direction: column; gap: 6px; }
-.sidebar-footer-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #546861; }
-.sidebar-footer-value { font-size: 12px; color: #D7E0DC; }
+.sidebar-footer { margin-top: auto; padding: 14px 16px; border-top: 1px solid var(--rail-line); display: flex; flex-direction: column; gap: 6px; }
+.sidebar-footer-label { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--rail-dim); }
+.sidebar-footer-value { font-size: 12px; color: var(--rail-value); }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -151,7 +241,7 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
   margin-inline-start: auto; flex: 0 0 auto; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
   border: 1px solid #1E332D; background: transparent; color: #7E908A; border-radius: 6px; font-size: 12px; line-height: 1; cursor: pointer;
 }
-.nav-toggle:hover { background: #152925; color: #F2F5F3; border-color: #2A443C; }
+.nav-toggle:hover { background: var(--rail-hover); color: var(--rail-bright); border-color: var(--rail-edge); }
 
 .tb-pop { position: relative; flex: 0 0 auto; }
 .tb-caret { font-size: 9px; color: #9AA39E; }
@@ -632,7 +722,7 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 
 /* Menu tooltip, shown beside an icon while the sidebar is collapsed */
 #rail-tip { position: fixed; z-index: 1100; pointer-events: none; opacity: 0; transform: translateX(-4px);
-  background: #16211E; color: #F2F5F3; border: 1px solid #2A443C; border-radius: 6px; padding: 5px 10px;
+  background: var(--rail-bg); color: var(--rail-bright); border: 1px solid var(--rail-edge); border-radius: 6px; padding: 5px 10px;
   font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 12px; font-weight: 500; white-space: nowrap;
   box-shadow: 0 8px 20px rgba(0,0,0,.28); transition: opacity 110ms ease, transform 110ms ease; }
 [dir="rtl"] #rail-tip { transform: translateX(4px); }
@@ -673,10 +763,10 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .ap-bucket-value { font-size: 15px; font-weight: 600; font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
 .ap-fund { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #7A857F; }
 .ap-fund select { border: 1px solid #DDDAD2; background: #FFF; border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit; color: var(--ink); }
-.ap-selbar { margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: #0D1B18; color: #EAF1EE; border-radius: 8px; padding: 11px 16px; }
+.ap-selbar { margin: 0 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; background: var(--rail-bg); color: var(--rail-value); border-radius: 8px; padding: 11px 16px; }
 .ap-selbar[hidden] { display: none; }
-.ap-selbar-btn { border: 1px solid #2F4A43; background: transparent; color: #EAF1EE; border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-family: inherit; }
-.ap-selbar-btn:hover { background: #152925; }
+.ap-selbar-btn { border: 1px solid var(--rail-edge); background: transparent; color: var(--rail-value); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-family: inherit; }
+.ap-selbar-btn:hover { background: var(--rail-hover); }
 .ap-selbar-btn.go { border-color: #1FA37E; background: #1FA37E; color: #052019; font-weight: 600; padding: 6px 14px; }
 .ap-selbar-btn.go:hover { background: #18916F; }
 .ap-selbar-btn.quiet { border: none; color: #9DB0A8; }
@@ -845,7 +935,7 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .br-pick-ref { font-size: 11.5px; color: #7A857F; padding-bottom: 7px; }
 .br-pick-ref.br-signed { color: #2C6B58; }
 .br-pick-ref:empty { display: none; }
-.br-selbar { margin: 14px 0 0; background: #1B3A32; gap: 16px; padding: 10px 16px; }
+.br-selbar { margin: 14px 0 0; background: var(--rail-active); gap: 16px; padding: 10px 16px; }
 .br-selbar .ap-selbar-btn.go { background: #FFF; border-color: #FFF; color: #0F5C4A; }
 .br-selbar .ap-selbar-btn.go:disabled { background: transparent; border-color: rgba(255,255,255,.18); color: #7E8F89; opacity: 1; cursor: not-allowed; }
 .br-sides { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 18px; margin: 16px 0 0; align-items: start; }
@@ -1003,6 +1093,31 @@ select.st-cell { cursor: pointer; }
 .st-chip { font-size: 11.5px; color: #7A857F; background: #F2F1ED; border: 1px solid #E4E2DB; border-radius: 20px; padding: 3px 11px; }
 .st-chip.open { color: #2C6B58; background: #E7F2EE; border-color: #CFE5DD; }
 .st-warn { font-size: 12px; color: #8A5B2E; background: #FBF0E4; border: 1px solid #F0DFC8; border-radius: 7px; padding: 9px 12px; }
+
+/* The theme picker. Each swatch carries its own data-theme, so it is painted by
+   the same custom properties as the shell it is previewing — there is no second
+   list of hexes here to fall out of step with the palettes above. */
+.st-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
+.st-theme {
+  display: grid; grid-template-rows: auto auto auto; gap: 7px; text-align: start; cursor: pointer;
+  border: 1px solid #DDDAD2; border-radius: 9px; background: #FFF; padding: 10px; font: inherit; color: inherit;
+}
+.st-theme:hover:not(:disabled) { border-color: #C9D3CE; }
+.st-theme:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.st-theme.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.st-theme:disabled { cursor: default; opacity: .6; }
+.st-theme-swatch { display: flex; height: 62px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(0, 0, 0, .08); }
+.st-theme-rail { flex: 0 0 34%; background: var(--rail-bg); padding: 8px 7px; display: flex; flex-direction: column; gap: 6px; }
+.st-theme-mark { width: 12px; height: 12px; border-radius: 3px; background: var(--green); }
+.st-theme-line { height: 4px; border-radius: 2px; background: var(--rail-text); opacity: .75; }
+.st-theme-line.short { width: 60%; background: var(--rail-dim); opacity: 1; }
+.st-theme-page { flex: 1 1 auto; background: var(--bg); padding: 9px 8px; display: flex; flex-direction: column; gap: 7px; }
+.st-theme-btn { width: 42%; height: 10px; border-radius: 3px; background: var(--accent); }
+.st-theme-text { height: 4px; border-radius: 2px; background: var(--border); }
+.st-theme-text.short { width: 55%; }
+.st-theme-name { font-size: 12.5px; font-weight: 600; color: #16211E; display: flex; align-items: center; gap: 6px; }
+.st-theme-tick { color: var(--accent); font-size: 11px; }
+.st-theme-note { font-size: 11px; color: #7A857F; line-height: 1.45; }
 .st-amber { border: 1px solid #E9E1D0; background: #FBF6EA; border-radius: 8px; padding: 11px 13px; font-size: 11.5px; color: #7A6438; }
 .st-pill-base { font-size: 11px; color: #2C6B58; background: #EDF5F1; border: 1px solid #CFE5DD; border-radius: 20px; padding: 2px 9px; }
 .st-toggle { border: 1px solid #DDDAD2; background: #FFF; color: #5C665F; border-radius: 6px; padding: 5px 11px; font-size: 11.5px; font-weight: 500; cursor: pointer; font-family: inherit; }

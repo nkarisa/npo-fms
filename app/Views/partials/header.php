@@ -9,6 +9,7 @@
 
 use App\Libraries\I18n;
 use App\Libraries\Navigation;
+use App\Libraries\Theme;
 
 // Language and direction are set server-side, the same way the API decides them, so a
 // right-to-left language lays out correctly on first paint rather than flipping
@@ -16,9 +17,14 @@ use App\Libraries\Navigation;
 $request = service('request');
 $locale  = I18n::forRequest($request);
 $current = $locale->locale();
+
+// The theme is an organisation setting, so it is resolved here with the language
+// rather than in the browser: the shell paints in the right colours on first
+// paint, with no flash of the default palette while a script runs.
+$theme = Theme::current();
 ?>
 <!DOCTYPE html>
-<html lang="<?= esc($locale->code()) ?>" dir="<?= esc($locale->dir()) ?>">
+<html lang="<?= esc($locale->code()) ?>" dir="<?= esc($locale->dir()) ?>" data-theme="<?= esc($theme) ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

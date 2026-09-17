@@ -492,8 +492,8 @@ and section totals, followed by notes.
 ### Settings
 
 **Purpose:** configure the organisation, ledger, controls, currencies, approvals,
-bank-statement formats, integrations, payroll scales, language/translation, users
-and the audit log. Changes are edited into one draft and saved together.
+bank-statement formats, integrations, payroll scales, appearance,
+language/translation, users and the audit log. Changes are edited into one draft and saved together.
 
 **On screen:** a left navigation of sections and a content pane on the right. The
 top-right shows **Discard** (when there are unsaved changes) and a save button that
@@ -528,6 +528,13 @@ warning appears if you try to leave with unsaved changes.
   characters. This section saves as you go.
 - **Payroll** — benefits and the grade scale (each benefit becomes a payslip line
   and a grade column); add benefits and grades. In-use items cannot be disabled.
+- **Appearance** — the interface theme: the accent colour, the brand colour and
+  the navigation rail. One theme is held for the whole organisation, so everyone
+  reads the shell in the same colours; picking one repaints the screen
+  immediately as a preview, and it takes effect for everyone once saved.
+  Urgent, warning and settled keep their own colours in every theme, so an
+  exception always reads as an exception, and a theme changes nothing about who
+  can post, approve or read a record.
 - **Language and translation** — interface languages and coverage, fallback
   behaviour, raising wording for review, approving/declining translation requests,
   the locked reporting locale and terminology.
@@ -539,7 +546,7 @@ warning appears if you try to leave with unsaved changes.
 **What you can do:** edit any section into the draft and **Save changes** or
 **Discard**; manage currencies, approvals, payroll scales, segments and posting
 controls; assign and define bank-statement formats; set up the M-Pesa integration
-and check its connection; manage users and languages.
+and check its connection; choose the interface theme; manage users and languages.
 Saving is restricted to the Finance Manager.
 
 ---

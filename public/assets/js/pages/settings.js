@@ -1,6 +1,7 @@
 /**
  * Settings (v5): organisation, ledger, segments, currencies, approvals, bank
- * statements, integrations, payroll, language and translation, users and the audit log.
+ * statements, integrations, payroll, appearance, language and translation, users and
+ * the audit log.
  *
  * The sections edit one draft, saved together with "Save changes" (or thrown away
  * with "Discard"), so nothing reaches the ledger half-configured and every saved
@@ -32,6 +33,8 @@
   const num = (v) => parseFloat(String(v).replace(/[^0-9.]/g, '')) || 0;
   const fmt = (n) => Number(n).toLocaleString('en-US');
   const setCookie = (name, value) => { document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`; };
+  /** Repaints the shell in a theme. The server writes the saved one onto <html>; this is the preview of an unsaved pick. */
+  const paintTheme = (key) => { document.documentElement.dataset.theme = key; };
 
   /** The editable part of the settings, in the shape the API saves. */
   function toDraft(d) {
@@ -47,6 +50,7 @@
         grades: d.grades.map(g => ({ grade: g.grade, band: g.band, ben: { ...g.ben }, active: g.active })),
       },
       users: Object.fromEntries(d.users.map(u => [u.email, u.role])),
+      appearance: { theme: d.appearance.theme },
       language: { formatsLocked: d.language.formatsLocked },
     });
   }
@@ -87,6 +91,7 @@
     app.querySelector('#st-save').addEventListener('click', save);
     app.querySelector('#st-discard').addEventListener('click', () => {
       draft = toDraft(data);
+      paintTheme(draft.appearance.theme);
       view.curForm = { code: '', name: '', rate: '' };
       view.benForm = { name: '', basis: 'flat', taxable: true };
       view.gradeForm = { grade: '', band: '', ben: {} };
@@ -145,8 +150,8 @@
     const main = app.querySelector('#st-main');
     const renderers = {
       Organisation: organisation, Ledger: ledger, Segments: segments, Currencies: currencies, Approvals: approvals,
-      'Bank statements': bankStatements, Integrations: integrations, Payroll: payroll, 'Language and translation': language,
-      Users: users, 'Audit log': audit,
+      'Bank statements': bankStatements, Integrations: integrations, Payroll: payroll, Appearance: appearance,
+      'Language and translation': language, Users: users, 'Audit log': audit,
     };
     (renderers[view.section] || organisation)(main);
     if (!data.canManage && !['Bank statements', 'Integrations', 'Language and translation'].includes(view.section)) {
@@ -515,6 +520,36 @@
 
   // ---- Language and translation ----
 
+  /**
+   * The interface theme. One theme is held for the whole organisation, so a pick
+   * here is a change to a setting like any other: it is drafted, saved with
+   * everything else, and logged. The shell repaints as the pick is made — the
+   * swatches and the page are drawn from the same custom properties — so the
+   * choice is judged on the real screen rather than on a row of squares, and
+   * Discard puts the old theme back.
+   */
+  function appearance(main) {
+    const chosen = draft.appearance.theme;
+    main.innerHTML = `
+      <div class="st-body">
+        <div class="st-block">
+          ${head('Interface theme', 'The colours everyone here reads the ledger in. It changes what is on screen — never a figure, a code or a date. Urgent, warning and settled keep their own colours in every theme, so an exception always reads as an exception.')}
+          <div class="st-themes">
+            ${data.themes.map(t => `
+              <button type="button" class="st-theme ${t.key === chosen ? 'on' : ''}" data-act="theme" data-id="${esc(t.key)}" data-manage aria-pressed="${t.key === chosen}">
+                <span class="st-theme-swatch" data-theme="${esc(t.key)}" aria-hidden="true">
+                  <span class="st-theme-rail"><span class="st-theme-mark"></span><span class="st-theme-line"></span><span class="st-theme-line short"></span></span>
+                  <span class="st-theme-page"><span class="st-theme-btn"></span><span class="st-theme-text"></span><span class="st-theme-text short"></span></span>
+                </span>
+                <span class="st-theme-name">${esc(t.name)}${t.key === chosen ? '<span class="st-theme-tick">✓</span>' : ''}</span>
+                <span class="st-theme-note">${esc(t.note)}</span>
+              </button>`).join('')}
+          </div>
+          <div class="st-note">A theme is not a permission. It changes nothing about who can post, approve or read a record.</div>
+        </div>
+      </div>`;
+  }
+
   async function language(main) {
     if (!i18n) {
       main.innerHTML = '<div class="coa-empty">Loading languages…</div>';
@@ -721,6 +756,13 @@
     }
     if (!data.canManage) return;
 
+    if (act === 'theme') {
+      draft.appearance.theme = id;
+      paintTheme(id);
+      renderHead();
+      renderSection();
+      return;
+    }
     if (act === 'cur-toggle') {
       const c = draft.currencies[Number(id)];
       const h = data.currencies.find(x => x.code === c.code);

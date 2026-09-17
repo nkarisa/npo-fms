@@ -3,12 +3,13 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\I18n as I18nLib;
+use App\Libraries\Theme;
 use App\Repositories\RuleViolation;
 use App\Repositories\SettingsRepository;
 
 /**
  * Settings (v5): organisation, ledger, segments, currencies, approvals, bank
- * statements, integrations, payroll, language, users and the audit log.
+ * statements, integrations, payroll, appearance, language, users and the audit log.
  *
  * The screen edits a draft and saves it in one go (save), so a change reaches the
  * ledger only when it is saved and every saved change is in the audit log. Bank
@@ -19,7 +20,7 @@ use App\Repositories\SettingsRepository;
  */
 class Settings extends BaseApiController
 {
-    /** Sections in the order the screen lists them. "Bank statements" and "Integrations" are the additions to the v5 prototype. */
+    /** Sections in the order the screen lists them. "Bank statements", "Integrations" and "Appearance" are the additions to the v5 prototype. */
     private const SECTIONS = [
         ['label' => 'Organisation', 'icon' => '◧'],
         ['label' => 'Ledger', 'icon' => '▤'],
@@ -29,6 +30,7 @@ class Settings extends BaseApiController
         ['label' => 'Bank statements', 'icon' => '⇅'],
         ['label' => 'Integrations', 'icon' => '⇌'],
         ['label' => 'Payroll', 'icon' => '◍'],
+        ['label' => 'Appearance', 'icon' => '◐'],
         ['label' => 'Language and translation', 'icon' => '⌾'],
         ['label' => 'Users', 'icon' => '◉'],
         ['label' => 'Audit log', 'icon' => '◷'],
@@ -41,8 +43,8 @@ class Settings extends BaseApiController
 
     /**
      * Saves the draft. Body: any of organisation, ledger, toggles, segments,
-     * currencies, approvals, payroll, users, language — only what differs from what
-     * is held is changed.
+     * currencies, approvals, payroll, appearance, users, language — only what differs
+     * from what is held is changed.
      */
     public function save()
     {
@@ -125,6 +127,8 @@ class Settings extends BaseApiController
             'roles'        => $settings->roles(),
             'users'        => $settings->users(),
             'entityOptions' => $settings->entityOptions(),
+            'appearance'   => ['theme' => $settings->theme()],
+            'themes'       => Theme::THEMES,
             'audit'        => $settings->auditLog(),
             'language'     => $this->languageSummary($settings),
         ];

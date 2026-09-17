@@ -1,6 +1,7 @@
 <?php
 
 use App\Database\Seeds\DatabaseSeeder;
+use App\Libraries\Theme;
 use App\Repositories\ApprovalPolicy;
 use App\Repositories\Lookups;
 use App\Repositories\ReceivablesRepository;
@@ -43,7 +44,7 @@ final class SettingsTest extends CIUnitTestCase
     {
         $s = $this->api('api/settings');
 
-        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Approvals', 'Bank statements', 'Integrations', 'Payroll', 'Language and translation', 'Users', 'Audit log'], array_column($s['sections'], 'key'));
+        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Approvals', 'Bank statements', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Audit log'], array_column($s['sections'], 'key'));
         $this->assertTrue($s['canManage']);
         $this->assertSame(['registeredName' => 'Elections Observation Group', 'shortName' => 'ELOG', 'taxPin' => 'P051290384H', 'ngoReg' => 'OP/218/051/2010/0142'], $s['organisation']);
         $this->assertSame(['framework' => 'IFRS', 'currency' => 'KES', 'yearEnd' => '31 December', 'codeLength' => '4 digits'], $s['ledger']);
@@ -57,6 +58,8 @@ final class SettingsTest extends CIUnitTestCase
         $this->assertSame(['Finance Manager', 'Executive Director'], $s['approverRoles']);
         $this->assertSame('Payment run threshold raised from 1,500,000 to 2,000,000', $s['audit'][0]['what']);
         $this->assertTrue($s['language']['formatsLocked']);
+        $this->assertSame('evergreen', $s['appearance']['theme']);
+        $this->assertSame(['evergreen', 'deep-blue', 'indigo', 'burgundy', 'graphite'], array_column($s['themes'], 'key'));
 
         // Claims offer the active currencies at their indicative rates.
         $this->assertEquals(['KES' => 1.0, 'USD' => 129.4, 'EUR' => 139.8, 'DKK' => 18.75], ReceivablesRepository::currencies());
@@ -85,12 +88,13 @@ final class SettingsTest extends CIUnitTestCase
                 ),
             ],
             'users'        => ['s.njeri@elog.or.ke' => 'Senior Accountant'],
+            'appearance'   => ['theme' => 'deep-blue'],
             'language'     => ['formatsLocked' => false],
         ];
 
         $saved = $this->json($this->withBodyFormat('json')->post('api/settings', $draft));
 
-        $this->assertSame('Settings saved. 13 changes have been written to the audit log.', $saved['message']);
+        $this->assertSame('Settings saved. 14 changes have been written to the audit log.', $saved['message']);
         $this->assertSame([
             'Short name changed from ELOG to ELOG Kenya',
             'Block postings that exceed the budget line — turned on',
@@ -104,6 +108,7 @@ final class SettingsTest extends CIUnitTestCase
             'G4 transport allowance changed from 21,000 to 23,000',
             'G8 · Intern added to the grade scale',
             'S. Njeri moved from Accountant to Senior Accountant',
+            'Interface theme changed from Evergreen to Deep blue for everyone',
             'Numbers, dates and currency released to each user\'s locale',
         ], array_column($saved['changes'], 'what'));
 
@@ -115,6 +120,7 @@ final class SettingsTest extends CIUnitTestCase
         $g8 = end($saved['grades']);
         $this->assertEquals(['G8', 'Intern', 5000, 1500], [$g8['grade'], $g8['band'], $g8['ben']['transport_allowance'], $g8['ben']['airtime_allowance']]);
         $this->assertSame('Senior Accountant', current(array_filter($saved['users'], static fn ($u) => $u['email'] === 's.njeri@elog.or.ke'))['role']);
+        $this->assertSame('deep-blue', $saved['appearance']['theme']);
         $this->assertFalse($saved['language']['formatsLocked']);
         $this->assertSame('Language', $saved['audit'][0]['area']);
         $this->assertSame('W. Kamau', $saved['audit'][0]['who']);
@@ -156,8 +162,32 @@ final class SettingsTest extends CIUnitTestCase
         $refused(['payroll' => ['grades' => [['grade' => 'G4', 'band' => 'Officer', 'active' => false, 'ben' => []]]]], 'G4 is held by');
         $refused(['payroll' => ['benefits' => [['key' => 'house_allowance', 'name' => 'House allowance', 'basis' => 'pct', 'taxable' => true, 'active' => false]]]], 'House allowance is paid to');
         $refused(['payroll' => ['grades' => [['grade' => 'G9', 'band' => 'Casual', 'ben' => ['house_allowance' => 120]]]]], 'percentage of basic pay');
+        $refused(['appearance' => ['theme' => 'neon']], 'is not one of the themes');
 
         $this->assertSame(0, db_connect()->table('audit_events')->where('action', 'settings.changed')->like('summary', 'Changed')->countAllResults());
+    }
+
+    /**
+     * The theme is an organisation setting: the Finance Manager sets it, everyone
+     * reads the shell in it, and the shell paints it server-side so no page flashes
+     * the old palette first.
+     */
+    public function testTheThemeIsHeldForTheOrganisationAndPaintedByTheShell(): void
+    {
+        $this->assertSame('evergreen', Theme::current());
+        $this->assertStringContainsString('data-theme="evergreen"', $this->page('/settings'));
+
+        $this->json($this->withBodyFormat('json')->post('api/settings', ['appearance' => ['theme' => 'indigo']]));
+        Repository::forget();
+
+        $this->assertSame('indigo', Theme::current());
+        $this->assertStringContainsString('data-theme="indigo"', $this->page('/'));
+
+        // An accountant reads the same shell, and cannot change it.
+        $this->actAs('s.njeri@elog.or.ke');
+        $this->assertSame('indigo', $this->api('api/settings')['appearance']['theme']);
+        $this->withBodyFormat('json')->post('api/settings', ['appearance' => ['theme' => 'burgundy']])->assertStatus(403);
+        $this->assertSame('indigo', Theme::current());
     }
 
     public function testOnlyTheFinanceManagerSavesAndInvitesUsers(): void
@@ -183,6 +213,15 @@ final class SettingsTest extends CIUnitTestCase
     private function api(string $url): array
     {
         return json_decode($this->get($url)->getJSON(), true);
+    }
+
+    /** The rendered shell of a page, as a browser receives it. */
+    private function page(string $url): string
+    {
+        $response = $this->get($url);
+        $response->assertStatus(200);
+
+        return (string) $response->getBody();
     }
 
     private function json($response): array
