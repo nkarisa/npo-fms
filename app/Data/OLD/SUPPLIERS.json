@@ -1,0 +1,82 @@
+[
+    {
+        "name": "Copy Cat Group",
+        "pin": "P051220118C",
+        "category": "IT equipment",
+        "prequalUntil": "31 Dec 2026",
+        "rating": "A",
+        "wht": "—",
+        "spend": 2840000,
+        "status": "Pre-qualified"
+    },
+    {
+        "name": "Colour Print Kenya",
+        "pin": "P051664092K",
+        "category": "Print and design",
+        "prequalUntil": "31 Dec 2026",
+        "rating": "A",
+        "wht": "—",
+        "spend": 1980000,
+        "status": "Pre-qualified"
+    },
+    {
+        "name": "Rift Valley Car Hire",
+        "pin": "P051884406R",
+        "category": "Transport",
+        "prequalUntil": "31 Dec 2026",
+        "rating": "B",
+        "wht": "5% on hire",
+        "spend": 4360000,
+        "status": "Pre-qualified"
+    },
+    {
+        "name": "Safaricom PLC",
+        "pin": "P051092845Z",
+        "category": "Communication",
+        "prequalUntil": "31 Dec 2027",
+        "rating": "A",
+        "wht": "—",
+        "spend": 3120000,
+        "status": "Pre-qualified"
+    },
+    {
+        "name": "Zuri Consulting",
+        "pin": "P051992288Z",
+        "category": "Professional fees",
+        "prequalUntil": "30 Sep 2026",
+        "rating": "B",
+        "wht": "5% on fees",
+        "spend": 1360000,
+        "status": "Expiring"
+    },
+    {
+        "name": "Kenchic Suppliers Ltd",
+        "pin": "P051339087B",
+        "category": "Catering",
+        "prequalUntil": "31 Dec 2026",
+        "rating": "B",
+        "wht": "—",
+        "spend": 1940000,
+        "status": "Pre-qualified"
+    },
+    {
+        "name": "Computech Ltd",
+        "pin": "P051447731L",
+        "category": "IT equipment",
+        "prequalUntil": "31 Mar 2026",
+        "rating": "B",
+        "wht": "—",
+        "spend": 640000,
+        "status": "Lapsed"
+    },
+    {
+        "name": "Sunrise Apparel",
+        "pin": "P051773320A",
+        "category": "Branded items",
+        "prequalUntil": "—",
+        "rating": "—",
+        "wht": "—",
+        "spend": 0,
+        "status": "Not pre-qualified"
+    }
+]

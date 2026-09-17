@@ -9,6 +9,6 @@ use RuntimeException;
  * integrity rule the database enforces. The message is written for the user and
  * is returned to them as-is (HTTP 422).
  */
-final class RuleViolation extends RuntimeException
+class RuleViolation extends RuntimeException
 {
 }

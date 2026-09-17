@@ -1,0 +1,128 @@
+{
+  "3": [
+    "Restricted fund utilisation transfer",
+    "Surplus appropriated to reserves",
+    "Endowment contribution capitalised"
+  ],
+  "4": [
+    "Grant tranche recognised as income",
+    "Donor milestone certified",
+    "Income accrued on milestone"
+  ],
+  "5": [
+    "Programme activity costs",
+    "Operating expenditure",
+    "Support costs allocated"
+  ],
+  "11": [
+    "Transfer to programme account",
+    "Donor disbursement received",
+    "M-Pesa settlement batch",
+    "Cheque presented and cleared",
+    "Field advance surrendered",
+    "Bank charges swept"
+  ],
+  "12": [
+    "Grant tranche invoiced to donor",
+    "Observer advance issued",
+    "Advance surrendered on return",
+    "Prepaid insurance amortised",
+    "WHT certificate lodged with KRA"
+  ],
+  "13": [
+    "Asset acquisition capitalised",
+    "Monthly depreciation charge",
+    "Disposal of retired equipment",
+    "Vehicle purchase — donor funded"
+  ],
+  "21": [
+    "Supplier invoice recognised",
+    "Payment to supplier",
+    "Year-end accrual raised",
+    "Deferred income released to revenue"
+  ],
+  "22": [
+    "PAYE remitted to KRA",
+    "NSSF remittance",
+    "SHIF remittance",
+    "Payroll deduction accrued",
+    "Withholding tax remitted"
+  ],
+  "41": [
+    "Grant tranche recognised as income",
+    "Donor milestone certified",
+    "Deferred income released on delivery",
+    "Second disbursement recognised",
+    "Final tranche certified by donor"
+  ],
+  "42": [
+    "Training fees invoiced",
+    "Membership contributions banked",
+    "Interest credited by bank",
+    "Revaluation of USD holdings",
+    "Consultancy assignment invoiced"
+  ],
+  "51": [
+    "Programme activity costs",
+    "Field implementation costs",
+    "Community mobilisation costs"
+  ],
+  "52": [
+    "Monthly payroll charge",
+    "Statutory employer contributions",
+    "Staff medical cover premium",
+    "Gratuity provision",
+    "Casual field staff wages"
+  ],
+  "53": [
+    "Office rent — quarterly",
+    "Electricity and water",
+    "Internet and telephony",
+    "External audit fee instalment",
+    "Legal retainer",
+    "Bank charges and commission",
+    "Depreciation charge for the month"
+  ],
+  "54": [
+    "Sub-grant tranche to county partner",
+    "Partner capacity assessment",
+    "Partner reporting compliance grant",
+    "Second tranche released on report"
+  ],
+  "5110": [
+    "Observer stipends — county deployment",
+    "Observer recruitment drive — 12 counties",
+    "Accreditation fees paid to IEBC",
+    "Observer identification and kit issue",
+    "Deployment allowances — polling day",
+    "Reserve observer standby allowance"
+  ],
+  "5120": [
+    "Workshop venue and catering",
+    "Trainer facilitation fees",
+    "Participant travel reimbursement",
+    "Training-of-trainers residential",
+    "Workshop materials and stationery"
+  ],
+  "5130": [
+    "Printing of civic education materials",
+    "Radio spot production",
+    "Swahili translation of voter guides",
+    "Poster and banner production",
+    "Community drama outreach"
+  ],
+  "5140": [
+    "Field fuel and vehicle maintenance",
+    "Team accommodation — county deployment",
+    "Vehicle hire — Rift Valley cluster",
+    "Per diem settlement on return",
+    "Boat and motorcycle hire — remote wards"
+  ],
+  "5150": [
+    "Call centre operator costs",
+    "Airtime and data bundles",
+    "SMS gateway usage",
+    "Tablet and device leasing",
+    "Data quality audit fee"
+  ]
+}

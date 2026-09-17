@@ -45,15 +45,16 @@ class Pages extends BaseController
         return $this->render('pages/journals', 'journals', 'journals', 'Journals', 'Accounting');
     }
 
+    /** A journal opens in the editor over the register, as rows in the register do. */
     public function journalDetail($ref)
     {
-        return view('pages/journal_detail', [
-            'page'        => 'journal-detail',
-            'jsPage'      => 'journal_detail',
-            'title'       => 'Journal entry',
+        return view('pages/journals', [
+            'page'        => 'journals',
+            'jsPage'      => 'journals',
+            'title'       => 'Journals',
             'crumbGroup'  => 'Accounting',
-            'crumbPage'   => 'Journal entry',
-            'ref'         => $ref,
+            'crumbPage'   => 'Journals',
+            'openRef'     => $ref,
         ]);
     }
 
@@ -62,14 +63,53 @@ class Pages extends BaseController
         return $this->render('pages/payables', 'payables', 'payables', 'Payables', 'Accounting');
     }
 
+    /** A bill opens in its drawer over the bill list, as rows in the list do. */
+    public function billDetail($no)
+    {
+        return view('pages/payables', [
+            'page'       => 'payables',
+            'jsPage'     => 'payables',
+            'title'      => 'Payables',
+            'crumbGroup' => 'Accounting',
+            'crumbPage'  => 'Payables',
+            'openNo'     => $no,
+        ]);
+    }
+
     public function receivables()
     {
         return $this->render('pages/receivables', 'receivables', 'receivables', 'Receivables', 'Accounting');
     }
 
+    /** An invoice opens in its drawer over the invoice list, as rows in the list do. */
+    public function invoiceDetail($no)
+    {
+        return view('pages/receivables', [
+            'page'       => 'receivables',
+            'jsPage'     => 'receivables',
+            'title'      => 'Receivables',
+            'crumbGroup' => 'Accounting',
+            'crumbPage'  => 'Receivables',
+            'openNo'     => $no,
+        ]);
+    }
+
     public function procurement()
     {
         return $this->render('pages/procurement', 'procure', 'procurement', 'Procurement', 'Accounting');
+    }
+
+    /** A requisition opens in its drawer over the list, as rows in the list do. */
+    public function requisitionDetail($no)
+    {
+        return view('pages/procurement', [
+            'page'       => 'procure',
+            'jsPage'     => 'procurement',
+            'title'      => 'Procurement',
+            'crumbGroup' => 'Accounting',
+            'crumbPage'  => 'Procurement',
+            'openNo'     => $no,
+        ]);
     }
 
     public function bankRec()

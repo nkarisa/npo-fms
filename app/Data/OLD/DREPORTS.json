@@ -1,0 +1,503 @@
+[
+  {
+    "ref": "DR-26-018",
+    "title": "Financial report Q3 2026",
+    "funder": "USAID / Uraia",
+    "grant": "USAID / Uraia 2026",
+    "grantRef": "USAID/URAIA/2026",
+    "period": "Apr – Jun 26",
+    "type": "Financial",
+    "due": "30 Sep 2026",
+    "dueDays": 34,
+    "status": "Draft",
+    "preparer": "M. Otieno",
+    "note": "",
+    "received": 96400000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5110",
+        "budget": 62000000,
+        "period": 14280000,
+        "cumulative": 38260000
+      },
+      {
+        "code": "5140",
+        "budget": 28000000,
+        "period": 4620000,
+        "cumulative": 12485000
+      },
+      {
+        "code": "5150",
+        "budget": 22000000,
+        "period": 2840000,
+        "cumulative": 7620000
+      }
+    ],
+    "compliance": [
+      "Costs incurred within the agreement period — verified against posting dates.",
+      "No sub-granting in this period; none requires prior approval.",
+      "Indirect cost recovery not yet claimed for the period.",
+      "Branding and marking requirements met on all published outputs."
+    ],
+    "attachments": [
+      "General ledger extract",
+      "Bank reconciliation — Equity USD",
+      "M-Pesa observer stipend schedule",
+      "Asset register movement"
+    ],
+    "queries": [],
+    "trail": [
+      {
+        "when": "18 Aug",
+        "what": "Report generated from ledger by M. Otieno"
+      }
+    ]
+  },
+  {
+    "ref": "DR-26-017",
+    "title": "Financial report Q3 2026",
+    "funder": "DANIDA",
+    "grant": "DANIDA CE-2025/27",
+    "grantRef": "DANIDA/CE-2025/27",
+    "period": "Jul – Sep 26",
+    "type": "Financial",
+    "due": "15 Oct 2026",
+    "dueDays": 49,
+    "status": "Draft",
+    "preparer": "S. Njeri",
+    "note": "",
+    "received": 34250000,
+    "reportedAdj": 1240000,
+    "lines": [
+      {
+        "code": "5120",
+        "budget": 24000000,
+        "period": 5820000,
+        "cumulative": 16940000
+      },
+      {
+        "code": "5130",
+        "budget": 18000000,
+        "period": 3410000,
+        "cumulative": 9310000
+      }
+    ],
+    "compliance": [
+      "Indirect cost recovery within the 8% ceiling.",
+      "Three quotations held for all procurement above KES 1,000,000.",
+      "Quarterly narrative report submitted alongside."
+    ],
+    "attachments": [
+      "General ledger extract",
+      "Procurement file — Colourprint",
+      "Workshop participant lists"
+    ],
+    "queries": [],
+    "trail": [
+      {
+        "when": "20 Aug",
+        "what": "Report generated from ledger by S. Njeri"
+      },
+      {
+        "when": "22 Aug",
+        "what": "Manual adjustment of 1,240,000 entered by S. Njeri"
+      }
+    ]
+  },
+  {
+    "ref": "DR-26-016",
+    "title": "Close-out narrative and financial report",
+    "funder": "Ford Foundation",
+    "grant": "Ford Foundation GA-24",
+    "grantRef": "FORD/GA-24",
+    "period": "Jul 24 – Sep 26",
+    "type": "Close-out",
+    "due": "14 Sep 2026",
+    "dueDays": 18,
+    "status": "In review",
+    "preparer": "M. Otieno",
+    "note": "Sub-grant ratio holds at 62% — above the 60% floor.",
+    "received": 28340000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5410",
+        "budget": 19200000,
+        "period": 4250000,
+        "cumulative": 15680000
+      },
+      {
+        "code": "5420",
+        "budget": 6800000,
+        "period": 0,
+        "cumulative": 0
+      },
+      {
+        "code": "5210",
+        "budget": 4000000,
+        "period": 0,
+        "cumulative": 0
+      },
+      {
+        "code": "5310",
+        "budget": 2000000,
+        "period": 0,
+        "cumulative": 0
+      }
+    ],
+    "compliance": [
+      "Sub-grants to county partners represent 62% of expenditure — above the 60% floor.",
+      "Final report due within 60 days of close.",
+      "Unspent balance of 16,320,000 returnable unless a no-cost extension is agreed."
+    ],
+    "attachments": [
+      "General ledger extract",
+      "Sub-grant agreements and partner reports",
+      "Close-out asset disposal schedule"
+    ],
+    "queries": [],
+    "trail": [
+      {
+        "when": "10 Aug",
+        "what": "Report generated from ledger by M. Otieno"
+      },
+      {
+        "when": "14 Aug",
+        "what": "Sent for review to W. Kamau"
+      }
+    ]
+  },
+  {
+    "ref": "DR-26-015",
+    "title": "Financial report Q3 2026",
+    "funder": "UNDP Kenya",
+    "grant": "UNDP Basket 2026",
+    "grantRef": "UNDP/BASKET/2026",
+    "period": "Jul – Sep 26",
+    "type": "Financial",
+    "due": "31 Oct 2026",
+    "dueDays": 65,
+    "status": "In review",
+    "preparer": "M. Otieno",
+    "note": "",
+    "received": 27900000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5150",
+        "budget": 26000000,
+        "period": 3120000,
+        "cumulative": 7620000
+      }
+    ],
+    "compliance": [
+      "Pooled reporting format used, consistent with other basket recipients.",
+      "No assets above USD 5,000 acquired in the period.",
+      "HACT assurance activities not triggered this quarter."
+    ],
+    "attachments": [
+      "General ledger extract",
+      "Call centre platform invoice"
+    ],
+    "queries": [],
+    "trail": [
+      {
+        "when": "16 Aug",
+        "what": "Report generated from ledger by M. Otieno"
+      },
+      {
+        "when": "19 Aug",
+        "what": "Sent for review to W. Kamau"
+      }
+    ]
+  },
+  {
+    "ref": "DR-26-012",
+    "title": "Financial report H2 2026",
+    "funder": "Konrad Adenauer Stiftung",
+    "grant": "KAS 2025-KE",
+    "grantRef": "KAS/2025-KE",
+    "period": "Jan – Jun 26",
+    "type": "Financial",
+    "due": "04 Aug 2026",
+    "dueDays": -23,
+    "status": "Overdue",
+    "preparer": "P. Mwangi",
+    "note": "Blocked pending resolution of the June monitoring finding.",
+    "received": 9400000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5120",
+        "budget": 11000000,
+        "period": 2140000,
+        "cumulative": 8960000
+      }
+    ],
+    "compliance": [
+      "Two competitive quotations required for venue hire — one file incomplete.",
+      "Disbursements suspended; no new commitments permitted.",
+      "Report is 23 days overdue and blocking tranche 2."
+    ],
+    "attachments": [
+      "General ledger extract"
+    ],
+    "queries": [
+      {
+        "ref": "Q-2026-04",
+        "when": "12 Jun 2026",
+        "text": "Venue hire of KES 640,000 for the April forum shows a single quotation on file. Provide the two competitive quotations required under clause 7.3, or reclassify the cost as ineligible.",
+        "response": "Not yet answered — procurement file being reconstructed."
+      }
+    ],
+    "trail": [
+      {
+        "when": "28 Jul",
+        "what": "Report generated from ledger by P. Mwangi"
+      },
+      {
+        "when": "04 Aug",
+        "what": "Due date passed without submission"
+      }
+    ]
+  },
+  {
+    "ref": "DR-26-009",
+    "title": "Narrative report H1 2026",
+    "funder": "USAID / Uraia",
+    "grant": "USAID / Uraia 2026",
+    "grantRef": "USAID/URAIA/2026",
+    "period": "Oct 25 – Jun 26",
+    "type": "Narrative",
+    "due": "31 Jul 2026",
+    "dueDays": -27,
+    "status": "Submitted",
+    "preparer": "M. Otieno",
+    "note": "",
+    "received": 96400000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5110",
+        "budget": 62000000,
+        "period": 23980000,
+        "cumulative": 38260000
+      },
+      {
+        "code": "5140",
+        "budget": 28000000,
+        "period": 7865000,
+        "cumulative": 12485000
+      },
+      {
+        "code": "5150",
+        "budget": 22000000,
+        "period": 4780000,
+        "cumulative": 7620000
+      }
+    ],
+    "compliance": [
+      "Results framework indicators reported against baseline.",
+      "No material variance requiring funder notification.",
+      "Costs traced to posted ledger actuals."
+    ],
+    "attachments": [
+      "General ledger extract",
+      "Results framework annex",
+      "Observer deployment map"
+    ],
+    "queries": [],
+    "trail": [
+      {
+        "when": "24 Jul",
+        "what": "Report generated from ledger by M. Otieno"
+      },
+      {
+        "when": "28 Jul",
+        "what": "Approved by W. Kamau"
+      },
+      {
+        "when": "30 Jul",
+        "what": "Submitted to the Agreement Officer"
+      }
+    ]
+  },
+  {
+    "ref": "DR-26-006",
+    "title": "Interim financial report",
+    "funder": "Ford Foundation",
+    "grant": "Ford Foundation GA-24",
+    "grantRef": "FORD/GA-24",
+    "period": "Jul 25 – Jun 26",
+    "type": "Financial",
+    "due": "31 Jul 2026",
+    "dueDays": -27,
+    "status": "Queried",
+    "preparer": "M. Otieno",
+    "note": "",
+    "received": 28340000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5410",
+        "budget": 19200000,
+        "period": 11430000,
+        "cumulative": 11430000
+      },
+      {
+        "code": "5420",
+        "budget": 6800000,
+        "period": 0,
+        "cumulative": 0
+      }
+    ],
+    "compliance": [
+      "Sub-grant ratio met at 60.4%.",
+      "Partner reports on file for both tranches.",
+      "One query outstanding from the funder."
+    ],
+    "attachments": [
+      "General ledger extract",
+      "Partner report — Kisumu Civic Forum"
+    ],
+    "queries": [
+      {
+        "ref": "Q-2026-07",
+        "when": "11 Aug 2026",
+        "text": "Sub-grant to Homa Bay partner of KES 1,850,000 is dated after the partner's reporting deadline. Confirm the report was received and reviewed before release of funds.",
+        "response": "Drafted: partner report received 09 Aug and reviewed by M. Otieno before release on 15 Aug. Review memo attached."
+      }
+    ],
+    "trail": [
+      {
+        "when": "20 Jul",
+        "what": "Report generated from ledger by M. Otieno"
+      },
+      {
+        "when": "26 Jul",
+        "what": "Submitted to the programme officer"
+      },
+      {
+        "when": "11 Aug",
+        "what": "Query Q-2026-07 raised by the funder"
+      }
+    ]
+  },
+  {
+    "ref": "DR-26-003",
+    "title": "Annual financial report 2025",
+    "funder": "DANIDA",
+    "grant": "DANIDA CE-2025/27",
+    "grantRef": "DANIDA/CE-2025/27",
+    "period": "Jan – Dec 25",
+    "type": "Financial",
+    "due": "31 Mar 2026",
+    "dueDays": -149,
+    "status": "Accepted",
+    "preparer": "S. Njeri",
+    "note": "",
+    "received": 18000000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5120",
+        "budget": 12000000,
+        "period": 9420000,
+        "cumulative": 9420000
+      },
+      {
+        "code": "5130",
+        "budget": 8000000,
+        "period": 5680000,
+        "cumulative": 5680000
+      }
+    ],
+    "compliance": [
+      "Audited by PKF Kenya without qualification.",
+      "Indirect recovery claimed at 7.6%, within the ceiling.",
+      "Accepted by the funder on 28 Apr 2026."
+    ],
+    "attachments": [
+      "Audited financial statements 2025",
+      "Management letter",
+      "General ledger extract"
+    ],
+    "queries": [],
+    "trail": [
+      {
+        "when": "12 Mar",
+        "what": "Report generated from ledger by S. Njeri"
+      },
+      {
+        "when": "20 Mar",
+        "what": "Submitted with audited accounts"
+      },
+      {
+        "when": "28 Apr",
+        "what": "Accepted by the funder"
+      }
+    ]
+  },
+  {
+    "ref": "DR-25-021",
+    "title": "Final narrative and financial report",
+    "funder": "National Endowment for Democracy",
+    "grant": "NED 2024-KE",
+    "grantRef": "NED/2024-KE",
+    "period": "Jan 24 – Dec 25",
+    "type": "Close-out",
+    "due": "28 Feb 2026",
+    "dueDays": -180,
+    "status": "Accepted",
+    "preparer": "M. Otieno",
+    "note": "",
+    "received": 12400000,
+    "reportedAdj": 0,
+    "lines": [
+      {
+        "code": "5150",
+        "budget": 7400000,
+        "period": 7290000,
+        "cumulative": 7290000
+      },
+      {
+        "code": "5120",
+        "budget": 3000000,
+        "period": 2960000,
+        "cumulative": 2960000
+      },
+      {
+        "code": "5310",
+        "budget": 2000000,
+        "period": 1930000,
+        "cumulative": 1930000
+      }
+    ],
+    "compliance": [
+      "Close-out completed 31 Mar 2026.",
+      "Unspent balance of 220,000 refunded to the funder.",
+      "Records retained for seven years."
+    ],
+    "attachments": [
+      "Audited close-out statement",
+      "Refund remittance advice",
+      "General ledger extract"
+    ],
+    "queries": [],
+    "trail": [
+      {
+        "when": "10 Feb",
+        "what": "Report generated from ledger by M. Otieno"
+      },
+      {
+        "when": "22 Feb",
+        "what": "Submitted to the programme officer"
+      },
+      {
+        "when": "31 Mar",
+        "what": "Accepted and grant closed"
+      }
+    ]
+  }
+]

@@ -124,11 +124,11 @@ class ProcurementSeeder extends Seeder
         }
 
         if (isset($r['grn'])) {
-            // Store staff sign GRNs without a system account; their name stays on the note.
+            // Store staff sign GRNs without a system account; the name is kept as written.
             $grn = $ctx->insert('goods_received_notes', [
                 'entity_id' => $entity, 'reference' => $r['grn'], 'purchase_order_id' => $po, 'received_on' => $ctx->date($r['grnDate']),
-                'received_by' => $ctx->userOrSystem($r['receivedBy']),
-                'note' => trim($r['grnNote'] . ' (received by ' . $r['receivedBy'] . ')'), 'created_at' => $now,
+                'received_by' => $ctx->userOrSystem($r['receivedBy']), 'received_by_name' => $r['receivedBy'],
+                'note' => $r['grnNote'], 'created_at' => $now,
             ]);
             $ctx->remember('goods_received_notes', $r['grn'], $grn);
 

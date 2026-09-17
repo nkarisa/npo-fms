@@ -2,39 +2,30 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Clock;
 use App\Libraries\Prototype;
-use App\Repositories\ReceivablesRepository;
+use App\Repositories\ReceivablesRepository as Repo;
 use App\Repositories\RuleViolation;
 
 /**
- * Amounts due to ELOG — overwhelmingly grant tranches and reimbursable claims
- * rather than trade sales, which is why a row carries its award reference and
- * the fund the receipt will be allocated to.
- *
- * Mirrors Payables so the two ageing screens read the same way, with one
- * difference that matters: a claim can be part received, so the ageing is on
- * the outstanding balance rather than on the invoice value.
+ * Receivables (v5): amounts due to ELOG — overwhelmingly grant tranches and
+ * reimbursable claims rather than trade sales. The invoice list with its ageing
+ * (on the outstanding balance, since a claim can be part received), status tabs,
+ * fund and search, ten a page; the invoice drawer; the claim builder; issuing,
+ * reminders and receipts for one invoice or a selection; write-off; and the aged
+ * statement.
  */
 class Receivables extends BaseApiController
 {
+    private const PAGE_SIZE = 10;
+
+    private const TABS = ['All', 'Draft', 'Issued', 'Part received', 'Overdue', 'Received', 'Written off'];
+
     private const BUCKETS = ['Current', '1–30 days', '31–60 days', '61–90 days', 'Over 90 days'];
 
-    /** What is still to come in — never negative, even if a donor overpays. */
     public static function outstanding(array $i): float
     {
-        return max(0, $i['amount'] - $i['received']);
-    }
-
-    /** Written-off and fully received claims are closed and drop out of the ageing. */
-    private static function isOpen(array $i): bool
-    {
-        return !in_array($i['status'], ['Received', 'Written off'], true);
-    }
-
-    /** A draft has not been issued to the donor yet, so it cannot be late. */
-    private static function isLate(array $i): bool
-    {
-        return self::isOpen($i) && $i['status'] !== 'Draft' && $i['dueIn'] < 0;
+        return Repo::outstanding($i);
     }
 
     private static function bucket(array $i): string
@@ -47,163 +38,266 @@ class Receivables extends BaseApiController
         return $d <= 30 ? '1–30 days' : ($d <= 60 ? '31–60 days' : ($d <= 90 ? '61–90 days' : 'Over 90 days'));
     }
 
+    private static function sumOut(array $set): float
+    {
+        return array_sum(array_map([Repo::class, 'outstanding'], $set));
+    }
+
     public function index()
     {
-        $all    = (new ReceivablesRepository())->all();
-        $status = $this->request->getGet('status') ?: 'All';
-        $age    = $this->request->getGet('age') ?: 'All';
+        $repo   = new Repo();
+        $all    = $repo->all();
+        $status = in_array($this->request->getGet('status'), self::TABS, true) ? $this->request->getGet('status') : 'All';
+        $age    = in_array($this->request->getGet('age'), self::BUCKETS, true) ? $this->request->getGet('age') : 'All';
         $fund   = $this->request->getGet('fund') ?: 'All funds';
-        $q      = strtolower(trim($this->request->getGet('q') ?? ''));
+        $q      = mb_strtolower(trim($this->request->getGet('q') ?? ''));
+        $page   = max(1, (int) ($this->request->getGet('page') ?: 1));
 
-        $filtered = array_values(array_filter($all, function ($i) use ($status, $age, $fund, $q) {
-            if ($status === 'Overdue') {
-                if (!self::isLate($i)) {
-                    return false;
-                }
-            } elseif ($status !== 'All' && $i['status'] !== $status) {
+        $filtered = array_values(array_filter($all, static function ($i) use ($status, $age, $fund, $q) {
+            if ($status === 'Overdue' ? !Repo::isLate($i) : ($status !== 'All' && $i['status'] !== $status)) {
                 return false;
             }
             if ($fund !== 'All funds' && $i['fund'] !== $fund) {
                 return false;
             }
-            if ($age !== 'All' && self::bucket($i) !== $age) {
+            if ($age !== 'All' && (!Repo::isOpen($i) || self::bucket($i) !== $age)) {
                 return false;
             }
-            if ($q !== '' && !str_contains(strtolower($i['no'] . ' ' . $i['donor'] . ' ' . $i['grantRef'] . ' ' . $i['program']), $q)) {
-                return false;
-            }
-            return true;
+
+            return $q === '' || str_contains(mb_strtolower($i['no'] . ' ' . $i['donor'] . ' ' . $i['grantRef'] . ' ' . $i['program']), $q);
         }));
 
-        $rows = array_map(function ($i) {
-            $out = self::outstanding($i);
+        $pages = max(1, (int) ceil(count($filtered) / self::PAGE_SIZE));
+        $page  = min($page, $pages);
 
-            return [
-                'no'          => $i['no'],
-                'donor'       => $i['donor'],
-                'subtitle'    => $i['grantRef'] . ' · ' . $i['type'],
-                'type'        => $i['type'],
-                'program'     => $i['program'],
-                'fund'        => $i['fund'],
-                'issue'       => substr($i['issue'], 0, 6),
-                'due'         => substr($i['due'], 0, 6),
-                'ccy'         => $i['ccy'],
-                'amount'      => Prototype::fmt($i['amount']),
-                'received'    => Prototype::fmt($i['received']),
-                'outstanding' => Prototype::fmt($out),
-                'status'      => $i['status'],
-                'overdue'     => self::isLate($i),
-                'bucket'      => self::bucket($i),
-                'age'         => $i['dueIn'] >= 0 ? 'in ' . $i['dueIn'] . 'd' : -$i['dueIn'] . 'd',
-                // A claim billed in USD or EUR still posts in KES at the agreed rate.
-                'foreign'     => isset($i['fx']) ? $i['ccy'] . ' ' . number_format($i['amountFc']) . ' at ' . $i['fx'] : '',
-            ];
-        }, $filtered);
+        $rows = array_map(static fn ($i) => [
+            'no' => $i['no'], 'donor' => $i['donor'], 'subtitle' => $i['grantRef'] . ' · ' . $i['type'],
+            'issue' => substr($i['issue'], 0, 6), 'due' => substr($i['due'], 0, 6), 'fund' => $i['fund'], 'program' => $i['program'],
+            'amount' => $i['amount'], 'received' => $i['received'], 'outstanding' => Repo::outstanding($i),
+            // An issued or part-received claim past its due date reads as overdue.
+            'status' => Repo::isLate($i) ? 'Overdue' : $i['status'],
+            'age' => $i['dueIn'] >= 0 ? 'in ' . $i['dueIn'] . 'd' : -$i['dueIn'] . 'd',
+            'overdue' => Repo::isLate($i),
+        ], array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE));
 
-        $open  = array_values(array_filter($all, fn ($i) => self::isOpen($i)));
-        $late  = array_values(array_filter($all, fn ($i) => self::isLate($i)));
-        $due30 = array_values(array_filter($open, fn ($i) => $i['dueIn'] >= 0 && $i['dueIn'] <= 30));
-
-        $bankedThisMonth = array_sum(array_map(
-            static fn ($i) => array_sum(array_map(
-                static fn ($r) => str_contains($r['when'], \App\Libraries\Clock::today()->format('M')) ? $r['amount'] : 0,
-                $i['receipts']
-            )),
+        $open  = array_values(array_filter($all, [Repo::class, 'isOpen']));
+        $late  = array_values(array_filter($all, [Repo::class, 'isLate']));
+        $due30 = array_values(array_filter($open, static fn ($i) => $i['status'] !== 'Draft' && $i['dueIn'] >= 0 && $i['dueIn'] <= 30));
+        $month = Clock::today()->format('Y-m');
+        $banked = array_sum(array_map(
+            static fn ($i) => array_sum(array_map(static fn ($r) => str_starts_with($r['onISO'], $month) ? $r['amount'] : 0, $i['receipts'])),
             $all
         ));
 
-        $sumOut = static fn (array $set) => array_sum(array_map(static fn ($i) => self::outstanding($i), $set));
-
-        $aging = array_map(function ($b) use ($open, $sumOut) {
-            $in = array_values(array_filter($open, fn ($i) => self::bucket($i) === $b));
-
-            return ['label' => $b, 'value' => Prototype::fmt($sumOut($in)), 'count' => count($in)];
-        }, self::BUCKETS);
-
         return $this->json([
-            'rows'          => $rows,
-            'total'         => count($all),
-            'aging'         => $aging,
-            'fundOptions'   => ['All funds', 'General Fund', 'Grant Fund', 'Capital Fund', 'Endowment Fund'],
-            'tabs'          => array_map(fn ($s) => [
+            'rows'        => $rows,
+            'total'       => count($all),
+            'filtered'    => count($filtered),
+            'page'        => $page,
+            'pages'       => $pages,
+            'pageSize'    => self::PAGE_SIZE,
+            'fundOptions' => ['All funds', 'General Fund', 'Grant Fund', 'Capital Fund', 'Endowment Fund'],
+            'aging'       => array_map(static function ($b) use ($open) {
+                $set = $b === 'All' ? $open : array_values(array_filter($open, static fn ($i) => self::bucket($i) === $b));
+
+                return ['key' => $b, 'label' => $b === 'All' ? 'All outstanding' : $b, 'value' => Prototype::fmt(self::sumOut($set)),
+                    'count' => count($set) . (count($set) === 1 ? ' invoice' : ' invoices')];
+            }, array_merge(['All'], self::BUCKETS)),
+            'tabs' => array_map(static fn ($s) => [
                 'label' => $s,
-                'count' => $s === 'All'
-                    ? count($all)
-                    : ($s === 'Overdue' ? count($late) : count(array_filter($all, fn ($i) => $i['status'] === $s))),
-            ], ['All', 'Draft', 'Issued', 'Part received', 'Overdue', 'Received', 'Written off']),
-            'stats' => [
-                ['label' => 'Total receivable', 'value' => Prototype::fmt($sumOut($open)), 'note' => count($open) . ' open invoices'],
-                ['label' => 'Overdue', 'value' => Prototype::fmt($sumOut($late)), 'note' => count($late) . ' past due date'],
-                ['label' => 'Due within 30 days', 'value' => Prototype::fmt($sumOut($due30)), 'note' => count($due30) . ' claims expected'],
-                ['label' => 'Received this month', 'value' => Prototype::fmt($bankedThisMonth), 'note' => 'banked in ' . \App\Libraries\Clock::today()->format('F')],
-                ['label' => 'Draft, not yet issued', 'value' => Prototype::fmt($sumOut(array_filter($all, fn ($i) => $i['status'] === 'Draft'))), 'note' => 'nothing claimed until issued'],
+                'count' => match ($s) {
+                    'All'     => count($all),
+                    'Overdue' => count($late),
+                    default   => count(array_filter($all, static fn ($i) => $i['status'] === $s)),
+                },
+            ], self::TABS),
+            'hint'   => $age === 'All' ? count($late) . ' invoices past due' : 'Aging filter: ' . $age,
+            'footer' => count($filtered) . ' of ' . count($all) . ' invoices · outstanding ' . Prototype::fmt(self::sumOut(array_filter($filtered, [Repo::class, 'isOpen']))),
+            'stats'  => [
+                ['label' => 'Total receivable', 'value' => Prototype::fmt(self::sumOut($open)), 'note' => count($open) . ' open invoices'],
+                ['label' => 'Overdue', 'value' => Prototype::fmt(self::sumOut($late)), 'note' => count($late) . ' past due date'],
+                ['label' => 'Due within 30 days', 'value' => Prototype::fmt(self::sumOut($due30)), 'note' => 'Expected before ' . Clock::today()->modify('+30 days')->format('d M')],
+                ['label' => 'Received this month', 'value' => Prototype::fmt($banked), 'note' => 'Banked in ' . Clock::today()->format('F')],
+                ['label' => 'Unbilled entitlement', 'value' => Prototype::fmt($repo->unbilled()), 'note' => 'Incurred but not yet claimed'],
             ],
         ]);
     }
 
+    /** One invoice for the drawer, with the actions open to the acting user. */
     public function show($no)
     {
-        $i = (new ReceivablesRepository())->find($no);
+        $repo = new Repo();
+        $i = $repo->find($no);
         if ($i === null) {
             return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in receivables.']);
         }
 
-        $i['outstanding'] = self::outstanding($i);
-        $i['bucket']      = self::bucket($i);
-        $i['overdue']     = self::isLate($i);
-        $i['lineTotal']   = array_sum(array_map(static fn ($l) => $l['amount'], $i['lines']));
+        $actor   = $this->actor();
+        $mine    = $i['preparedBy'] === $this->actorId();
+        $draft   = $i['status'] === 'Draft';
+        $receive = Repo::isOpen($i) && !$draft;
 
-        return $this->json($i);
+        return $this->json([
+            'invoice' => $i + ['outstanding' => Repo::outstanding($i), 'overdue' => Repo::isLate($i), 'bucket' => self::bucket($i)],
+            'can' => [
+                'issue'    => $draft && $actor['canApprove'] && !$mine,
+                'receive'  => $receive && ($actor['canPrepare'] || $actor['canApprove']),
+                'remind'   => $receive && ($actor['canPrepare'] || $actor['canApprove']),
+                'writeOff' => Repo::isLate($i) && $actor['canApprove'],
+                'note'     => $draft && $mine && $actor['canApprove']
+                    ? 'You built this claim, so a second person must issue it.'
+                    : ($draft && !$actor['canApprove'] ? 'Issuing a claim needs an approver — it raises the receivable and recognises the income.' : ''),
+            ],
+            'receiptAccounts' => $repo->receiptAccounts(),
+        ]);
     }
 
-    /**
-     * Records a receipt against a claim, in full or in part.
-     *
-     * Guards the two things that would corrupt the control account: receipting a
-     * claim that was never issued, and banking more than the donor actually owes.
-     */
-    public function receipt($no)
+    /** What the claim builder offers: active awards with their lines, other income accounts and currencies. */
+    public function form()
     {
-        $body   = $this->request->getJSON(true) ?? [];
-        $amount = round((float) ($body['amount'] ?? 0));
-        $ref    = trim((string) ($body['ref'] ?? ''));
+        $repo = new Repo();
 
-        $repo = new ReceivablesRepository();
-        foreach ($repo->all() as $i) {
-            if ($i['no'] !== $no) {
-                continue;
-            }
+        return $this->json([
+            'awards'       => $repo->awards(),
+            'otherAccounts' => $repo->otherIncomeAccounts(),
+            'currencies'   => Repo::CURRENCIES,
+            'due'          => Clock::today()->modify('+30 days')->format('d M Y'),
+        ]);
+    }
 
-            if (in_array($i['status'], ['Draft', 'Written off'], true)) {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => $no . ' is ' . strtolower($i['status']) . ' — it cannot take a receipt until it is issued to the donor.',
-                ]);
-            }
-            if ($amount <= 0) {
-                return $this->response->setStatusCode(422)->setJSON(['error' => 'A receipt needs an amount.']);
-            }
-            if ($ref === '') {
-                return $this->response->setStatusCode(422)->setJSON(['error' => 'A receipt needs the bank or M-Pesa reference it was banked against.']);
-            }
-
-            $owed = self::outstanding($i);
-            if ($amount > $owed) {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => 'Receipt of ' . Prototype::fmt($amount) . ' exceeds the ' . Prototype::fmt($owed) . ' outstanding on ' . $no . '.',
-                ]);
-            }
-
-            try {
-                $i = $repo->recordReceipt($no, $amount, $ref, trim((string) ($body['note'] ?? '')), (string) ($body['account'] ?? '1110'), $this->actorId());
-            } catch (RuleViolation $e) {
-                return $this->refused($e);
-            }
-
-            $i['outstanding'] = self::outstanding($i);
-
-            return $this->json(['invoice' => $i]);
+    public function create()
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->forbidden($actor['role'] . ' cannot build donor claims.');
         }
 
-        return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in receivables.']);
+        try {
+            $invoice = (new Repo())->create($this->request->getJSON(true) ?? [], $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['invoice' => $invoice])->setStatusCode(201);
+    }
+
+    /** Body: {nos: [...]}. */
+    public function issue()
+    {
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot issue claims to donors.');
+        }
+
+        return $this->batch(fn (array $nos) => (new Repo())->issue($nos, $this->actorId()));
+    }
+
+    /** Body: {nos: [...]}. */
+    public function remind()
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare'] && !$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot send donor reminders.');
+        }
+
+        return $this->batch(fn (array $nos) => (new Repo())->remind($nos, $this->actorId()));
+    }
+
+    /** Body: {nos: [...]}. */
+    public function receiveInFull()
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare'] && !$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot record receipts.');
+        }
+
+        return $this->batch(fn (array $nos) => (new Repo())->receiveInFull($nos, $this->actorId()));
+    }
+
+    /** Body: {amount, account, ref, note}. Records a receipt against an issued claim, in full or in part. */
+    public function receipt($no)
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare'] && !$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot record receipts.');
+        }
+        $body = $this->request->getJSON(true) ?? [];
+
+        try {
+            $invoice = (new Repo())->recordReceipt(
+                (string) $no,
+                (float) preg_replace('/[^0-9.]/', '', (string) ($body['amount'] ?? '')),
+                (string) ($body['account'] ?? '1110'),
+                (string) ($body['ref'] ?? ''),
+                trim((string) ($body['note'] ?? '')),
+                $this->actorId()
+            );
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['invoice' => $invoice + ['outstanding' => Repo::outstanding($invoice)]]);
+    }
+
+    /** Body: {reason}. */
+    public function writeOff($no)
+    {
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot write off a claim.');
+        }
+
+        try {
+            $invoice = (new Repo())->writeOff((string) $no, (string) (($this->request->getJSON(true) ?? [])['reason'] ?? ''), $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['invoice' => $invoice]);
+    }
+
+    /** The aged receivables statement as at today, as CSV: open invoices by ageing bucket. */
+    public function statement()
+    {
+        $open = array_values(array_filter((new Repo())->all(), [Repo::class, 'isOpen']));
+        usort($open, static fn ($a, $b) => [$a['donor'], $a['dueISO']] <=> [$b['donor'], $b['dueISO']]);
+
+        $out = fopen('php://temp', 'r+');
+        fputcsv($out, ['Aged receivables statement as at ' . Clock::today()->format('d M Y')]);
+        fputcsv($out, array_merge(['Invoice', 'Donor or payer', 'Award', 'Type', 'Fund', 'Status', 'Issued', 'Due', 'Currency', 'Invoiced (KES)', 'Received (KES)'], self::BUCKETS));
+        $totals = array_fill_keys(self::BUCKETS, 0.0);
+        foreach ($open as $i) {
+            $owed = Repo::outstanding($i);
+            $bucket = self::bucket($i);
+            $totals[$bucket] += $owed;
+            fputcsv($out, array_merge(
+                [$i['no'], $i['donor'], $i['grantRef'], $i['type'], $i['fund'], Repo::isLate($i) ? 'Overdue' : $i['status'], $i['issue'], $i['due'], $i['ccy'], $i['amount'], $i['received']],
+                array_map(static fn ($b) => $b === $bucket ? $owed : '', self::BUCKETS)
+            ));
+        }
+        fputcsv($out, array_merge(['Total', '', '', '', '', '', '', '', '', '', ''], array_values($totals)));
+        rewind($out);
+        $csv = stream_get_contents($out);
+
+        return $this->response
+            ->setHeader('Content-Type', 'text/csv; charset=utf-8')
+            ->setHeader('Content-Disposition', 'attachment; filename="aged-receivables-' . Clock::date() . '.csv"')
+            ->setBody($csv);
+    }
+
+    private function batch(callable $action)
+    {
+        $nos = ($this->request->getJSON(true) ?? [])['nos'] ?? [];
+
+        try {
+            return $this->json($action(is_array($nos) ? $nos : [$nos]));
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+    }
+
+    private function forbidden(string $message)
+    {
+        return $this->response->setStatusCode(403)->setJSON(['error' => $message]);
     }
 }

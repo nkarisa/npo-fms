@@ -3,27 +3,40 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
+use App\Repositories\ApprovalPolicy;
 use App\Repositories\PayablesRepository;
+use App\Repositories\RuleViolation;
 
+/**
+ * Payables (v5): supplier bills with their ageing, filtered by status, ageing bucket,
+ * fund and search, ten a page; the bill drawer; bill capture; approval, scheduling
+ * and payment of one bill or a selection; and withholding tax remittance.
+ */
 class Payables extends BaseApiController
 {
+    private const PAGE_SIZE = 10;
+
+    private const TABS = ['All', 'Awaiting approval', 'Approved', 'Scheduled', 'Paid', 'Overdue'];
+
+    private const BUCKETS = ['Current', '1–30 days', '31–60 days', '61–90 days', 'Over 90 days'];
+
+    /** A bill's tax and settlement figures, as stored on the bill. */
     public static function totals(array $b): array
     {
-        $vat   = round($b['taxable'] * 0.16);
-        $gross = $b['taxable'] + $vat;
-        $wht   = round($b['taxable'] * ($b['whtRate'] / 100));
-
-        return ['vat' => $vat, 'gross' => $gross, 'wht' => $wht, 'net' => $gross - $wht];
+        return ['vat' => $b['vat'], 'gross' => $b['gross'], 'wht' => $b['wht'], 'net' => $b['net']];
     }
 
     private static function bucket(array $b): string
     {
         $d = $b['dueIn'];
-        if ($d > 0) return 'Current';
-        if ($d >= -30) return '1–30 days';
-        if ($d >= -60) return '31–60 days';
-        if ($d >= -90) return '61–90 days';
-        return 'Over 90 days';
+
+        return match (true) {
+            $d >= 0   => 'Current',
+            $d >= -30 => '1–30 days',
+            $d >= -60 => '31–60 days',
+            $d >= -90 => '61–90 days',
+            default   => 'Over 90 days',
+        };
     }
 
     private static function isOpen(array $b): bool
@@ -31,21 +44,28 @@ class Payables extends BaseApiController
         return !in_array($b['status'], ['Paid', 'Rejected'], true);
     }
 
+    private static function overdue(array $b): bool
+    {
+        return self::isOpen($b) && $b['dueIn'] < 0;
+    }
+
+    private static function net(array $bills): float
+    {
+        return array_sum(array_column($bills, 'net'));
+    }
+
     public function index()
     {
         $repo   = new PayablesRepository();
         $all    = $repo->all();
-        $status = $this->request->getGet('status') ?: 'All';
-        $age    = $this->request->getGet('age') ?: 'All';
+        $status = in_array($this->request->getGet('status'), self::TABS, true) ? $this->request->getGet('status') : 'All';
+        $age    = in_array($this->request->getGet('age'), self::BUCKETS, true) ? $this->request->getGet('age') : 'All';
         $fund   = $this->request->getGet('fund') ?: 'All funds';
-        $q      = strtolower(trim($this->request->getGet('q') ?? ''));
+        $q      = mb_strtolower(trim($this->request->getGet('q') ?? ''));
+        $page   = max(1, (int) ($this->request->getGet('page') ?: 1));
 
         $filtered = array_values(array_filter($all, function ($b) use ($status, $age, $fund, $q) {
-            if ($status === 'Overdue') {
-                if (!(self::isOpen($b) && $b['dueIn'] < 0)) {
-                    return false;
-                }
-            } elseif ($status !== 'All' && $b['status'] !== $status) {
+            if ($status === 'Overdue' ? !self::overdue($b) : ($status !== 'All' && $b['status'] !== $status)) {
                 return false;
             }
             if ($age !== 'All' && (!self::isOpen($b) || self::bucket($b) !== $age)) {
@@ -54,62 +74,240 @@ class Payables extends BaseApiController
             if ($fund !== 'All funds' && $b['fund'] !== $fund) {
                 return false;
             }
-            if ($q !== '' && !str_contains(strtolower($b['no'] . ' ' . $b['supplier'] . ' ' . $b['pin'] . ' ' . $b['category']), $q)) {
-                return false;
-            }
-            return true;
+
+            return $q === '' || str_contains(mb_strtolower($b['no'] . ' ' . $b['supplier'] . ' ' . $b['pin'] . ' ' . $b['category'] . ' ' . $b['invoiceNo']), $q);
         }));
 
-        $rows = array_map(function ($b) {
-            $t = self::totals($b);
-            return array_merge($b, [
-                'vat' => $t['vat'], 'gross' => $t['gross'], 'wht' => $t['wht'], 'net' => $t['net'],
-                'grossFmt' => Prototype::fmt($t['gross']), 'whtFmt' => $t['wht'] ? Prototype::fmt($t['wht']) : '—', 'netFmt' => Prototype::fmt($t['net']),
-                'overdue' => self::isOpen($b) && $b['dueIn'] < 0,
-                'bucket'  => self::bucket($b),
-            ]);
-        }, $filtered);
+        $pages = max(1, (int) ceil(count($filtered) / self::PAGE_SIZE));
+        $page  = min($page, $pages);
 
-        $outstanding = array_values(array_filter($all, fn ($b) => self::isOpen($b)));
-        $overdue     = array_values(array_filter($outstanding, fn ($b) => $b['dueIn'] < 0));
-        $dueWeek     = array_values(array_filter($outstanding, fn ($b) => $b['dueIn'] >= 0 && $b['dueIn'] <= 7));
-        $awaiting    = array_values(array_filter($all, fn ($b) => $b['status'] === 'Awaiting approval'));
-        $whtHeld     = array_sum(array_map(fn ($b) => self::totals($b)['wht'], $outstanding));
+        $rows = array_map(static fn ($b) => [
+            'no' => $b['no'], 'supplier' => $b['supplier'], 'subtitle' => $b['category'] . ' · PIN ' . $b['pin'],
+            'invDate' => $b['invDate'], 'dueDate' => $b['dueDate'], 'fund' => $b['fund'], 'program' => $b['program'],
+            'gross' => $b['gross'], 'wht' => $b['wht'], 'net' => $b['net'], 'status' => $b['status'],
+            'age' => $b['status'] === 'Paid' ? '—' : ($b['dueIn'] > 0 ? 'in ' . $b['dueIn'] . 'd' : ($b['dueIn'] === 0 ? 'today' : abs($b['dueIn']) . 'd late')),
+            'overdue' => self::overdue($b),
+        ], array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE));
 
-        $buckets = array_map(function ($k) use ($outstanding) {
-            $in = array_values(array_filter($outstanding, fn ($b) => self::bucket($b) === $k));
-            return [
-                'label' => $k,
-                'value' => Prototype::fmt(array_sum(array_map(fn ($b) => self::totals($b)['net'], $in))),
-                'count' => count($in),
-            ];
-        }, ['Current', '1–30 days', '31–60 days', '61–90 days', 'Over 90 days']);
+        $outstanding = array_values(array_filter($all, [self::class, 'isOpen']));
+        $overdue     = array_values(array_filter($outstanding, [self::class, 'overdue']));
+        $dueWeek     = array_values(array_filter($outstanding, static fn ($b) => $b['dueIn'] >= 0 && $b['dueIn'] <= 7));
+        $awaiting    = array_values(array_filter($all, static fn ($b) => $b['status'] === 'Awaiting approval'));
+        $wht         = $repo->whtHeld();
+        $actor       = $this->actor();
 
         return $this->json([
-            'rows'  => $rows,
-            'total' => count($all),
+            'rows'        => $rows,
+            'total'       => count($all),
+            'filtered'    => count($filtered),
+            'page'        => $page,
+            'pages'       => $pages,
+            'pageSize'    => self::PAGE_SIZE,
             'fundOptions' => ['All funds', 'General Fund', 'Grant Fund', 'Capital Fund'],
-            'methodOptions' => $repo->methods(),
-            'aging' => $buckets,
-            'tabs'  => array_map(fn ($s) => ['label' => $s, 'count' => $s === 'All' ? count($all) : ($s === 'Overdue' ? count($overdue) : count(array_filter($all, fn ($b) => $b['status'] === $s)))], ['All', 'Awaiting approval', 'Approved', 'Scheduled', 'Paid', 'Overdue']),
-            'stats' => [
-                ['label' => 'Total outstanding', 'value' => Prototype::fmt(array_sum(array_map(fn ($b) => self::totals($b)['net'], $outstanding))), 'note' => count($outstanding) . ' open bills'],
-                ['label' => 'Overdue', 'value' => Prototype::fmt(array_sum(array_map(fn ($b) => self::totals($b)['net'], $overdue))), 'note' => count($overdue) . ' suppliers waiting'],
-                ['label' => 'Due within 7 days', 'value' => Prototype::fmt(array_sum(array_map(fn ($b) => self::totals($b)['net'], $dueWeek))), 'note' => count($dueWeek) . ' bills'],
-                ['label' => 'Awaiting approval', 'value' => Prototype::fmt(array_sum(array_map(fn ($b) => self::totals($b)['net'], $awaiting))), 'note' => count($awaiting) . ' need sign-off'],
-                ['label' => 'WHT to remit', 'value' => Prototype::fmt($whtHeld), 'note' => 'due to KRA by 20 Sep'],
+            'aging'       => array_map(function ($k) use ($outstanding) {
+                $in = array_values(array_filter($outstanding, static fn ($b) => self::bucket($b) === $k));
+
+                return ['label' => $k, 'value' => Prototype::fmt(self::net($in)), 'count' => count($in) . (count($in) === 1 ? ' bill' : ' bills')];
+            }, self::BUCKETS),
+            'tabs' => array_map(static fn ($s) => [
+                'label' => $s,
+                'count' => match ($s) {
+                    'All'     => count($all),
+                    'Overdue' => count($overdue),
+                    default   => count(array_filter($all, static fn ($b) => $b['status'] === $s)),
+                },
+            ], self::TABS),
+            'hint'   => $age === 'All' ? count($overdue) . ' bills past due' : 'Aging filter: ' . $age,
+            'footer' => count($filtered) . ' of ' . count($all) . ' bills · net payable ' . Prototype::fmt(self::net(array_filter($filtered, [self::class, 'isOpen']))),
+            'stats'  => [
+                ['label' => 'Total outstanding', 'value' => Prototype::fmt(self::net($outstanding)), 'note' => count($outstanding) . ' open bills'],
+                ['label' => 'Overdue', 'value' => Prototype::fmt(self::net($overdue)), 'note' => count(array_unique(array_column($overdue, 'supplier'))) . ' suppliers waiting'],
+                ['label' => 'Due within 7 days', 'value' => Prototype::fmt(self::net($dueWeek)), 'note' => count($dueWeek) . ' bills'],
+                ['label' => 'Awaiting approval', 'value' => Prototype::fmt(self::net($awaiting)), 'note' => count($awaiting) . ($actor['canApprove'] ? ' need your sign-off' : ' need sign-off')],
+                ['label' => 'WHT to remit', 'value' => Prototype::fmt($wht['held']),
+                    'note' => $wht['remittedThisMonth'] !== null && $wht['held'] == 0 ? 'remitted ' . $wht['remittedThisMonth'] : 'due to KRA by ' . $wht['dueBy']
+                        . ($wht['pending'] > 0 ? ' · ' . Prototype::fmt($wht['pending']) . ' more on bills awaiting approval' : '')],
             ],
         ]);
     }
 
+    /** One bill for the drawer, with the actions open to the acting user. */
     public function show($no)
     {
-        $b = (new PayablesRepository())->find($no);
+        $repo = new PayablesRepository();
+        $b = $repo->find($no);
         if ($b === null) {
-            return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'Bill not found']);
         }
-        $b['totals'] = self::totals($b);
 
-        return $this->json($b);
+        $actor    = $this->actor();
+        $actorId  = $this->actorId();
+        $mine     = $b['preparedBy'] === $actorId;
+        $awaiting = $b['status'] === 'Awaiting approval';
+        $payable  = in_array($b['status'], ['Approved', 'Scheduled'], true);
+
+        // What the approval rules say about this approver and this bill's value. A bill
+        // paid on its own is a payment run of its net amount.
+        $policy = new ApprovalPolicy();
+        $approval = $awaiting && $actor['canApprove'] && !$mine ? $policy->refusal('bill', (float) $b['gross'], $actorId, $b['no']) : null;
+        $release  = $payable && $actor['canApprove'] && !$mine ? $policy->refusal('payment_run', (float) $b['net'], $actorId, $b['no']) : null;
+
+        return $this->json([
+            'bill' => $b + [
+                'overdue'   => self::overdue($b),
+                'overdueBy' => abs((int) $b['dueIn']) . ' days',
+            ],
+            'can' => [
+                'approve'  => $awaiting && $actor['canApprove'] && !$mine && $approval === null,
+                'reject'   => $awaiting && $actor['canApprove'],
+                'schedule' => $b['status'] === 'Approved' && ($actor['canPrepare'] || $actor['canApprove']),
+                'pay'      => $payable && $actor['canApprove'] && !$mine && ($release === null || $release['needsAuthority']),
+                // Releasing this payment needs the reference for an authority outside the system.
+                'payNeedsAuthority' => $release !== null && $release['needsAuthority'],
+                'method'   => self::isOpen($b) && ($actor['canPrepare'] || $actor['canApprove']),
+                // Why an approver sees no approve or pay button: their own bill, or a value
+                // the approval rules give to another role.
+                'sodNote'  => $mine && $actor['canApprove'] && ($awaiting || $payable)
+                    ? 'You captured this bill, so a second person must ' . ($awaiting ? 'approve it.' : 'release its payment.')
+                    : ($approval['message'] ?? ($release !== null && !$release['needsAuthority'] ? $release['message'] : '')),
+            ],
+            'authorityNote' => $release !== null && $release['needsAuthority'] ? $release['message'] : '',
+            'methodOptions' => $repo->methods(),
+        ]);
+    }
+
+    /** What bill capture offers: suppliers, spend categories, budget lines and payment methods. */
+    public function form()
+    {
+        $repo = new PayablesRepository();
+
+        return $this->json([
+            'suppliers'   => $repo->suppliers(),
+            'categories'  => $repo->categories(),
+            'budgetLines' => array_map(static fn ($l) => array_intersect_key($l, array_flip(['id', 'code', 'name', 'fund', 'program', 'grant', 'annual', 'actual', 'onBills', 'remaining'])), $repo->budgetLines()),
+            'methods'     => $repo->methods(),
+            'terms'       => PayablesRepository::TERMS,
+            'whtRates'    => PayablesRepository::WHT_RATES,
+            'vatRate'     => PayablesRepository::VAT_RATE,
+            'today'       => \App\Libraries\Clock::date(),
+            // For the duplicate-invoice warning.
+            'bills'       => array_map(static fn ($b) => ['no' => $b['no'], 'supplier' => $b['supplier'], 'taxable' => $b['taxable'], 'invoiceNo' => $b['invoiceNo']], $repo->all()),
+        ]);
+    }
+
+    public function create()
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->forbidden($actor['role'] . ' cannot capture bills.');
+        }
+
+        try {
+            $bill = (new PayablesRepository())->capture($this->request->getJSON(true) ?? [], $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['bill' => $bill])->setStatusCode(201);
+    }
+
+    /** Body: {nos: [...]}. */
+    public function approve()
+    {
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot approve bills for payment.');
+        }
+
+        return $this->batch(fn (array $nos) => (new PayablesRepository())->approve($nos, $this->actorId()));
+    }
+
+    public function reject($no)
+    {
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot reject bills.');
+        }
+
+        try {
+            $bill = (new PayablesRepository())->reject($no, (string) (($this->request->getJSON(true) ?? [])['reason'] ?? ''), $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['bill' => $bill]);
+    }
+
+    /** Body: {nos: [...]}. */
+    public function schedule()
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare'] && !$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot schedule payments.');
+        }
+
+        return $this->batch(fn (array $nos) => (new PayablesRepository())->schedule($nos, $this->actorId()));
+    }
+
+    /** Body: {nos: [...]}. */
+    public function pay()
+    {
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot release payments.');
+        }
+
+        $authorityRef = (string) (($this->request->getJSON(true) ?? [])['authorityRef'] ?? '');
+
+        return $this->batch(fn (array $nos) => (new PayablesRepository())->pay($nos, $this->actorId(), $authorityRef));
+    }
+
+    /** Body: {method: "M-Pesa B2B paybill"}. */
+    public function method($no)
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare'] && !$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot change how a bill is paid.');
+        }
+
+        try {
+            $bill = (new PayablesRepository())->setMethod($no, (string) (($this->request->getJSON(true) ?? [])['method'] ?? ''), $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['bill' => $bill]);
+    }
+
+    public function remitWht()
+    {
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot remit withholding tax.');
+        }
+
+        try {
+            $remittance = (new PayablesRepository())->remitWht($this->actorId(), (string) (($this->request->getJSON(true) ?? [])['authorityRef'] ?? ''));
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['remittance' => $remittance])->setStatusCode(201);
+    }
+
+    private function batch(callable $action)
+    {
+        $nos = ($this->request->getJSON(true) ?? [])['nos'] ?? [];
+
+        try {
+            return $this->json($action(is_array($nos) ? $nos : [$nos]));
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+    }
+
+    private function forbidden(string $message)
+    {
+        return $this->response->setStatusCode(403)->setJSON(['error' => $message]);
     }
 }

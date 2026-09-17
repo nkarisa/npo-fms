@@ -13,6 +13,7 @@ use App\Repositories\PayablesRepository;
 use App\Repositories\PayrollRepository;
 use App\Repositories\ProcurementRepository;
 use App\Repositories\ReceivablesRepository;
+use App\Repositories\RecurringTemplateRepository;
 
 /**
  * "Search everything" in the top bar.
@@ -68,7 +69,7 @@ class Search extends BaseApiController
                     'title' => $b['supplier'],
                     'sub'   => $b['status'] . ' · ' . $b['category'] . ' · due ' . $b['dueDate'],
                     'value' => Prototype::fmt(Payables::totals($b)['net']),
-                    'href'  => Navigation::url('payables'),
+                    'href'  => Navigation::url('payables') . '/' . rawurlencode($b['no']),
                 ]),
 
             $this->group('Receivables', (new ReceivablesRepository())->all(), $hit,
@@ -78,7 +79,7 @@ class Search extends BaseApiController
                     'title' => $i['donor'],
                     'sub'   => $i['status'] . ' · ' . $i['grantRef'],
                     'value' => Prototype::fmt($i['amount']),
-                    'href'  => Navigation::url('receivables'),
+                    'href'  => Navigation::url('receivables') . '/' . rawurlencode($i['no']),
                 ]),
 
             $this->group('Procurement', (new ProcurementRepository())->requisitions(), $hit,
@@ -88,7 +89,7 @@ class Search extends BaseApiController
                     'title' => $p['title'],
                     'sub'   => $p['status'] . ' · ' . $p['requester'],
                     'value' => Prototype::fmt($p['amount']),
-                    'href'  => Navigation::url('procure'),
+                    'href'  => Navigation::url('procure') . '/' . rawurlencode($p['no']),
                 ]),
 
             $this->group('Asset register', (new AssetRepository())->register(), $hit,
@@ -133,6 +134,16 @@ class Search extends BaseApiController
                     'sub'   => $f['cls'] . ' · ' . $f['funder'],
                     'value' => Prototype::fmt(Ledger::fundClose($f)),
                     'href'  => Navigation::url('funds'),
+                ]),
+
+            $this->group('Recurring templates', (new RecurringTemplateRepository())->all(), $hit,
+                static fn ($t) => [$t['id'], $t['name'], $t['narration'], $t['frequency']],
+                static fn ($t) => [
+                    'ref'   => $t['id'],
+                    'title' => $t['name'],
+                    'sub'   => $t['frequency'] . ' · ' . $t['rule'] . ' · next ' . $t['next'],
+                    'value' => Prototype::fmt(array_sum(array_column($t['lines'], 'dr'))),
+                    'href'  => '/journals?template=' . rawurlencode($t['id']),
                 ]),
         ]));
 

@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Payment voucher",
+    "ref": "PV"
+  },
+  {
+    "name": "Receipt",
+    "ref": "RC"
+  },
+  {
+    "name": "Journal",
+    "ref": "JV"
+  },
+  {
+    "name": "Payroll run",
+    "ref": "PR"
+  },
+  {
+    "name": "Bank feed",
+    "ref": "BK"
+  },
+  {
+    "name": "M-Pesa batch",
+    "ref": "MP"
+  },
+  {
+    "name": "Accrual",
+    "ref": "AC"
+  }
+]

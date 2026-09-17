@@ -29,9 +29,11 @@ final class JournalRepository extends Repository
     /**
      * Journals in the register: everything but the archived detail of months
      * locked before the ledger was migrated, which the general ledger lists and
-     * the register summarises by period.
+     * the register summarises by period, and the cash book vouchers whose source
+     * documents live outside the ledger, which the general ledger and the bank
+     * reconciliation list.
      */
-    private const REGISTER = "(j.source_type IS NULL OR j.source_type <> 'archive')";
+    private const REGISTER = "(j.source_type IS NULL OR j.source_type NOT IN ('archive', 'cash_book'))";
 
     private Lookups $lookups;
 
@@ -122,7 +124,7 @@ final class JournalRepository extends Repository
      * line naming an award is held to the funds and programmes the award covers;
      * a line in a fund that awards are held in needs its award before the entry
      * leaves draft. `docLink` is "auto" (the next number in the type's ELOG series),
-     * "bill:<reference>" or "payroll:<period code>".
+     * "bill:<reference>", "payroll:<period code>" or "bankline:<statement line id>".
      *
      * @param array{date: string, type: string, period: string, status: string, docLink: string, memo: string,
      *              narration: string, reversalOf?: string, lines: list<array{code: string, desc: string, fund: string, program: string, grantRef: string, dr: float, cr: float}>} $j
@@ -446,6 +448,7 @@ final class JournalRepository extends Repository
         if ((int) $journal['prepared_by'] === $actorId) {
             throw new RuleViolation($this->lookups->shortName($actorId) . ' prepared ' . $ref . ' and cannot also approve it. It needs a second approver.');
         }
+        (new ApprovalPolicy())->check('journal', (float) $this->value('SELECT COALESCE(SUM(debit), 0) FROM {journal_lines} WHERE journal_id = ?', [$journal['id']]), $actorId, $ref);
         if ($journal['reverses_journal_id'] !== null) {
             $original = $this->row('SELECT reference, status FROM {journals} WHERE id = ?', [$journal['reverses_journal_id']]);
             if ($original['status'] !== 'posted') {
@@ -465,9 +468,79 @@ final class JournalRepository extends Repository
                 $this->db->table('journals')->where('id', $original['id'])->update(['status' => 'reversed']);
                 $this->audit('journal', (int) $original['id'], $original['reference'], 'Reversed by ' . $ref, $actorId);
             }
+
+            // An entry raised from a bank statement line clears that line once it posts.
+            if ($journal['source_type'] === 'bank_statement_line') {
+                (new BankRepository($this->db))->matchRaised((int) $journal['id'], $actorId);
+            }
         });
 
         return $this->find($ref);
+    }
+
+    /**
+     * Posts an entry a sub-ledger raises from one of its records: a supplier bill
+     * approved, a payment run released, withholding tax remitted. The record carries
+     * the authorisation, so the entry does not wait in the approval queue. `approvedBy`
+     * is the person who approved the record, or null where releasing the record was
+     * itself the authorised act. Call it inside the caller's transaction; the database
+     * still refuses a closed period, an unbalanced entry or an overdrawn restricted fund.
+     *
+     * @param array{date: string, narration: string, memo: string, sourceType: string, sourceId: int, docRef: string, series: string} $h
+     * @param list<array{code: string, fund_id: int, programme_id: int, grant_id: int|null, desc: string, dr: float, cr: float}> $lines
+     */
+    public function postFromSource(array $h, array $lines, int $preparedBy, ?int $approvedBy, string $raisedNote): string
+    {
+        $period = null;
+        foreach ($this->lookups->periods() as $p) {
+            if ($p['starts_on'] <= $h['date'] && $h['date'] <= $p['ends_on']) {
+                $period = $p;
+                break;
+            }
+        }
+        if ($period === null) {
+            throw new RuleViolation('No accounting period covers ' . self::dmy($h['date']) . ', so ' . $h['docRef'] . ' cannot post.');
+        }
+        if ($period['status'] === 'closed') {
+            throw new RuleViolation($period['name'] . ' is closed to further posting, so ' . $h['docRef'] . ' cannot post. Reopen the month in Period close first.');
+        }
+
+        $accounts = $this->lookups->accounts();
+
+        return $this->transaction(function () use ($h, $lines, $period, $accounts, $preparedBy, $approvedBy, $raisedNote) {
+            $now = Clock::timestamp();
+            $ref = $this->nextReference('JV', $h['date']);
+            $id  = $this->insert('journals', [
+                'entity_id' => $this->lookups->entityId(), 'period_id' => $period['id'], 'reference' => $ref, 'journal_date' => $h['date'],
+                'type' => 'standard', 'status' => 'draft',
+                'document_type_id' => $this->value('SELECT id FROM {document_types} WHERE prefix = ?', [$h['series']])
+                    ?? $this->value('SELECT id FROM {document_types} WHERE prefix = ?', ['JV']),
+                'document_ref' => $h['docRef'], 'source_type' => $h['sourceType'], 'source_id' => $h['sourceId'],
+                'memo' => $h['memo'] !== '' ? mb_substr($h['memo'], 0, 255) : null, 'narration' => $h['narration'],
+                'prepared_by' => $preparedBy, 'created_at' => $now,
+            ]);
+
+            $n = 0;
+            foreach ($lines as $l) {
+                if (round((float) $l['dr'], 2) == 0 && round((float) $l['cr'], 2) == 0) {
+                    continue;
+                }
+                $account = $accounts[$l['code']] ?? throw new RuleViolation('Account ' . $l['code'] . ' is not in the chart of accounts.');
+                $this->insert('journal_lines', [
+                    'journal_id' => $id, 'line_no' => ++$n, 'account_id' => $account['id'], 'fund_id' => $l['fund_id'],
+                    'programme_id' => $l['programme_id'], 'grant_id' => $l['grant_id'],
+                    'description' => mb_substr($l['desc'], 0, 255), 'debit' => round((float) $l['dr'], 2), 'credit' => round((float) $l['cr'], 2),
+                ]);
+            }
+
+            $this->audit('journal', $id, $ref, $raisedNote, $preparedBy);
+            $this->db->table('journals')->where('id', $id)->update([
+                'status' => 'posted', 'approved_by' => $approvedBy, 'approved_at' => $approvedBy === null ? null : $now, 'posted_at' => $now, 'updated_at' => $now,
+            ]);
+            $this->audit('journal', $id, $ref, 'Posted to the ledger' . ($approvedBy === null ? '' : ' on approval by ' . $this->lookups->shortName($approvedBy)), $approvedBy ?? $preparedBy);
+
+            return $ref;
+        });
     }
 
     /** Returns an entry to its preparer as a draft, with the reason on record. */
@@ -722,6 +795,11 @@ final class JournalRepository extends Repository
                     return ['type' => 'payroll', 'id' => (int) $p['id'], 'ref' => $this->payrollRef($p), 'prefix' => 'PR'];
                 }
             }
+        } elseif ($kind === 'bankline') {
+            $line = $this->row('SELECT id, reference FROM {bank_statement_lines} WHERE id = ?', [(int) $key]);
+            if ($line !== null) {
+                return ['type' => 'bank_statement_line', 'id' => (int) $line['id'], 'ref' => $line['reference'] ?? ('Statement line ' . $line['id']), 'prefix' => 'BK'];
+            }
         }
 
         throw new RuleViolation('The source document ' . $link . ' is not a record a journal can be raised from.');
@@ -735,6 +813,9 @@ final class JournalRepository extends Repository
         }
         if ($type === 'recurring_template') {
             return 'recurring:' . $this->value('SELECT code FROM {recurring_templates} WHERE id = ?', [$id]);
+        }
+        if ($type === 'bank_statement_line') {
+            return 'bankline:' . $id;
         }
         foreach ($this->lookups->periods() as $p) {
             if ($type === 'payroll' && (int) $p['id'] === $id) {

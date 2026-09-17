@@ -1,0 +1,67 @@
+{
+    "en-GB": {
+        "prefix": "Expenditure report",
+        "awardWord": "Award",
+        "period": "1 Jan 2026 to 30 Jun 2026",
+        "labels": [
+            "Award ceiling",
+            "Expenditure this period",
+            "Cumulative expenditure",
+            "Balance on the award"
+        ],
+        "foot": "Prepared from posted ledger actuals. Figures in KES.",
+        "org": "ELOG Kenya · Elections Observation Group"
+    },
+    "fr": {
+        "prefix": "Rapport de dépenses",
+        "awardWord": "Convention",
+        "period": "1 janv. 2026 au 30 juin 2026",
+        "labels": [
+            "Plafond de la convention",
+            "Dépenses de la période",
+            "Dépenses cumulées",
+            "Solde de la convention"
+        ],
+        "foot": "Établi à partir des réalisations comptabilisées. Montants en KES.",
+        "org": "ELOG Kenya · Groupe d'observation des élections"
+    },
+    "es": {
+        "prefix": "Informe de gasto",
+        "awardWord": "Convenio",
+        "period": "1 ene 2026 al 30 jun 2026",
+        "labels": [
+            "Techo del convenio",
+            "Gasto del periodo",
+            "Gasto acumulado",
+            "Saldo del convenio"
+        ],
+        "foot": "Elaborado a partir de lo contabilizado. Cifras en KES.",
+        "org": "ELOG Kenya · Grupo de Observación Electoral"
+    },
+    "ar": {
+        "prefix": "تقرير المصروفات",
+        "awardWord": "اتفاقية منحة",
+        "period": "١ يناير ٢٠٢٦ إلى ٣٠ يونيو ٢٠٢٦",
+        "labels": [
+            "سقف اتفاقية المنحة",
+            "مصروفات الفترة",
+            "المصروفات التراكمية",
+            "رصيد اتفاقية المنحة"
+        ],
+        "foot": "أُعدّ من الأرصدة المسجَّلة في دفتر الأستاذ. المبالغ بالشلن الكيني (KES).",
+        "org": "إيلوغ كينيا · مجموعة مراقبة الانتخابات"
+    },
+    "sw": {
+        "prefix": "Ripoti ya matumizi",
+        "awardWord": "Mkataba wa msaada",
+        "period": "1 Jan 2026 hadi 30 Jun 2026",
+        "labels": [
+            "Kiwango cha juu cha mkataba",
+            "Matumizi ya kipindi hiki",
+            "Matumizi ya jumla",
+            "Salio la mkataba"
+        ],
+        "foot": "Imetayarishwa kutoka leja. Takwimu ziko katika KES.",
+        "org": "ELOG Kenya · Elections Observation Group"
+    }
+}

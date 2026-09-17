@@ -1,0 +1,110 @@
+[
+    {
+        "tag": "ELOG/IT/0041",
+        "desc": "Dell Latitude 5540 laptop",
+        "cls": "IT equipment",
+        "location": "Secretariat — Nairobi",
+        "custodian": "M. Otieno",
+        "nbv": 178000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/IT/0042",
+        "desc": "Dell Latitude 5540 laptop",
+        "cls": "IT equipment",
+        "location": "Secretariat — Nairobi",
+        "custodian": "S. Njeri",
+        "nbv": 178000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/IT/0058",
+        "desc": "HP LaserJet MFP",
+        "cls": "IT equipment",
+        "location": "Secretariat — Nairobi",
+        "custodian": "Front office",
+        "nbv": 96000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/VE/0009",
+        "desc": "Toyota Hilux double cab, KDL 442R",
+        "cls": "Motor vehicles",
+        "location": "Secretariat — Nairobi",
+        "custodian": "Transport officer",
+        "nbv": 3240000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/VE/0011",
+        "desc": "Toyota Land Cruiser, KDG 118M",
+        "cls": "Motor vehicles",
+        "location": "Rift Valley office",
+        "custodian": "Field coordinator",
+        "nbv": 4860000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/IT/0063",
+        "desc": "Tablet, Samsung Galaxy Tab A9",
+        "cls": "IT equipment",
+        "location": "Rift Valley office",
+        "custodian": "Field coordinator",
+        "nbv": 34000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/IT/0064",
+        "desc": "Tablet, Samsung Galaxy Tab A9",
+        "cls": "IT equipment",
+        "location": "Western office — Kakamega",
+        "custodian": "County coordinator",
+        "nbv": 34000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/FF/0022",
+        "desc": "Boardroom table and 12 chairs",
+        "cls": "Furniture",
+        "location": "Secretariat — Nairobi",
+        "custodian": "Administration",
+        "nbv": 214000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/FF/0031",
+        "desc": "Workstation set, 6 desks",
+        "cls": "Furniture",
+        "location": "Coast office — Mombasa",
+        "custodian": "Office manager",
+        "nbv": 168000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/IT/0071",
+        "desc": "Projector, Epson EB-X51",
+        "cls": "IT equipment",
+        "location": "Coast office — Mombasa",
+        "custodian": "Office manager",
+        "nbv": 62000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/GN/0004",
+        "desc": "Generator, 60kVA",
+        "cls": "Plant",
+        "location": "Secretariat — Nairobi",
+        "custodian": "Administration",
+        "nbv": 1420000,
+        "expected": "Sighted"
+    },
+    {
+        "tag": "ELOG/IT/0055",
+        "desc": "Laptop, HP ProBook 450",
+        "cls": "IT equipment",
+        "location": "Western office — Kakamega",
+        "custodian": "B. Omondi",
+        "nbv": 92000,
+        "expected": "Sighted"
+    }
+]

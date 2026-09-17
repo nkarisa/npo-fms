@@ -5,6 +5,7 @@ namespace App\Controllers\Api;
 use App\Controllers\BaseController;
 use App\Libraries\I18n;
 use App\Repositories\Lookups;
+use App\Repositories\AuthorityRequired;
 use App\Repositories\RuleViolation;
 use App\Repositories\UserRepository;
 use CodeIgniter\HTTP\RequestInterface;
@@ -107,7 +108,7 @@ abstract class BaseApiController extends BaseController
     /** A refused write, in the rule's own words. */
     protected function refused(RuleViolation $e)
     {
-        return $this->response->setStatusCode(422)->setJSON(['error' => $e->getMessage()]);
+        return $this->response->setStatusCode(422)->setJSON(['error' => $e->getMessage()] + ($e instanceof AuthorityRequired ? ['needsAuthority' => true] : []));
     }
 
     protected function t(string $s): string

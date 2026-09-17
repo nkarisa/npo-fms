@@ -3,460 +3,348 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
-use App\Repositories\ProcurementRepository;
+use App\Repositories\ProcurementRepository as Repo;
 use App\Repositories\RuleViolation;
 
 /**
- * Requisition → quotation → purchase order → goods received → bill.
+ * Procurement (v5): requisition → quotation → purchase order → goods received → bill.
  *
- * The controls here are the ones a donor audit asks about, so they are enforced
- * on the transition rather than left to the UI to hide a button:
+ * The controls a donor audit asks about are enforced on the transition rather than
+ * left to the UI to hide a button (see ProcurementRepository):
  *
  *  - Budget check. Available = approved budget − actual − committed. Approval is
- *    blocked, not warned, when a line exceeds what is left on its account.
- *  - Three-quote rule. Above the threshold a requisition cannot reach PO without
- *    three quotations recorded, or a documented single-source waiver.
- *  - Commitment accounting. Raising the PO commits the budget; committed money is
- *    not yet actual but is no longer available.
- *  - Segregation of duties. The requester cannot approve their own requisition.
+ *    blocked, not warned, when the requisition exceeds what is left on its line.
+ *  - Three-quote rule. Above the threshold a requisition cannot reach a purchase
+ *    order without three quotations, or a single-source justification.
+ *  - Commitment accounting. The purchase order commits the budget; goods received
+ *    release the commitment and accrue the cost.
+ *  - Segregation of duties. The requester cannot approve or reject their own requisition.
  */
 class Procurement extends BaseApiController
 {
-    /** Above this value three quotations are required before a PO can be raised. */
-    private const QUOTE_THRESHOLD = 500000;
-
-    /** Statuses that still represent work in progress. */
-    private const OPEN = ['Draft', 'Awaiting approval', 'Approved', 'RFQ issued', 'PO raised'];
+    private const PAGE_SIZE = 10;
 
     public const VIEWS = ['Requisitions', 'Purchase orders', 'Goods received', 'Suppliers'];
 
-    /** Budget still spendable on this line: approved less actual less committed. */
+    private const TABS = ['Open', 'Awaiting approval', 'Approved', 'RFQ issued', 'PO raised', 'Goods received', 'Closed', 'All'];
+
+    private const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+    private const ATTACHMENT_TYPES = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'msg', 'eml'];
+
     public static function available(array $p): float
     {
-        return $p['budget'] - $p['spent'] - $p['committed'];
+        return Repo::available($p);
     }
 
     public static function isOverBudget(array $p): bool
     {
-        return $p['amount'] > self::available($p);
+        return Repo::isOverBudget($p);
     }
 
     public static function needsQuotes(array $p): bool
     {
-        return $p['amount'] > self::QUOTE_THRESHOLD && count($p['quotes']) < 3;
+        return Repo::needsQuotes($p);
     }
 
-    /** A requisition that can still be stopped by one of the controls. */
-    private static function stillLive(array $p): bool
-    {
-        // Once the PO exists the requisition's own amount sits inside `committed`,
-        // so testing it against what is left would count that money twice and
-        // report the requisition as over budget for the budget it itself reserved.
-        return empty($p['po']) && !in_array($p['status'], ['Rejected', 'Closed'], true);
-    }
-
-    /**
-     * Whether the budget check still stands between this requisition and its
-     * purchase order. True right through approval and RFQ, because none of those
-     * states has committed the money yet.
-     */
+    /** Whether the budget check still stands between this requisition and its purchase order. */
     public static function budgetCheckPending(array $p): bool
     {
-        return self::stillLive($p) && self::isOverBudget($p);
+        return Repo::stillLive($p) && Repo::isOverBudget($p);
     }
 
-    /** The three-quote rule bites at PO raising, so it is spent once one exists. */
+    /** The three-quote rule bites at the purchase order, so it is spent once one exists. */
     public static function quotesOutstanding(array $p): bool
     {
-        return self::stillLive($p) && self::needsQuotes($p);
+        return Repo::stillLive($p) && Repo::needsQuotes($p);
     }
 
     public function index()
     {
-        $view = $this->request->getGet('view') ?: self::VIEWS[0];
+        $repo = new Repo();
+        $all  = $repo->requisitions();
+        $view = in_array($this->request->getGet('view'), self::VIEWS, true) ? $this->request->getGet('view') : self::VIEWS[0];
+        $open = array_values(array_filter($all, static fn ($p) => in_array($p['status'], Repo::OPEN, true)));
+        $actor = $this->actor();
 
-        return match ($view) {
-            'Purchase orders' => $this->json($this->purchaseOrders()),
-            'Goods received'  => $this->json($this->goodsReceived()),
-            'Suppliers'       => $this->json($this->suppliers()),
-            default           => $this->json($this->requisitions()),
-        };
+        $data = [
+            'view'  => $view,
+            'views' => self::VIEWS,
+            'threshold' => Repo::QUOTE_THRESHOLD,
+            'stats' => [
+                ['label' => 'Open requisitions', 'value' => (string) count($open), 'note' => 'Across ' . count(array_unique(array_column($open, 'program'))) . ' programmes'],
+                ['label' => $actor['canApprove'] ? 'Awaiting my approval' : 'Awaiting approval', 'value' => (string) count(array_filter($all, static fn ($p) => $p['status'] === 'Awaiting approval')),
+                    'note' => 'Budget checked before approval'],
+                ['label' => 'Value in progress', 'value' => Prototype::fmt(array_sum(array_column($open, 'amount'))), 'note' => 'Not yet invoiced'],
+                ['label' => 'Committed on POs', 'value' => Prototype::fmt(array_sum(array_map(static fn ($p) => ($p['poStatus'] ?? '') === 'open' ? $p['amount'] : 0, $all))),
+                    'note' => 'Reserved against budget lines'],
+                ['label' => 'Over available budget', 'value' => (string) count(array_filter($open, [self::class, 'budgetCheckPending'])), 'note' => 'Need a budget revision first'],
+            ],
+        ];
+
+        return $this->json($data + match ($view) {
+            'Purchase orders' => $this->purchaseOrders($all),
+            'Goods received'  => $this->goodsReceived($all),
+            'Suppliers'       => $this->suppliers($repo),
+            default           => $this->requisitions($all),
+        });
     }
 
-    private function viewBlock(): array
+    private function requisitions(array $all): array
     {
-        $view = $this->request->getGet('view') ?: self::VIEWS[0];
+        $tab  = in_array($this->request->getGet('tab'), self::TABS, true) ? $this->request->getGet('tab') : 'Open';
+        $q    = mb_strtolower(trim($this->request->getGet('q') ?? ''));
+        $page = max(1, (int) ($this->request->getGet('page') ?: 1));
+
+        $filtered = array_values(array_filter($all, static function ($p) use ($tab, $q) {
+            if ($tab === 'Open' ? !in_array($p['status'], Repo::OPEN, true) : ($tab !== 'All' && $p['status'] !== $tab)) {
+                return false;
+            }
+
+            return $q === '' || str_contains(mb_strtolower($p['no'] . ' ' . $p['title'] . ' ' . $p['requester'] . ' ' . $p['program'] . ' ' . implode(' ', array_column($p['lines'], 'desc'))), $q);
+        }));
+        $pages = max(1, (int) ceil(count($filtered) / self::PAGE_SIZE));
+        $page  = min($page, $pages);
 
         return [
-            'view'        => $view,
-            'viewOptions' => self::VIEWS,
-            'threshold'   => self::QUOTE_THRESHOLD,
+            'tabs'     => self::TABS,
+            'tab'      => $tab,
+            'rows'     => array_map(static fn ($p) => [
+                'no' => $p['no'], 'title' => $p['title'], 'requester' => $p['requester'], 'program' => $p['program'], 'grant' => $p['grant'],
+                'fund' => $p['fund'], 'raised' => $p['raised'], 'needBy' => $p['needBy'], 'amount' => $p['amount'],
+                'available' => Repo::available($p), 'overBudget' => self::budgetCheckPending($p), 'status' => $p['status'],
+            ], array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE)),
+            'filtered' => count($filtered),
+            'page'     => $page,
+            'pages'    => $pages,
+            'pageSize' => self::PAGE_SIZE,
+            'footer'   => count($filtered) . ' of ' . count($all) . ' requisitions · three quotations required above ' . Prototype::fmt(Repo::QUOTE_THRESHOLD)
+                . ' · goods received notes raise the supplier bill',
         ];
     }
 
-    private function requisitions(): array
+    private function purchaseOrders(array $all): array
     {
-        $all = (new ProcurementRepository())->requisitions();
-        $tab = $this->request->getGet('tab') ?: 'Open';
-        $q   = strtolower(trim($this->request->getGet('q') ?? ''));
+        $orders = array_values(array_filter($all, static fn ($p) => !empty($p['po'])));
 
-        $filtered = array_values(array_filter($all, function ($p) use ($tab, $q) {
-            if ($tab === 'Open' && !in_array($p['status'], self::OPEN, true)) {
-                return false;
-            }
-            if ($tab !== 'Open' && $tab !== 'All' && $p['status'] !== $tab) {
-                return false;
-            }
-            if ($q !== '' && !str_contains(strtolower($p['no'] . ' ' . $p['title'] . ' ' . $p['requester'] . ' ' . $p['program']), $q)) {
-                return false;
-            }
-            return true;
-        }));
-
-        $rows = array_map(fn ($p) => [
-            'no'          => $p['no'],
-            'title'       => $p['title'],
-            'requester'   => $p['requester'],
-            'program'     => $p['program'],
-            'fund'        => $p['fund'],
-            'code'        => $p['code'],
-            'raised'      => $p['raised'],
-            'needBy'      => $p['needBy'],
-            'amount'      => Prototype::fmt($p['amount']),
-            'available'   => Prototype::fmt(self::available($p)),
-            'status'      => $p['status'],
-            'overBudget'  => self::budgetCheckPending($p),
-            'needsQuotes' => self::quotesOutstanding($p),
-            'quotes'      => count($p['quotes']),
-            'supplier'    => $p['supplier'] ?? '',
-            'po'          => $p['po'] ?? '',
-            'grn'         => $p['grn'] ?? '',
-            'bill'        => $p['bill'] ?? '',
-        ], $filtered);
-
-        $open      = array_values(array_filter($all, fn ($p) => in_array($p['status'], self::OPEN, true)));
-        $awaiting  = array_values(array_filter($all, fn ($p) => $p['status'] === 'Awaiting approval'));
-        $blocked   = array_values(array_filter($open, fn ($p) => self::budgetCheckPending($p)));
-        $committed = array_sum(array_map(fn ($p) => $p['committed'], $all));
-
-        return $this->viewBlock() + [
-            'rows'  => $rows,
-            'total' => count($all),
-            'tabs'  => array_map(fn ($t) => [
-                'label' => $t,
-                'count' => match ($t) {
-                    'Open'  => count($open),
-                    'All'   => count($all),
-                    default => count(array_filter($all, fn ($p) => $p['status'] === $t)),
+        return [
+            'rows' => array_map(static fn ($p) => [
+                'po' => $p['po'], 'no' => $p['no'], 'supplier' => $p['supplier'] ?: '—', 'title' => $p['title'], 'issued' => $p['poDate'],
+                'expected' => $p['expected'] !== '—' ? $p['expected'] : $p['needBy'], 'value' => $p['amount'],
+                'state' => match ($p['poStatus']) { 'open', 'part_received' => 'Awaiting delivery', 'received' => 'Received', default => 'Closed' },
+                'match' => match (true) {
+                    !empty($p['bill']) => 'PO · GRN · invoice matched',
+                    !empty($p['grn'])  => 'PO · GRN matched, invoice awaited',
+                    default            => 'PO only',
                 },
-            ], ['Open', 'All', 'Draft', 'Awaiting approval', 'Approved', 'RFQ issued', 'PO raised', 'Goods received', 'Closed', 'Rejected']),
-            'stats' => [
-                ['label' => 'Open requisitions', 'value' => (string) count($open), 'note' => 'across five programmes'],
-                ['label' => 'Awaiting approval', 'value' => (string) count($awaiting), 'note' => 'above the delegated threshold'],
-                ['label' => 'Value in progress', 'value' => Prototype::fmt(array_sum(array_map(fn ($p) => $p['amount'], $open))), 'note' => 'not yet invoiced'],
-                ['label' => 'Committed on POs', 'value' => Prototype::fmt($committed), 'note' => 'reserved against budget lines'],
-                ['label' => 'Over available budget', 'value' => (string) count($blocked), 'note' => count($blocked) ? 'need a budget revision first' : 'every line is within budget'],
-            ],
+            ], $orders),
+            'footer' => count($orders) . ' purchase orders · ' . Prototype::fmt(array_sum(array_map(static fn ($p) => $p['poStatus'] === 'open' ? $p['amount'] : 0, $orders)))
+                . ' committed and not yet received',
         ];
     }
 
-    private function purchaseOrders(): array
+    private function goodsReceived(array $all): array
     {
-        $withPo = array_values(array_filter((new ProcurementRepository())->requisitions(), fn ($p) => !empty($p['po'])));
+        $notes = array_values(array_filter($all, static fn ($p) => !empty($p['grn'])));
 
-        $rows = array_map(fn ($p) => [
-            'po'        => $p['po'],
-            'poDate'    => $p['poDate'],
-            'no'        => $p['no'],
-            'title'     => $p['title'],
-            'supplier'  => $p['supplier'],
-            'program'   => $p['program'],
-            'fund'      => $p['fund'],
-            'code'      => $p['code'],
-            'amount'    => Prototype::fmt($p['amount']),
-            'expected'  => $p['expected'] ?? $p['needBy'],
-            'status'    => $p['status'],
-            'received'  => !empty($p['grn']),
-            'billed'    => !empty($p['bill']),
-        ], $withPo);
-
-        $outstanding = array_values(array_filter($withPo, fn ($p) => $p['status'] === 'PO raised'));
-
-        return $this->viewBlock() + [
-            'rows'  => $rows,
-            'total' => count($withPo),
-            'stats' => [
-                ['label' => 'Purchase orders raised', 'value' => (string) count($withPo), 'note' => 'this financial year'],
-                ['label' => 'Awaiting delivery', 'value' => (string) count($outstanding), 'note' => 'ordered, not yet received'],
-                ['label' => 'Committed and not received', 'value' => Prototype::fmt(array_sum(array_map(fn ($p) => $p['amount'], $outstanding))), 'note' => 'reduces available budget'],
-                ['label' => 'Received, not yet billed', 'value' => (string) count(array_filter($withPo, fn ($p) => !empty($p['grn']) && empty($p['bill']))), 'note' => 'accrue at period end'],
-            ],
+        return [
+            'rows' => array_map(static fn ($p) => [
+                'grn' => $p['grn'], 'po' => $p['po'], 'no' => $p['no'], 'supplier' => $p['supplier'] ?: '—', 'title' => $p['title'], 'note' => $p['grnNote'],
+                'when' => $p['grnDate'], 'receivedBy' => $p['receivedBy'], 'value' => $p['amount'], 'bill' => $p['bill'] ?? '',
+            ], $notes),
+            'footer' => count($notes) . ' goods received notes · ' . count(array_filter($notes, static fn ($p) => empty($p['bill'])))
+                . ' awaiting the supplier invoice for three-way matching',
         ];
     }
 
-    private function goodsReceived(): array
+    private function suppliers(Repo $repo): array
     {
-        $withGrn = array_values(array_filter((new ProcurementRepository())->requisitions(), fn ($p) => !empty($p['grn'])));
+        $all = $repo->suppliers();
 
-        $rows = array_map(fn ($p) => [
-            'grn'        => $p['grn'],
-            'grnDate'    => $p['grnDate'],
-            'po'         => $p['po'],
-            'no'         => $p['no'],
-            'title'      => $p['title'],
-            'supplier'   => $p['supplier'],
-            'receivedBy' => $p['receivedBy'],
-            'note'       => $p['grnNote'],
-            'amount'     => Prototype::fmt($p['amount']),
-            'bill'       => $p['bill'] ?? '',
-            'billed'     => !empty($p['bill']),
-        ], $withGrn);
-
-        $unbilled = array_values(array_filter($withGrn, fn ($p) => empty($p['bill'])));
-
-        return $this->viewBlock() + [
-            'rows'  => $rows,
-            'total' => count($withGrn),
-            'stats' => [
-                ['label' => 'Goods received notes', 'value' => (string) count($withGrn), 'note' => 'signed by store'],
-                ['label' => 'Not yet billed', 'value' => (string) count($unbilled), 'note' => 'supplier payable recognised'],
-                ['label' => 'Value awaiting invoice', 'value' => Prototype::fmt(array_sum(array_map(fn ($p) => $p['amount'], $unbilled))), 'note' => 'accrued at period end'],
-            ],
+        return [
+            'rows'   => $all,
+            'footer' => count($all) . ' suppliers · pre-qualification runs to calendar year end · lapsed suppliers cannot be selected on a purchase order',
         ];
     }
 
-    private function suppliers(): array
-    {
-        $all = (new ProcurementRepository())->suppliers();
-        $q   = strtolower(trim($this->request->getGet('q') ?? ''));
-
-        $filtered = array_values(array_filter(
-            $all,
-            fn ($s) => $q === '' || str_contains(strtolower($s['name'] . ' ' . $s['pin'] . ' ' . $s['category']), $q)
-        ));
-
-        $rows = array_map(fn ($s) => $s + [
-            'spendFmt' => Prototype::fmt($s['spend']),
-            'eligible' => $s['status'] === 'Pre-qualified',
-        ], $filtered);
-
-        $countBy = fn ($k) => count(array_filter($all, fn ($s) => $s['status'] === $k));
-
-        return $this->viewBlock() + [
-            'rows'  => $rows,
-            'total' => count($all),
-            'stats' => [
-                ['label' => 'Pre-qualified', 'value' => (string) $countBy('Pre-qualified'), 'note' => 'eligible to be awarded a PO'],
-                ['label' => 'Expiring', 'value' => (string) $countBy('Expiring'), 'note' => 're-qualify before award'],
-                ['label' => 'Lapsed', 'value' => (string) $countBy('Lapsed'), 'note' => 'cannot be awarded until renewed'],
-                ['label' => 'Spend this year', 'value' => Prototype::fmt(array_sum(array_map(fn ($s) => $s['spend'], $all))), 'note' => count($all) . ' suppliers on the register'],
-            ],
-        ];
-    }
-
+    /** One requisition for the drawer, with the actions open to the acting user. */
     public function show($no)
     {
-        foreach ((new ProcurementRepository())->requisitions() as $p) {
-            if ($p['no'] !== $no) {
-                continue;
-            }
-
-            $p['available']   = self::available($p);
-            $p['overBudget']  = self::budgetCheckPending($p);
-            $p['needsQuotes'] = self::quotesOutstanding($p);
-            $p['canApprove']  = $p['status'] === 'Awaiting approval';
-            $p['canRaisePo']  = $p['status'] === 'Approved';
-            $p['canReceive']  = $p['status'] === 'PO raised';
-            $p['canBill']     = $p['status'] === 'Goods received';
-            $p['lineTotal']   = array_sum(array_map(static fn ($l) => $l['amount'], $p['lines']));
-
-            return $this->json($p);
+        $p = (new Repo())->find((string) $no);
+        if ($p === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
         }
 
-        return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
-    }
-
-    public function budgetLines()
-    {
-        $repo  = new ProcurementRepository();
-        $lines = $repo->budgetLines();
-        $reqs  = $repo->requisitions();
-
-        $rows = array_map(function ($l) use ($reqs) {
-            // Commitments live on the requisitions, so read them back per account.
-            $committed = array_sum(array_map(
-                static fn ($p) => $p['code'] === $l['code'] ? $p['committed'] : 0,
-                $reqs
-            ));
-            $available = $l['budget'] - $l['spent'] - $committed;
-
-            return [
-                'code'      => $l['code'],
-                'name'      => $l['name'],
-                'budget'    => Prototype::fmt($l['budget']),
-                'spent'     => Prototype::fmt($l['spent']),
-                'committed' => Prototype::fmt($committed),
-                'available' => Prototype::fmt($available),
-                'exhausted' => $available <= 0,
-                'pct'       => $l['budget'] > 0 ? (int) round(($l['spent'] + $committed) / $l['budget'] * 100) : 0,
-            ];
-        }, $lines);
+        $actor  = $this->actor();
+        $mine   = $p['requestedBy'] === $this->actorId();
+        $raiser = in_array('requisition.raise', $actor['permissions'], true);
+        $awaiting = $p['status'] === 'Awaiting approval';
 
         return $this->json([
-            'rows' => $rows,
-            'note' => 'Available budget is the approved amount less actual spend and less commitments on open purchase orders. A requisition is blocked at approval when it exceeds what is left.',
+            'requisition' => $p + [
+                'available'   => Repo::available($p),
+                'overBudget'  => self::budgetCheckPending($p),
+                'needsQuotes' => self::quotesOutstanding($p),
+                'quoteDocs'   => count(array_filter($p['quotes'], static fn ($q) => $q['document'] !== null)) . ' of ' . count($p['quotes']) . ' quotations have a document on file',
+            ],
+            'can' => [
+                'submit'  => $p['status'] === 'Draft' && ($mine || $raiser || $actor['canPrepare']),
+                'approve' => $awaiting && $actor['canApprove'] && !$mine,
+                'reject'  => $awaiting && $actor['canApprove'] && !$mine,
+                'rfq'     => $p['status'] === 'Approved' && $actor['canPrepare'],
+                'po'      => in_array($p['status'], ['Approved', 'RFQ issued'], true) && $actor['canPrepare'],
+                'receive' => $p['status'] === 'PO raised' && $actor['canPrepare'],
+                'bill'    => $p['status'] === 'Goods received' && $actor['canPrepare'],
+                'note'    => $awaiting && $mine && $actor['canApprove'] ? 'You raised this requisition, so a second person must approve it.' : '',
+            ],
         ]);
     }
 
+    public function form()
+    {
+        return $this->json((new Repo())->formOptions() + ['me' => $this->actor()['email']]);
+    }
+
     /**
-     * Approves a requisition — the transition that enforces the budget check and
-     * segregation of duties. A blocked approval names the line, the account and
-     * the shortfall rather than returning a generic failure.
+     * Raises a requisition as a draft. Accepts JSON, or a multipart form whose `payload`
+     * field is that JSON and whose `documents[]` are quotation documents, each quote
+     * naming its document by index.
      */
+    public function create()
+    {
+        $actor = $this->actor();
+        if (!in_array('requisition.raise', $actor['permissions'], true)) {
+            return $this->forbidden($actor['role'] . ' cannot raise requisitions.');
+        }
+
+        try {
+            $multipart = str_starts_with($this->request->getHeaderLine('Content-Type'), 'multipart/form-data');
+            $body = $multipart ? (json_decode((string) $this->request->getPost('payload'), true) ?? []) : ($this->request->getJSON(true) ?? []);
+            $files = [];
+            foreach ($multipart ? ($this->request->getFileMultiple('documents') ?? []) : [] as $file) {
+                if (!$file->isValid()) {
+                    throw new RuleViolation($file->getClientName() . ' did not upload: ' . $file->getErrorString());
+                }
+                if ($file->getSize() > self::ATTACHMENT_MAX_BYTES) {
+                    throw new RuleViolation($file->getClientName() . ' is larger than 10 MB.');
+                }
+                if (!in_array(strtolower($file->getClientExtension()), self::ATTACHMENT_TYPES, true)) {
+                    throw new RuleViolation($file->getClientName() . ' is not a document type the procurement file accepts (PDF, image, Office, CSV, text or email).');
+                }
+                $files[] = ['path' => $file->getTempName(), 'name' => $file->getClientName(), 'size' => $file->getSize(), 'mime' => $file->getMimeType()];
+            }
+
+            $requisition = (new Repo())->create($body, $this->actorId(), $files);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['requisition' => $requisition])->setStatusCode(201);
+    }
+
+    public function submit($no)
+    {
+        $actor = $this->actor();
+        if (!in_array('requisition.raise', $actor['permissions'], true) && !$actor['canPrepare']) {
+            return $this->forbidden($actor['role'] . ' cannot submit requisitions.');
+        }
+
+        return $this->act(fn () => (new Repo())->submit((string) $no, $this->actorId()));
+    }
+
     public function approve($no)
     {
-        $repo     = new ProcurementRepository();
-        $approver = $this->actor()['short'];
-
-        foreach ($repo->requisitions() as $p) {
-            if ($p['no'] !== $no) {
-                continue;
-            }
-
-            if ($p['status'] !== 'Awaiting approval') {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => 'Only a requisition awaiting approval can be approved. ' . $no . ' is ' . $p['status'] . '.',
-                ]);
-            }
-
-            // Preparer ≠ approver. The requester field carries "Name · Role".
-            $requester = trim(explode('·', $p['requester'])[0]);
-            if ($this->sameActor($requester, $approver)) {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => $approver . ' raised ' . $no . ' and cannot also approve it. It needs a second approver.',
-                ]);
-            }
-
-            if (self::isOverBudget($p)) {
-                $short = $p['amount'] - self::available($p);
-
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => 'Blocked on budget: ' . $p['title'] . ' asks ' . Prototype::fmt($p['amount'])
-                        . ' against account ' . $p['code'] . ' (' . $p['program'] . ' · ' . $p['fund'] . '), which has '
-                        . Prototype::fmt(self::available($p)) . ' available. Short by ' . Prototype::fmt($short)
-                        . '. Raise a budget revision or reallocate before approving.',
-                ]);
-            }
-
-            try {
-                return $this->json(['requisition' => $repo->approve($no, $this->actorId())]);
-            } catch (RuleViolation $e) {
-                return $this->refused($e);
-            }
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot approve requisitions.');
         }
 
-        return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
+        return $this->act(fn () => (new Repo())->approve((string) $no, $this->actorId()));
     }
 
-    /**
-     * Raises the purchase order. This is the point the budget is committed, and
-     * the point the three-quote rule bites.
-     */
+    /** Body: {reason}. */
+    public function reject($no)
+    {
+        $actor = $this->actor();
+        if (!$actor['canApprove']) {
+            return $this->forbidden($actor['role'] . ' cannot reject requisitions.');
+        }
+        $reason = (string) (($this->request->getJSON(true) ?? [])['reason'] ?? '');
+
+        return $this->act(fn () => (new Repo())->reject((string) $no, $reason, $this->actorId()));
+    }
+
+    public function rfq($no)
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->forbidden($actor['role'] . ' cannot issue requests for quotation.');
+        }
+
+        return $this->act(fn () => (new Repo())->issueRfq((string) $no, $this->actorId()));
+    }
+
+    /** Body: {supplier?, waiver?, expected?}. */
     public function raisePo($no)
     {
-        $body     = $this->request->getJSON(true) ?? [];
-        $supplier = trim((string) ($body['supplier'] ?? ''));
-        $waiver   = trim((string) ($body['waiver'] ?? ''));
-
-        $repo = new ProcurementRepository();
-        foreach ($repo->requisitions() as $p) {
-            if ($p['no'] !== $no) {
-                continue;
-            }
-
-            if ($p['status'] !== 'Approved') {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => 'A purchase order can only be raised against an approved requisition. ' . $no . ' is ' . $p['status'] . '.',
-                ]);
-            }
-            if ($supplier === '') {
-                return $this->response->setStatusCode(422)->setJSON(['error' => 'Name the supplier the order is being placed with.']);
-            }
-            if (self::needsQuotes($p) && $waiver === '') {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => $no . ' is ' . Prototype::fmt($p['amount']) . ', above the ' . Prototype::fmt(self::QUOTE_THRESHOLD)
-                        . ' threshold, and has ' . count($p['quotes']) . ' of the 3 quotations required. Record the missing quotations '
-                        . 'or attach a documented single-source waiver.',
-                ]);
-            }
-
-            $supplierRecord = $this->supplierNamed($supplier);
-            if ($supplierRecord !== null && $supplierRecord['status'] !== 'Pre-qualified') {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => $supplier . ' is ' . strtolower($supplierRecord['status']) . ' — pre-qualification must be current before an order is placed.',
-                ]);
-            }
-
-            try {
-                return $this->json(['requisition' => $repo->raisePurchaseOrder($no, $supplier, $waiver, $body['expected'] ?? null, $this->actorId())]);
-            } catch (RuleViolation $e) {
-                return $this->refused($e);
-            }
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->forbidden($actor['role'] . ' cannot raise purchase orders.');
         }
-
-        return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
-    }
-
-    /**
-     * Posts the goods received note. Receipt is what recognises the supplier
-     * payable, so it releases the commitment and moves the value to actual.
-     */
-    public function receive($no)
-    {
         $body = $this->request->getJSON(true) ?? [];
 
-        $repo = new ProcurementRepository();
-        foreach ($repo->requisitions() as $p) {
-            if ($p['no'] !== $no) {
-                continue;
-            }
-
-            if ($p['status'] !== 'PO raised') {
-                return $this->response->setStatusCode(422)->setJSON([
-                    'error' => 'Goods can only be received against an open purchase order. ' . $no . ' is ' . $p['status'] . '.',
-                ]);
-            }
-            $receivedBy = trim((string) ($body['receivedBy'] ?? ''));
-            if ($receivedBy === '') {
-                return $this->response->setStatusCode(422)->setJSON(['error' => 'A goods received note must name who took delivery.']);
-            }
-
-            try {
-                return $this->json(['requisition' => $repo->receive($no, $receivedBy, trim((string) ($body['note'] ?? '')), $this->actorId())]);
-            } catch (RuleViolation $e) {
-                return $this->refused($e);
-            }
-        }
-
-        return $this->response->setStatusCode(404)->setJSON(['error' => $no . ' was not found in procurement.']);
+        return $this->act(fn () => (new Repo())->raisePurchaseOrder((string) $no, (string) ($body['supplier'] ?? ''), (string) ($body['waiver'] ?? ''), $body['expected'] ?? null, $this->actorId()));
     }
 
-    private function supplierNamed(string $name): ?array
+    /** Body: {receivedBy, note?}. */
+    public function receive($no)
     {
-        foreach ((new ProcurementRepository())->suppliers() as $s) {
-            if ($s['name'] === $name) {
-                return $s;
-            }
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->forbidden($actor['role'] . ' cannot record goods received.');
         }
+        $body = $this->request->getJSON(true) ?? [];
 
-        return null;
+        return $this->act(fn () => (new Repo())->receive((string) $no, (string) ($body['receivedBy'] ?? ''), trim((string) ($body['note'] ?? '')), $this->actorId()));
     }
 
-    /** "G. Wambui" and "Grace Wambui" are the same person to the segregation check. */
-    private function sameActor(string $a, string $b): bool
+    /** Body: {invoiceNo}. */
+    public function bill($no)
     {
-        $surname = static fn (string $n) => strtolower(trim((string) array_slice(explode(' ', trim($n)), -1)[0]));
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->forbidden($actor['role'] . ' cannot raise supplier bills.');
+        }
+        $invoiceNo = (string) (($this->request->getJSON(true) ?? [])['invoiceNo'] ?? '');
 
-        return $surname($a) !== '' && $surname($a) === $surname($b);
+        try {
+            return $this->json((new Repo())->raiseBill((string) $no, $invoiceNo, $this->actorId()));
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+    }
+
+    public function document($no, $id)
+    {
+        $file = (new Repo())->document((string) $no, (int) $id);
+        if ($file === null || !is_file($file['path'])) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
+        }
+
+        return $this->response->download($file['path'], null)->setFileName($file['filename'])->setContentType($file['mime_type']);
+    }
+
+    private function act(callable $action)
+    {
+        try {
+            return $this->json(['requisition' => $action()]);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+    }
+
+    private function forbidden(string $message)
+    {
+        return $this->response->setStatusCode(403)->setJSON(['error' => $message]);
     }
 }

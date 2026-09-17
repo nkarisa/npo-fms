@@ -30,12 +30,36 @@ class BudgetSeeder extends Seeder
 
         $profiles = $ctx->data('PROFILE');
 
+        // Procurement's budget lines (PQ_BUDGET_LINES) that the budget does not carry:
+        // added to both versions at their stated amount, on the coding of the
+        // requisitions that draw on them, phased evenly.
+        $budget = $ctx->data('BUDGET');
+        $codes = array_column($budget, 'code');
+        foreach ($ctx->data('PQ_BUDGET_LINES') as $l) {
+            if (in_array($l['code'], $codes, true)) {
+                continue;
+            }
+            $req = current(array_filter($ctx->data('PQ'), static fn ($r) => $r['code'] === $l['code']));
+            if ($req === false) {
+                continue;
+            }
+            $budget[] = ['code' => $l['code'], 'group' => 'Capital expenditure', 'fund' => $req['fund'], 'program' => $req['program'], 'grant' => null,
+                'orig' => $l['budget'], 'annual' => $l['budget'], 'profile' => 'even', 'requisition' => true];
+        }
+
         foreach ($versions as $field => $version) {
-            foreach ($ctx->data('BUDGET') as $b) {
-                $grant = $ctx->grantId($b['grant']);
+            foreach ($budget as $b) {
+                if (isset($b['requisition'])) {
+                    // The same coding the requisition is seeded with.
+                    $fund  = $ctx->fundId($b['fund'], null, $b['program'], $b['code']);
+                    $grant = $ctx->grantOfFund($fund);
+                } else {
+                    $grant = $ctx->grantId($b['grant']);
+                    $fund  = $ctx->fundId($b['fund'], $grant, $b['program'], $b['code']);
+                }
                 $line  = $ctx->insert('budget_lines', [
                     'budget_version_id' => $version, 'account_id' => $ctx->accountId($b['code']),
-                    'fund_id' => $ctx->fundId($b['fund'], $grant, $b['program'], $b['code']), 'programme_id' => $ctx->programmeId($b['program']),
+                    'fund_id' => $fund, 'programme_id' => $ctx->programmeId($b['program']),
                     'grant_id' => $grant, 'cost_group' => $b['group'], 'annual_amount' => $b[$field],
                     'phasing_profile_id' => $ctx->require('phasing_profiles', $b['profile']), 'created_at' => $now,
                 ]);

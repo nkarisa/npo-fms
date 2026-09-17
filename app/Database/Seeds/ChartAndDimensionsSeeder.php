@@ -207,7 +207,24 @@ class ChartAndDimensionsSeeder extends Seeder
                 $ctx->remember('account_funds', $a['code'], $funderFund);
             }
         }
+
+        // Accounts the screens post to that the prototype's chart lacks: its
+        // receivables write-off names 5340, which the chart holds as bank charges,
+        // and the bank reconciliation posts an unidentified credit to suspense.
+        foreach (self::EXTRA_ACCOUNTS as [$code, $name, $parent, $fund, $type]) {
+            $ctx->remember('accounts', $code, $ctx->insert('accounts', [
+                'code' => $code, 'name' => $name, 'type' => $type, 'parent_id' => $ctx->require('accounts', $parent), 'level' => 2,
+                'is_leaf' => 1, 'restriction' => 'unrestricted', 'default_fund_id' => $ctx->fundId($fund),
+                'default_programme_id' => $ctx->programmeId('Shared services'), 'status' => 'active', 'currency' => 'KES', 'created_at' => $now,
+            ]));
+        }
     }
+
+    /** code, name, parent heading, default fund, type */
+    private const EXTRA_ACCOUNTS = [
+        ['5370', 'Bad debts written off', '5300', 'General Fund', 'expense'],
+        ['2190', 'Suspense — unidentified receipts', '2100', 'General Fund', 'liability'],
+    ];
 
     private function seedGrants(SeedContext $ctx, int $entity, string $now): void
     {

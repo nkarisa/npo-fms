@@ -1,0 +1,665 @@
+[
+  {
+    "ref": "USAID/URAIA/2026",
+    "title": "Election Observation 2027 — LTO and STO deployment",
+    "funder": "USAID / Uraia",
+    "program": "Election Observation",
+    "fund": "USAID / Uraia Election Observation Fund",
+    "manager": "M. Otieno",
+    "period": "Oct 25 – Mar 27",
+    "start": "01 Oct 2025",
+    "end": "31 Mar 2027",
+    "elapsed": 62,
+    "status": "Active",
+    "value": 148000000,
+    "received": 96400000,
+    "spent": 58365000,
+    "nextReport": "30 Sep",
+    "reportDays": 35,
+    "budget": [
+      {
+        "code": "5110",
+        "name": "Observer recruitment and deployment",
+        "budget": 62000000,
+        "actual": 38260000
+      },
+      {
+        "code": "5140",
+        "name": "Field transport and accommodation",
+        "budget": 28000000,
+        "actual": 12485000
+      },
+      {
+        "code": "5150",
+        "name": "Data collection and call centre",
+        "budget": 22000000,
+        "actual": 7620000
+      },
+      {
+        "code": "5210",
+        "name": "Programme personnel",
+        "budget": 24000000,
+        "actual": 0
+      },
+      {
+        "code": "5310",
+        "name": "Indirect cost recovery at 8%",
+        "budget": 12000000,
+        "actual": 0
+      }
+    ],
+    "tranches": [
+      {
+        "no": "Tranche 1",
+        "date": "15 Nov 2025",
+        "amount": 42000000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 2",
+        "date": "18 Mar 2026",
+        "amount": 26000000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 3",
+        "date": "24 Jul 2026",
+        "amount": 28400000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 4",
+        "date": "15 Nov 2026",
+        "amount": 32000000,
+        "status": "Scheduled"
+      },
+      {
+        "no": "Final",
+        "date": "28 Feb 2027",
+        "amount": 19600000,
+        "status": "Scheduled"
+      }
+    ],
+    "reports": [
+      {
+        "name": "Financial report Q1",
+        "period": "Oct – Dec 2025",
+        "due": "31 Jan 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Financial report Q2",
+        "period": "Jan – Mar 2026",
+        "due": "30 Apr 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Narrative report H1",
+        "period": "Oct 25 – Jun 26",
+        "due": "31 Jul 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Financial report Q3",
+        "period": "Apr – Jun 2026",
+        "due": "30 Sep 2026",
+        "status": "Due"
+      }
+    ],
+    "conditions": [
+      "Costs must be incurred within the agreement period; no retroactive charges.",
+      "Sub-granting requires prior written approval from the Agreement Officer.",
+      "Unspent balances are returnable within 90 days of close-out.",
+      "Branding and marking plan applies to all public materials."
+    ]
+  },
+  {
+    "ref": "DANIDA/CE-2025/27",
+    "title": "Voter civic education across 14 counties",
+    "funder": "DANIDA",
+    "program": "Civic Education",
+    "fund": "DANIDA Civic Education Fund",
+    "manager": "S. Njeri",
+    "period": "Jan 25 – Dec 26",
+    "start": "01 Jan 2025",
+    "end": "31 Dec 2026",
+    "elapsed": 82,
+    "status": "Active",
+    "value": 68000000,
+    "received": 34250000,
+    "spent": 26250000,
+    "nextReport": "15 Oct",
+    "reportDays": 50,
+    "budget": [
+      {
+        "code": "5120",
+        "name": "Training and workshops",
+        "budget": 24000000,
+        "actual": 16940000
+      },
+      {
+        "code": "5130",
+        "name": "Civic education materials",
+        "budget": 18000000,
+        "actual": 9310000
+      },
+      {
+        "code": "5210",
+        "name": "Programme personnel",
+        "budget": 14000000,
+        "actual": 0
+      },
+      {
+        "code": "5310",
+        "name": "Support costs at 8%",
+        "budget": 5440000,
+        "actual": 0
+      },
+      {
+        "code": "1310",
+        "name": "Vehicles and equipment",
+        "budget": 6560000,
+        "actual": 0
+      }
+    ],
+    "tranches": [
+      {
+        "no": "Tranche 1",
+        "date": "20 Feb 2025",
+        "amount": 18000000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 2",
+        "date": "12 Jan 2026",
+        "amount": 16250000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 3",
+        "date": "30 Sep 2026",
+        "amount": 20000000,
+        "status": "Due"
+      },
+      {
+        "no": "Final",
+        "date": "31 Jan 2027",
+        "amount": 13750000,
+        "status": "Scheduled"
+      }
+    ],
+    "reports": [
+      {
+        "name": "Annual financial report",
+        "period": "2025",
+        "due": "31 Mar 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Semi-annual narrative",
+        "period": "Jan – Jun 2026",
+        "due": "31 Jul 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Financial report Q3",
+        "period": "Jul – Sep 2026",
+        "due": "15 Oct 2026",
+        "status": "Due"
+      },
+      {
+        "name": "Audited close-out",
+        "period": "2025 – 2026",
+        "due": "31 Mar 2027",
+        "status": "Scheduled"
+      }
+    ],
+    "conditions": [
+      "Maximum 8% indirect cost recovery.",
+      "Procurement above KES 1,000,000 requires three quotations.",
+      "Quarterly narrative and financial reporting."
+    ]
+  },
+  {
+    "ref": "UNDP/BASKET/2026",
+    "title": "Electoral support basket — data systems and call centre",
+    "funder": "UNDP Kenya",
+    "program": "Election Observation",
+    "fund": "UNDP Basket Fund",
+    "manager": "M. Otieno",
+    "period": "Apr 26 – Jun 27",
+    "start": "01 Apr 2026",
+    "end": "30 Jun 2027",
+    "elapsed": 32,
+    "status": "Active",
+    "value": 46000000,
+    "received": 27900000,
+    "spent": 7620000,
+    "nextReport": "31 Oct",
+    "reportDays": 66,
+    "budget": [
+      {
+        "code": "5150",
+        "name": "Data collection and call centre",
+        "budget": 26000000,
+        "actual": 7620000
+      },
+      {
+        "code": "5210",
+        "name": "Technical personnel",
+        "budget": 12000000,
+        "actual": 0
+      },
+      {
+        "code": "1320",
+        "name": "ICT equipment",
+        "budget": 8000000,
+        "actual": 0
+      }
+    ],
+    "tranches": [
+      {
+        "no": "Tranche 1",
+        "date": "18 Apr 2026",
+        "amount": 27900000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 2",
+        "date": "15 Jan 2027",
+        "amount": 18100000,
+        "status": "Scheduled"
+      }
+    ],
+    "reports": [
+      {
+        "name": "Inception report",
+        "period": "Apr – Jun 2026",
+        "due": "31 Jul 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Financial report Q3",
+        "period": "Jul – Sep 2026",
+        "due": "31 Oct 2026",
+        "status": "Due"
+      }
+    ],
+    "conditions": [
+      "Pooled reporting alongside other basket recipients.",
+      "Assets above USD 5,000 vest in UNDP at close.",
+      "Harmonised approach to cash transfers applies."
+    ]
+  },
+  {
+    "ref": "FORD/GA-24",
+    "title": "County accountability and partner sub-granting",
+    "funder": "Ford Foundation",
+    "program": "Governance Advocacy",
+    "fund": "Ford Foundation Governance Fund",
+    "manager": "M. Otieno",
+    "period": "Jul 24 – Sep 26",
+    "start": "01 Jul 2024",
+    "end": "30 Sep 2026",
+    "elapsed": 96,
+    "status": "Closing",
+    "value": 32000000,
+    "received": 28340000,
+    "spent": 15680000,
+    "nextReport": "14 Sep",
+    "reportDays": 19,
+    "budget": [
+      {
+        "code": "5410",
+        "name": "Sub-grants to county partners",
+        "budget": 19200000,
+        "actual": 15680000
+      },
+      {
+        "code": "5420",
+        "name": "Partner capacity strengthening",
+        "budget": 6800000,
+        "actual": 0
+      },
+      {
+        "code": "5210",
+        "name": "Programme personnel",
+        "budget": 4000000,
+        "actual": 0
+      },
+      {
+        "code": "5310",
+        "name": "Support costs",
+        "budget": 2000000,
+        "actual": 0
+      }
+    ],
+    "tranches": [
+      {
+        "no": "Tranche 1",
+        "date": "22 Aug 2024",
+        "amount": 14000000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 2",
+        "date": "10 Sep 2025",
+        "amount": 14340000,
+        "status": "Received"
+      },
+      {
+        "no": "Final",
+        "date": "30 Nov 2026",
+        "amount": 3660000,
+        "status": "Scheduled"
+      }
+    ],
+    "reports": [
+      {
+        "name": "Annual report 2025",
+        "period": "Jul 24 – Jun 25",
+        "due": "30 Sep 2025",
+        "status": "Submitted"
+      },
+      {
+        "name": "Interim financial",
+        "period": "Jul 25 – Jun 26",
+        "due": "31 Jul 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Close-out narrative",
+        "period": "Full period",
+        "due": "14 Sep 2026",
+        "status": "Due"
+      },
+      {
+        "name": "Audited close-out",
+        "period": "Full period",
+        "due": "29 Nov 2026",
+        "status": "Scheduled"
+      }
+    ],
+    "conditions": [
+      "At least 60% must reach county partners as sub-grants.",
+      "Final report due 60 days after close.",
+      "Unspent balances returnable unless a no-cost extension is granted."
+    ]
+  },
+  {
+    "ref": "EU/KE-2026",
+    "title": "Capacity strengthening of county civil society partners",
+    "funder": "EU Delegation",
+    "program": "Governance Advocacy",
+    "fund": "EU Delegation Partner Fund",
+    "manager": "S. Njeri",
+    "period": "Feb 26 – Jan 28",
+    "start": "01 Feb 2026",
+    "end": "31 Jan 2028",
+    "elapsed": 26,
+    "status": "Active",
+    "value": 54000000,
+    "received": 12600000,
+    "spent": 4390000,
+    "nextReport": "28 Feb",
+    "reportDays": 186,
+    "budget": [
+      {
+        "code": "5420",
+        "name": "Partner capacity strengthening",
+        "budget": 28000000,
+        "actual": 4390000
+      },
+      {
+        "code": "5120",
+        "name": "Training and workshops",
+        "budget": 12000000,
+        "actual": 0
+      },
+      {
+        "code": "5210",
+        "name": "Programme personnel",
+        "budget": 9000000,
+        "actual": 0
+      },
+      {
+        "code": "5310",
+        "name": "Indirect costs at 7%",
+        "budget": 5000000,
+        "actual": 0
+      }
+    ],
+    "tranches": [
+      {
+        "no": "Pre-financing",
+        "date": "26 Feb 2026",
+        "amount": 12600000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 2",
+        "date": "28 Feb 2027",
+        "amount": 24000000,
+        "status": "Scheduled"
+      },
+      {
+        "no": "Final",
+        "date": "31 Mar 2028",
+        "amount": 17400000,
+        "status": "Scheduled"
+      }
+    ],
+    "reports": [
+      {
+        "name": "Interim narrative",
+        "period": "Feb – Dec 2026",
+        "due": "28 Feb 2027",
+        "status": "Scheduled"
+      }
+    ],
+    "conditions": [
+      "EU visibility guidelines apply to all outputs.",
+      "Exchange losses are not an eligible cost.",
+      "Expenditure verification required above EUR 100,000."
+    ]
+  },
+  {
+    "ref": "KAS/2025-KE",
+    "title": "Political party dialogue forums",
+    "funder": "Konrad Adenauer Stiftung",
+    "program": "Governance Advocacy",
+    "fund": "General Fund",
+    "manager": "P. Mwangi",
+    "period": "Mar 25 – Feb 27",
+    "start": "01 Mar 2025",
+    "end": "28 Feb 2027",
+    "elapsed": 74,
+    "status": "Suspended",
+    "value": 18000000,
+    "received": 9400000,
+    "spent": 8960000,
+    "nextReport": "overdue",
+    "reportDays": -22,
+    "budget": [
+      {
+        "code": "5120",
+        "name": "Training and workshops",
+        "budget": 11000000,
+        "actual": 8960000
+      },
+      {
+        "code": "5140",
+        "name": "Participant travel",
+        "budget": 4000000,
+        "actual": 0
+      },
+      {
+        "code": "5310",
+        "name": "Support costs",
+        "budget": 3000000,
+        "actual": 0
+      }
+    ],
+    "tranches": [
+      {
+        "no": "Tranche 1",
+        "date": "14 Apr 2025",
+        "amount": 9400000,
+        "status": "Received"
+      },
+      {
+        "no": "Tranche 2",
+        "date": "on hold",
+        "amount": 8600000,
+        "status": "Scheduled"
+      }
+    ],
+    "reports": [
+      {
+        "name": "Financial report H1",
+        "period": "Mar – Dec 2025",
+        "due": "31 Mar 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Financial report H2",
+        "period": "Jan – Jun 2026",
+        "due": "04 Aug 2026",
+        "status": "Overdue"
+      }
+    ],
+    "conditions": [
+      "Disbursements suspended pending resolution of the June monitoring finding.",
+      "Two competitive quotations required for all venue hire.",
+      "No further commitments may be made against this award."
+    ]
+  },
+  {
+    "ref": "HIVOS/PROP-2026",
+    "title": "Youth and gender inclusion in electoral processes",
+    "funder": "Hivos",
+    "program": "Youth and Gender Inclusion",
+    "fund": "Not yet assigned",
+    "manager": "S. Njeri",
+    "period": "Proposal",
+    "start": "—",
+    "end": "—",
+    "elapsed": 0,
+    "status": "Pipeline",
+    "value": 24000000,
+    "received": 0,
+    "spent": 0,
+    "nextReport": "—",
+    "reportDays": 9999,
+    "budget": [
+      {
+        "code": "5120",
+        "name": "Training and workshops",
+        "budget": 10000000,
+        "actual": 0
+      },
+      {
+        "code": "5130",
+        "name": "Outreach materials",
+        "budget": 6000000,
+        "actual": 0
+      },
+      {
+        "code": "5210",
+        "name": "Programme personnel",
+        "budget": 6000000,
+        "actual": 0
+      },
+      {
+        "code": "5310",
+        "name": "Support costs",
+        "budget": 2000000,
+        "actual": 0
+      }
+    ],
+    "tranches": [
+      {
+        "no": "On award",
+        "date": "Q4 2026",
+        "amount": 24000000,
+        "status": "Scheduled"
+      }
+    ],
+    "reports": [],
+    "conditions": [
+      "Concept note submitted 18 Jul 2026; full proposal invited.",
+      "Decision expected by 30 Nov 2026.",
+      "Not recognised as committed income until the agreement is signed."
+    ]
+  },
+  {
+    "ref": "NED/2024-KE",
+    "title": "Election observation methodology review",
+    "funder": "National Endowment for Democracy",
+    "program": "Election Observation",
+    "fund": "General Fund",
+    "manager": "M. Otieno",
+    "period": "Jan 24 – Dec 25",
+    "start": "01 Jan 2024",
+    "end": "31 Dec 2025",
+    "elapsed": 100,
+    "status": "Closed",
+    "value": 12400000,
+    "received": 12400000,
+    "spent": 12180000,
+    "nextReport": "—",
+    "reportDays": 9999,
+    "budget": [
+      {
+        "code": "5150",
+        "name": "Methodology and analysis",
+        "budget": 7400000,
+        "actual": 7290000
+      },
+      {
+        "code": "5120",
+        "name": "Validation workshops",
+        "budget": 3000000,
+        "actual": 2960000
+      },
+      {
+        "code": "5310",
+        "name": "Support costs",
+        "budget": 2000000,
+        "actual": 1930000
+      }
+    ],
+    "tranches": [
+      {
+        "no": "Tranche 1",
+        "date": "12 Feb 2024",
+        "amount": 6200000,
+        "status": "Received"
+      },
+      {
+        "no": "Final",
+        "date": "20 Jan 2025",
+        "amount": 6200000,
+        "status": "Received"
+      }
+    ],
+    "reports": [
+      {
+        "name": "Final narrative",
+        "period": "Full period",
+        "due": "28 Feb 2026",
+        "status": "Submitted"
+      },
+      {
+        "name": "Audited close-out",
+        "period": "Full period",
+        "due": "31 Mar 2026",
+        "status": "Submitted"
+      }
+    ],
+    "conditions": [
+      "Closed out on 31 March 2026. KES 220,000 unspent balance refunded.",
+      "Records retained for seven years."
+    ]
+  }
+]

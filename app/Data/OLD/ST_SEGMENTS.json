@@ -1,0 +1,56 @@
+[
+  {
+    "key": "fund",
+    "name": "Fund",
+    "example": "General, Grant, Capital, Endowment",
+    "count": 9,
+    "required": true,
+    "reported": true,
+    "applies": "All postings"
+  },
+  {
+    "key": "program",
+    "name": "Programme / project",
+    "example": "Election Observation, Civic Education",
+    "count": 5,
+    "required": true,
+    "reported": true,
+    "applies": "Income and expenditure"
+  },
+  {
+    "key": "restriction",
+    "name": "Restriction class",
+    "example": "Unrestricted, Restricted, Endowment",
+    "count": 3,
+    "required": true,
+    "reported": true,
+    "applies": "All postings"
+  },
+  {
+    "key": "grant",
+    "name": "Grant / award",
+    "example": "USAID / Uraia 2026, DANIDA CE-2025/27",
+    "count": 8,
+    "required": true,
+    "reported": true,
+    "applies": "Restricted funds only"
+  },
+  {
+    "key": "funder",
+    "name": "Funder",
+    "example": "USAID, DANIDA, UNDP, Ford Foundation",
+    "count": 7,
+    "required": false,
+    "reported": true,
+    "applies": "Restricted funds only"
+  },
+  {
+    "key": "county",
+    "name": "County",
+    "example": "Kisumu, Nakuru, Homa Bay",
+    "count": 14,
+    "required": false,
+    "reported": false,
+    "applies": "Field expenditure"
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "key": "balanced",
+    "label": "Reject unbalanced journals",
+    "note": "Debits must equal credits before an entry can leave draft. Recommended and expected by auditors.",
+    "on": true
+  },
+  {
+    "key": "twoPerson",
+    "label": "Enforce the two-person rule",
+    "note": "The person who prepares an entry can never be the person who approves it, at any value.",
+    "on": true
+  },
+  {
+    "key": "closedPeriods",
+    "label": "Allow posting to closed periods",
+    "note": "When off, a journal dated in a closed period is rejected. Reopening a period is logged and requires the Finance Manager.",
+    "on": false
+  },
+  {
+    "key": "backdate",
+    "label": "Allow backdated postings within the open period",
+    "note": "Permits corrections dated earlier in the same open month.",
+    "on": true
+  },
+  {
+    "key": "autoNumber",
+    "label": "Auto-number journals and vouchers",
+    "note": "References are issued in sequence per source type and cannot be reused.",
+    "on": true
+  },
+  {
+    "key": "budgetCheck",
+    "label": "Block postings that exceed the budget line",
+    "note": "A hard stop rather than a warning. Blocked postings need a budget revision first.",
+    "on": false
+  }
+]

@@ -82,6 +82,7 @@ class Dashboard extends BaseApiController
         $overLines = Ledger::overBudgetLines();
         $expiring  = Ledger::expiringFunds();
         $accounts  = (new BankRepository())->accounts();
+        $unreconciled = (new BankRepository())->unreconciled();
 
         $plural = fn (int $n, string $one, string $many) => $n . ' ' . ($n === 1 ? $one : $many);
 
@@ -130,10 +131,10 @@ class Dashboard extends BaseApiController
                 'href' => '/asset-register',
             ],
             [
-                'n' => count($accounts), 'tone' => 'warn', 'cta' => 'Reconcile',
+                'n' => count($unreconciled), 'tone' => 'warn', 'cta' => 'Reconcile',
                 'title' => 'Bank and M-Pesa accounts not yet reconciled',
                 'detail' => date('F', strtotime('1 ' . Ledger::currentPeriod())) . ' cannot be closed until every statement agrees to the cash book',
-                'value' => count($accounts) . ' of ' . count($accounts) . ' accounts',
+                'value' => count($unreconciled) . ' of ' . count($accounts) . ' accounts',
                 'href' => '/bank-rec',
             ],
             [

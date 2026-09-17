@@ -32,6 +32,14 @@ use RuntimeException;
  * the closed months (`source_type` "archive"): the general ledger lists them, the
  * journal register does not.
  *
+ * The August cash book the bank reconciliation works from (BR_ACCOUNTS) is posted
+ * too: the payment vouchers, receipts, transfers and M-Pesa batches on each bank
+ * account. Their source documents live outside the journal register
+ * (`source_type` "cash_book"), so the register does not list them; the general
+ * ledger and the reconciliation do. Each voucher's other side goes to the account
+ * it settles (CASH_BOOK_CONTRAS). The opening journal's brought-forward lines
+ * absorb their effect, so neither the balances nor the history move.
+ *
  * Journals are inserted as drafts, given their lines, and then moved to their
  * status through the same transitions the application uses, so every posting
  * passes the integrity triggers.
@@ -58,6 +66,22 @@ class LedgerSeeder extends Seeder
 
     private const APPROVER = 'W. Kamau';
 
+    /**
+     * The account the other side of a cash book voucher goes to, by voucher series
+     * and then by voucher: payment vouchers settle trade payables, receipts settle
+     * grants receivable, M-Pesa batches pay observer stipends against advances. A
+     * voucher that already balances across bank accounts (a transfer) has none.
+     */
+    private const CASH_BOOK_CONTRAS = [
+        'PV' => '2110', 'RC' => '1210', 'MP' => '1220',
+        'PV-26-0468' => '1220',   // LTO stipends
+        'PV-26-0470' => '2210',   // PAYE remitted to KRA
+        'PV-26-0481' => '2120',   // office rent, accrued on the lease schedule
+        'JV-26-0291' => '1110',   // Equity USD to KCB current: the receiving side, not yet on the KCB statement
+    ];
+
+    private const CASH_BOOK_PREPARERS = ['PV' => 'J. Achieng', 'RC' => 'M. Otieno', 'MP' => 'S. Njeri', 'JV' => 'M. Otieno'];
+
     private SeedContext $ctx;
 
     /** @var array<string, array> SEED rows by code */
@@ -79,7 +103,9 @@ class LedgerSeeder extends Seeder
         // The restricted balance is split as the ledger stood before its history was drawn out,
         // so every fund keeps the balance it has always had.
         $restrictedBalance = $this->restrictedBalanceLines($fullOpening, array_map(static fn ($j) => $lines[$j['ref']], $posted));
-        [$opening, $history] = $this->history($fullOpening, array_column($journals, 'ref'));
+        $cashBook = $this->cashBook();
+        [$opening, $history] = $this->history($fullOpening, array_merge(array_column($journals, 'ref'), array_column($cashBook, 'reference')));
+        $opening = $this->lessCashBook($opening, $cashBook);
 
         // Everything after the opening journal posts in date order, history and JOURNALS together.
         $sequence = array_merge(
@@ -119,6 +145,15 @@ class LedgerSeeder extends Seeder
             $j = $item['journal'];
             $ids[$j['ref']] = $id = $this->createJournal($this->header($j, $ids), $lines[$j['ref']], $this->status($j), $this->approval($j));
             $ctx->writeTrail('journal', $id, $j['ref'], $j['trail'], $entity);
+        }
+
+        $approver = $ctx->userId(self::APPROVER);
+        foreach ($cashBook as $voucher) {
+            $lines = $voucher['lines'];
+            unset($voucher['lines']);
+            $this->createJournal($voucher, $lines, 'posted', [
+                'approved_by' => $approver, 'approved_at' => $voucher['journal_date'] . ' 17:00:00', 'posted_at' => $voucher['journal_date'] . ' 17:00:00',
+            ]);
         }
 
         // A reversed journal is marked once its reversal has posted.
@@ -195,19 +230,97 @@ class LedgerSeeder extends Seeder
                 continue;
             }
 
-            $fund = match (true) {
-                $a['restriction'] === 'Endowment' => $this->ctx->require('funds', 'FND-400'),
-                $a['fund'] === 'Grant Fund'       => $this->ctx->fundId('Grant Fund', null, $a['program'], $a['code'], true),
-                default                           => $this->ctx->fundId($a['fund']),
-            };
-
             $result[] = [
-                'code' => $a['code'], 'fund_id' => $fund, 'programme' => $a['program'], 'description' => $a['name'],
+                'code' => $a['code'], 'fund_id' => $this->chartFund($a['code']), 'programme' => $a['program'], 'description' => $a['name'],
                 'debit' => max($net, 0), 'credit' => max(-$net, 0),
             ];
         }
 
         return $result;
+    }
+
+    /** The fund an account's balance is held in, as the chart codes it. */
+    private function chartFund(string $code): int
+    {
+        $a = $this->chart[$code];
+
+        return match (true) {
+            $a['restriction'] === 'Endowment' => $this->ctx->require('funds', 'FND-400'),
+            $a['fund'] === 'Grant Fund'       => $this->ctx->fundId('Grant Fund', null, $a['program'], $a['code'], true),
+            default                           => $this->ctx->fundId($a['fund']),
+        };
+    }
+
+    /**
+     * The cash book behind each bank reconciliation, one journal per voucher: its
+     * lines on the bank accounts it moves, and the account it settles.
+     *
+     * @return list<array> journal headers, each with its `lines`
+     */
+    private function cashBook(): array
+    {
+        $ctx = $this->ctx;
+        $vouchers = [];
+        foreach ($ctx->data('BR_ACCOUNTS') as $b) {
+            foreach ($b['book'] as $l) {
+                $vouchers[$l['ref']]['date'] ??= $ctx->date($l['date']);
+                $vouchers[$l['ref']]['narration'] ??= $l['desc'];
+                $vouchers[$l['ref']]['bank'] ??= $b['code'];
+                $vouchers[$l['ref']]['lines'][] = ['code' => $b['code'], 'description' => $l['desc'], 'amount' => (float) $l['amt']];
+            }
+        }
+
+        $journals = [];
+        foreach ($vouchers as $ref => $v) {
+            $series = substr($ref, 0, 2);
+            $net = array_sum(array_column($v['lines'], 'amount'));
+            if (round($net, 2) != 0) {
+                $contra = self::CASH_BOOK_CONTRAS[$ref] ?? self::CASH_BOOK_CONTRAS[$series]
+                    ?? throw new RuntimeException("No contra account for cash book voucher {$ref}.");
+                $transfer = current(array_filter($ctx->data('BR_ACCOUNTS'), static fn ($b) => $b['code'] === $v['bank']));
+                $v['lines'][] = [
+                    'code' => $contra, 'amount' => -$net,
+                    'description' => $this->chart[$contra]['type'] === 'Asset' && str_starts_with($contra, '11') ? 'Transfer from ' . $transfer['short'] : $this->chart[$contra]['name'],
+                ];
+            }
+
+            $journals[] = [
+                'reference' => $ref, 'journal_date' => $v['date'], 'type' => 'standard',
+                'document_type_id' => $ctx->lookup('document_types', $series),
+                'source_type' => 'cash_book', 'source_id' => $ctx->require('bank_accounts', $v['bank']),
+                'narration' => $v['narration'], 'prepared_by' => $ctx->userOrSystem(self::CASH_BOOK_PREPARERS[$series] ?? null),
+                'lines' => array_map(fn ($l) => [
+                    'code' => $l['code'], 'fund_id' => $this->chartFund($l['code']), 'programme' => $this->chart[$l['code']]['program'],
+                    'description' => $l['description'], 'debit' => max($l['amount'], 0), 'credit' => max(-$l['amount'], 0),
+                ], $v['lines']),
+            ];
+        }
+        usort($journals, static fn ($a, $b) => [$a['journal_date'], $a['reference']] <=> [$b['journal_date'], $b['reference']]);
+
+        return $journals;
+    }
+
+    /** Takes the cash book's effect out of the balances brought forward, line by line in the same coding. */
+    private function lessCashBook(array $opening, array $cashBook): array
+    {
+        foreach ($cashBook as $voucher) {
+            foreach ($voucher['lines'] as $l) {
+                $effect = $l['debit'] - $l['credit'];
+                $found = false;
+                foreach ($opening as $k => $o) {
+                    if ($o['code'] === $l['code'] && $o['fund_id'] === $l['fund_id'] && $o['programme'] === $l['programme']) {
+                        $opening[$k] = $this->signedLine($o, $o['debit'] - $o['credit'] - $effect);
+                        $found = true;
+                        break;
+                    }
+                }
+                if (!$found) {
+                    $opening[] = $this->signedLine($l, -$effect);
+                }
+            }
+        }
+
+        return $opening;
     }
 
     /**
