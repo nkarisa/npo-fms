@@ -390,6 +390,8 @@ final class PeriodCloseRepository extends Repository
 
         $disposals = (int) $this->value("SELECT COUNT(*) FROM {asset_disposals} WHERE status = 'pending_approval'");
         $depreciation = $this->row("SELECT * FROM {depreciation_runs} WHERE period_id = ? AND status = 'posted'", [$period['id']]);
+        // A purchase not yet on the register is not depreciated, so the run is not complete without it.
+        $uncapitalised = count((new AssetAdditionRepository())->awaiting());
         $segments = Ledger::openSegments();
         $untied = count(Ledger::untiedReports());
         $over = count(Ledger::overBudgetLines());
@@ -410,7 +412,11 @@ final class PeriodCloseRepository extends Repository
                 default => [false, 'The ' . $month . ' run has not been approved or posted'],
             },
             'disposals' => [$disposals === 0, $disposals ? $disposals . ($disposals === 1 ? ' proposed disposal awaiting' : ' proposed disposals awaiting') . ' the Executive Director' : 'No disposal is sitting unapproved'],
-            'depn'      => [$depreciation !== null, $depreciation !== null ? Prototype::fmt((float) $depreciation['total']) . ' posted from the asset register to 5350' : 'The monthly run has not been posted from the asset register'],
+            'depn'      => [$depreciation !== null && $uncapitalised === 0, match (true) {
+                $uncapitalised > 0     => $uncapitalised . ($uncapitalised === 1 ? ' purchase on 1310 or 1320 is' : ' purchases on 1310 or 1320 are') . ' not yet capitalised, so the register does not depreciate them',
+                $depreciation !== null => Prototype::fmt((float) $depreciation['total']) . ' posted from the asset register to 5350',
+                default                => 'The monthly run has not been posted from the asset register',
+            }],
             'segments'  => [$segments === [], $segments
                 ? 'The ' . implode(' and ', array_map(static fn ($s) => strtolower($s['name']), $segments)) . ' segment is still optional — postings may not be traceable'
                 : 'All donor segments are mandatory on posting'],

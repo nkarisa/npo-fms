@@ -119,6 +119,12 @@ final class BankRepository extends Repository
                 'match' => $matchOfBook[(int) $l['id']] ?? null, 'raised' => $l['source_type'] === 'bank_statement_line',
             ], $this->bookLines($h));
 
+            $import = $this->row(
+                'SELECT i.filename, i.imported_by, i.imported_at, (SELECT COUNT(*) FROM {bank_statement_imports} x WHERE x.bank_statement_id = i.bank_statement_id) AS uploads
+                 FROM {bank_statement_imports} i WHERE i.bank_statement_id = ? ORDER BY i.id DESC LIMIT 1',
+                [$h['bank_statement_id']]
+            );
+
             return [
                 'id' => (int) $h['id'], 'code' => $account['code'], 'name' => $account['name'], 'short' => $account['short'], 'kind' => $account['kind'],
                 'period' => $period, 'periods' => $account['periods'], 'periodOpen' => $h['period_status'] === 'open',
@@ -126,6 +132,11 @@ final class BankRepository extends Repository
                 'reviewedBy' => $h['reviewed_by'] === null ? null : $this->lookups->shortName((int) $h['reviewed_by']),
                 'completedAt' => $h['completed_at'] === null ? null : self::dmy($h['completed_at']),
                 'periodEnd' => self::dmy($h['ends_on']),
+                'printedClose' => self::num($h['closing_balance']),
+                'lastUpload' => $import === null ? null : [
+                    'file' => $import['filename'], 'by' => $this->lookups->shortName((int) $import['imported_by']),
+                    'on' => self::dmy($import['imported_at']), 'uploads' => (int) $import['uploads'],
+                ],
                 'statement' => $statement, 'book' => $book,
             ] + self::figures((float) $h['opening_balance'], $statement, $book);
         });
@@ -371,6 +382,10 @@ final class BankRepository extends Repository
             $open = count($r['unmatchedStatement']);
             throw new RuleViolation($open . ($open === 1 ? ' statement line is' : ' statement lines are') . ' still unmatched. Match or journalise every line before signing off.');
         }
+        if (round($r['statementClose'], 2) != round((float) $r['printedClose'], 2)) {
+            throw new RuleViolation('The statement lines add up to ' . self::money($r['statementClose']) . ' but the bank printed a closing balance of '
+                . self::money($r['printedClose']) . '. A line is missing from the statement — load the rest of it before signing off.');
+        }
         $h = $this->header($code, $period);
         if ((int) $h['prepared_by'] === $actorId) {
             throw new RuleViolation($this->lookups->shortName($actorId) . ' prepared this reconciliation and cannot also sign it off. It needs a second person.');
@@ -431,7 +446,7 @@ final class BankRepository extends Repository
     private function header(string $code, string $period): array
     {
         return $this->cached("header:{$code}:{$period}", fn () => $this->row(
-            'SELECT r.*, s.reference, s.opening_balance, s.bank_account_id, b.account_id, p.starts_on, p.ends_on, p.status AS period_status
+            'SELECT r.*, s.reference, s.opening_balance, s.closing_balance, s.source, s.bank_account_id, b.account_id, p.starts_on, p.ends_on, p.status AS period_status
              FROM {reconciliations} r JOIN {bank_statements} s ON s.id = r.bank_statement_id JOIN {bank_accounts} b ON b.id = r.bank_account_id
              JOIN {accounts} a ON a.id = b.account_id JOIN {periods} p ON p.id = r.period_id
              WHERE a.code = ? AND p.name = ?',

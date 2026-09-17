@@ -25,11 +25,11 @@ class ReferenceDataSeeder extends Seeder
 
     private const LEDGER_GROUPS = ['Grant Fund' => 'grant', 'General Fund' => 'general', 'Capital Fund' => 'capital'];
 
-    /** [key, name, kind, taxable, statutory, GL code]. */
+    /** [key, name, kind, taxable, statutory, GL code, benefit basis ('pct' of basic or 'flat'), or null when not a benefit]. */
     private const PAY_COMPONENTS = [
         ['basic_salary', 'Basic salary', 'earning', true, false, '5210'],
-        ['house_allowance', 'House allowance', 'earning', true, false, '5210'],
-        ['transport_allowance', 'Transport allowance', 'earning', true, false, '5210'],
+        ['house_allowance', 'House allowance', 'earning', true, false, '5210', 'pct'],
+        ['transport_allowance', 'Transport allowance', 'earning', true, false, '5210', 'flat'],
         ['acting_allowance', 'Acting allowance', 'earning', true, false, '5210'],
         ['paye', 'PAYE', 'deduction', false, true, '2210'],
         ['nssf_employee', 'NSSF (employee)', 'deduction', false, true, '2220'],
@@ -40,6 +40,17 @@ class ReferenceDataSeeder extends Seeder
         ['nssf_employer', 'NSSF (employer)', 'employer', false, true, '5220'],
         ['housing_levy_employer', 'Affordable housing levy (employer)', 'employer', false, true, '5220'],
         ['nita', 'NITA levy', 'employer', false, true, '5220'],
+    ];
+
+    /** The grade scale (the prototype's GRADE_SCALE): [code, band, house allowance % of basic, transport KES]. */
+    private const GRADES = [
+        ['G1', 'Executive', 30, 60000],
+        ['G2', 'Director', 30, 42000],
+        ['G3', 'Manager', 30, 27000],
+        ['G4', 'Officer', 30, 21000],
+        ['G5', 'Assistant officer', 29, 16000],
+        ['G6', 'Administrator', 29, 11000],
+        ['G7', 'Support', 29, 10000],
     ];
 
     public function run(): void
@@ -68,11 +79,21 @@ class ReferenceDataSeeder extends Seeder
         }
 
         // Accounts are seeded later; components are linked to GL codes then.
-        foreach (self::PAY_COMPONENTS as [$key, $name, $kind, $taxable, $statutory, $code]) {
+        foreach (self::PAY_COMPONENTS as $c) {
+            [$key, $name, $kind, $taxable, $statutory, $code] = $c;
             $ctx->remember('pay_components', $key, $ctx->insert('pay_components', [
-                'key' => $key, 'name' => $name, 'kind' => $kind, 'is_taxable' => (int) $taxable, 'is_statutory' => (int) $statutory, 'created_at' => $now,
+                'key' => $key, 'name' => $name, 'kind' => $kind, 'is_taxable' => (int) $taxable, 'is_statutory' => (int) $statutory,
+                'is_benefit' => (int) isset($c[6]), 'basis' => $c[6] ?? null, 'is_active' => 1, 'created_at' => $now,
             ]));
             $ctx->remember('pay_component_accounts', $key, $code);
+        }
+
+        foreach (self::GRADES as $i => [$grade, $title, $housePct, $transport]) {
+            $id = $ctx->insert('pay_grades', ['code' => $grade, 'title' => $title, 'sort_order' => $i + 1, 'is_active' => 1, 'created_at' => $now]);
+            $ctx->db()->table('pay_grade_benefits')->insertBatch([
+                ['pay_grade_id' => $id, 'pay_component_id' => $ctx->require('pay_components', 'house_allowance'), 'amount' => $housePct],
+                ['pay_grade_id' => $id, 'pay_component_id' => $ctx->require('pay_components', 'transport_allowance'), 'amount' => $transport],
+            ]);
         }
 
         $this->seedStatutoryRates($ctx, $now);

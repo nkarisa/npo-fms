@@ -10,11 +10,11 @@
 use App\Libraries\I18n;
 use App\Libraries\Navigation;
 
-// Language and direction are set server-side from the saved preference, so a
+// Language and direction are set server-side, the same way the API decides them, so a
 // right-to-left language lays out correctly on first paint rather than flipping
 // once the page script has run.
 $request = service('request');
-$locale  = new I18n($request->getCookie('elog_locale'));
+$locale  = I18n::forRequest($request);
 $current = $locale->locale();
 ?>
 <!DOCTYPE html>
@@ -26,7 +26,7 @@ $current = $locale->locale();
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="stylesheet" href="<?= asset_url('/assets/css/app.css') ?>">
 <script>
   // Applied before first paint so a collapsed sidebar does not flash open.
   try { if (localStorage.getItem('elog.nav') === 'collapsed') document.documentElement.classList.add('nav-collapsed'); } catch (e) {}

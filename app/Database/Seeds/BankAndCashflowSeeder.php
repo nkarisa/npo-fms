@@ -3,6 +3,7 @@
 namespace App\Database\Seeds;
 
 use App\Database\Seeds\Support\SeedContext;
+use App\Libraries\StatementCsv;
 use CodeIgniter\Database\Seeder;
 
 /**
@@ -19,6 +20,10 @@ use CodeIgniter\Database\Seeder;
  *   the account in the month came through on the statement and was matched to it.
  *   Their statements chain back from August's opening balance, so each month's
  *   closing balance is the next month's opening.
+ * - Statement formats: the M-Pesa organisation portal export (built in), and the
+ *   KCB and Equity internet banking exports, each assigned to its account. Seeded
+ *   lines carry the same fingerprint an upload gives them, so loading a statement
+ *   over them skips what is already there.
  */
 class BankAndCashflowSeeder extends Seeder
 {
@@ -31,6 +36,35 @@ class BankAndCashflowSeeder extends Seeder
     /** Signed off before August, oldest last. */
     private const EARLIER_MONTHS = ['2026-07-01', '2026-06-01'];
 
+    /**
+     * The CSV layouts the banks' downloads use. The M-Pesa export is the same for
+     * every organisation; the bank layouts are a starting point, adjusted in
+     * Settings when a bank's download differs.
+     */
+    private const FORMATS = [
+        'mpesa' => [
+            'name' => 'M-Pesa organisation portal (CSV)', 'builtin' => true, 'accounts' => ['1130'],
+            'date_column' => 'Completion Time', 'date_format' => 'yyyy-mm-dd|dd-mm-yyyy|dd/mm/yyyy', 'reference_column' => 'Receipt No.',
+            'description_columns' => ['Details'], 'amount_layout' => 'split', 'debit_column' => 'Withdrawn', 'credit_column' => 'Paid In',
+            'balance_column' => 'Balance', 'status_column' => 'Transaction Status', 'status_value' => 'Completed',
+            'entry_rules' => [['match' => 'Charge', 'entry' => 'charges']],
+        ],
+        'kcb' => [
+            'name' => 'KCB internet banking (CSV)', 'builtin' => false, 'accounts' => ['1110'],
+            'date_column' => 'Transaction Date', 'date_format' => 'dd/mm/yyyy', 'reference_column' => 'Reference',
+            'description_columns' => ['Transaction Details'], 'amount_layout' => 'split', 'debit_column' => 'Money Out', 'credit_column' => 'Money In',
+            'balance_column' => 'Ledger Balance',
+            'entry_rules' => [['match' => 'CHG', 'entry' => 'charges'], ['match' => 'ledger fee', 'entry' => 'charges'], ['match' => 'INT CR', 'entry' => 'interest'], ['match' => 'interest', 'entry' => 'interest']],
+        ],
+        'equity' => [
+            'name' => 'Equity Bank online banking (CSV)', 'builtin' => false, 'accounts' => ['1120'],
+            'date_column' => 'Transaction Date', 'date_format' => 'dd-mm-yyyy', 'reference_column' => 'Transaction Reference',
+            'description_columns' => ['Narrative'], 'amount_layout' => 'split', 'debit_column' => 'Debit', 'credit_column' => 'Credit',
+            'balance_column' => 'Running Balance',
+            'entry_rules' => [['match' => 'charge', 'entry' => 'charges'], ['match' => 'interest', 'entry' => 'interest'], ['match' => 'exchange gain', 'entry' => 'fx_gain']],
+        ],
+    ];
+
     private const PREPARER = 'M. Otieno';
 
     private const REVIEWER = 'W. Kamau';
@@ -40,6 +74,7 @@ class BankAndCashflowSeeder extends Seeder
         $ctx = SeedContext::get();
         $now = $ctx->now();
         $august = $ctx->periodId('2026-08-01');
+        $this->formats($ctx);
 
         foreach ($ctx->data('BR_ACCOUNTS') as $b) {
             $bank = $ctx->require('bank_accounts', $b['code']);
@@ -51,10 +86,12 @@ class BankAndCashflowSeeder extends Seeder
                 'opening_balance' => $b['opening'], 'closing_balance' => $closing, 'imported_by' => $ctx->systemUserId(), 'created_at' => $now,
             ]);
 
+            $seen = [];
             foreach ($b['stmt'] as $line) {
                 $ctx->insert('bank_statement_lines', [
                     'bank_statement_id' => $statement, 'line_date' => $ctx->date($line['date']), 'reference' => $line['ref'],
                     'description' => $line['desc'], 'amount' => $line['amt'], 'bank_entry' => self::BANK_ENTRIES[$line['jl']] ?? null,
+                    'import_hash' => self::fingerprint($seen, $bank, $ctx->date($line['date']), $line['ref'], (float) $line['amt'], $line['desc']),
                 ]);
             }
 
@@ -112,15 +149,17 @@ class BankAndCashflowSeeder extends Seeder
                 'prepared_by' => $preparer, 'reviewed_by' => $reviewer, 'completed_at' => $completedAt, 'created_at' => $received->format('Y-m-d 08:00:00'),
             ]);
 
+            $seen = [];
             foreach ($postings as $p) {
                 $amount = round($p['debit'] - $p['credit'], 2);
                 if ($amount == 0) {
                     continue;
                 }
+                $reference = self::bankReference($b['code'], (int) $p['id'], $amount);
+                $description = $p['description'] !== '' ? $p['description'] : $p['narration'];
                 $line = $ctx->insert('bank_statement_lines', [
-                    'bank_statement_id' => $statement, 'line_date' => $p['journal_date'],
-                    'reference' => self::bankReference($b['code'], (int) $p['id'], $amount), 'description' => $p['description'] !== '' ? $p['description'] : $p['narration'],
-                    'amount' => $amount,
+                    'bank_statement_id' => $statement, 'line_date' => $p['journal_date'], 'reference' => $reference, 'description' => $description,
+                    'amount' => $amount, 'import_hash' => self::fingerprint($seen, $bank, $p['journal_date'], $reference, $amount, $description),
                 ]);
                 $match = $ctx->insert('reconciliation_matches', ['reconciliation_id' => $reconciliation, 'matched_by' => $preparer, 'matched_at' => $completedAt]);
                 $db->table('reconciliation_match_statement_lines')->insert(['reconciliation_match_id' => $match, 'bank_statement_line_id' => $line]);
@@ -133,6 +172,36 @@ class BankAndCashflowSeeder extends Seeder
 
             $closing = $opening;
         }
+    }
+
+    /** The statement formats, and the account each is assigned to. */
+    private function formats(SeedContext $ctx): void
+    {
+        foreach (self::FORMATS as $f) {
+            $id = $ctx->insert('bank_statement_formats', [
+                'entity_id' => $ctx->entityId(), 'name' => $f['name'], 'is_builtin' => (int) $f['builtin'], 'delimiter' => 'comma',
+                'date_column' => $f['date_column'], 'date_format' => $f['date_format'], 'reference_column' => $f['reference_column'],
+                'description_columns' => json_encode($f['description_columns']), 'amount_layout' => $f['amount_layout'],
+                'debit_column' => $f['debit_column'], 'credit_column' => $f['credit_column'], 'balance_column' => $f['balance_column'],
+                'decimal_mark' => '.', 'status_column' => $f['status_column'] ?? null, 'status_value' => $f['status_value'] ?? null,
+                'entry_rules' => json_encode($f['entry_rules']), 'created_by' => $ctx->systemUserId(), 'created_at' => $ctx->now(),
+            ]);
+            foreach ($f['accounts'] as $code) {
+                $ctx->db()->table('bank_accounts')->where('id', $ctx->require('bank_accounts', $code))->update(['statement_format_id' => $id]);
+            }
+        }
+    }
+
+    /**
+     * The fingerprint an upload would give the line, counting identical lines on the
+     * statement so two equal charges on one day both load.
+     */
+    private static function fingerprint(array &$seen, int $bank, string $date, string $ref, float $amount, string $desc): string
+    {
+        $key = implode('|', [$date, mb_strtolower($ref), round($amount, 2), mb_strtolower($desc)]);
+        $seen[$key] = ($seen[$key] ?? 0) + 1;
+
+        return StatementCsv::fingerprint($bank, $date, $ref, $amount, $desc, $seen[$key]);
     }
 
     /** Posted ledger lines on a cash account in a month. */

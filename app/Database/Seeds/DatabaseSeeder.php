@@ -24,11 +24,12 @@ class DatabaseSeeder extends Seeder
         OrganisationSeeder::class,
         ReferenceDataSeeder::class,
         ChartAndDimensionsSeeder::class,
+        // Before the ledger: it posts each claim's issue and receipts.
+        ReceivablesSeeder::class,
         LedgerSeeder::class,
         RecurringTemplateSeeder::class,
         ProcurementSeeder::class,
         PayablesSeeder::class,
-        ReceivablesSeeder::class,
         BudgetSeeder::class,
         AssetSeeder::class,
         PayrollSeeder::class,
@@ -37,6 +38,7 @@ class DatabaseSeeder extends Seeder
         DonorReportSeeder::class,
         TranslationSeeder::class,
         NotificationAndSettingsAuditSeeder::class,
+        RecordedWriteOffSeeder::class,
         PeriodCloseSeeder::class,
     ];
 

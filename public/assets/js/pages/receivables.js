@@ -2,8 +2,9 @@
  * Receivables (v5): donor claims and other invoices from draft through to receipt.
  * The headline stats, an ageing strip on the outstanding balance, the invoice list
  * (status tabs, search, fund; ten a page) with a selection that can be issued,
- * reminded or received in full, the invoice drawer with receipt capture, the claim
- * builder, and the aged statement. /receivables/<invoice> opens an invoice straight
+ * reminded or received in full, the allowance for doubtful debts (ageing rates and
+ * what is held against them), the invoice drawer with receipt capture, allowance,
+ * write-off and recovery after write-off, the claim builder, and the aged statement. /receivables/<invoice> opens an invoice straight
  * away. Figures and rules come from /api/receivables; the API applies every rule again.
  */
 (async function () {
@@ -14,6 +15,7 @@
   const state = { status: params.get('status') || 'All', age: 'All', fund: 'All funds', q: '', page: 1 };
   const selected = new Map(); // invoice no → outstanding
   let data = null;
+  let editingRates = false;
 
   const PILL = { Draft: 'draft', Issued: 'approved', 'Part received': 'scheduled', Overdue: 'overdue', Received: 'posted', 'Written off': 'reversed' };
   const pill = (status) => `<span class="jr-pill ${PILL[status] || 'draft'}">${esc(status)}</span>`;
@@ -48,6 +50,7 @@
       </div>
       <div class="stat-grid" id="ar-stats" style="margin:18px 0 0;"></div>
       <div class="ap-aging" id="ar-aging"></div>
+      <div class="coa-card ar-allowance" id="ar-allowance"></div>
       <div class="jr-filters">
         <div class="coa-seg" id="ar-tabs"></div>
         <label class="coa-search" style="flex:1 1 220px;min-width:190px;max-width:300px;width:auto;">⌕
@@ -71,7 +74,7 @@
         <div id="ar-pager"></div>
         <div class="coa-foot">
           <span id="ar-footer"></span>
-          <span style="margin-inline-start:auto;">Issuing raises 1210 grants receivable and recognises income · receipts clear 1210 · write-offs to 5370 bad debts</span>
+          <span style="margin-inline-start:auto;">Issuing raises 1210 grants receivable and recognises income · receipts clear 1210 · doubtful debts provided for in 1215 against 5370 · write-offs use the allowance first</span>
         </div>
       </div>`;
 
@@ -121,6 +124,33 @@
     table.addEventListener('keydown', (e) => {
       const row = e.target.closest('[data-no]');
       if (row && e.target === row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(row.dataset.no); }
+    });
+
+    app.querySelector('#ar-allowance').addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-allow]');
+      if (!b) return;
+      const action = b.dataset.allow;
+      if (action === 'edit') { editingRates = true; return renderAllowance(); }
+      if (action === 'cancel') { editingRates = false; return renderAllowance(); }
+      const buttons = app.querySelectorAll('#ar-allowance button');
+      buttons.forEach(x => { x.disabled = true; });
+      try {
+        if (action === 'save') {
+          const rates = {};
+          app.querySelectorAll('#ar-allowance [data-rate]').forEach(input => { rates[input.dataset.rate] = input.value; });
+          await UI.postJSON('/api/receivables/allowance/rates', { rates });
+          editingRates = false;
+          UI.toast('Ageing rates saved. Apply them to post the allowance they call for.');
+        } else if (action === 'apply') {
+          const d = await UI.postJSON('/api/receivables/allowance/apply-rates', {});
+          UI.toast(`Allowance brought into line with the ageing rates on ${plural(d.done.length, 'claim', 'claims')}`
+            + (d.raised ? ` — ${fmt(d.raised)} raised` : '') + (d.released ? `${d.raised ? ',' : ' —'} ${fmt(d.released)} released` : '') + '.');
+        }
+        await refresh();
+      } catch (err) {
+        UI.toast(err.message);
+        renderAllowance();
+      }
     });
 
     app.querySelector('#ar-selbar').addEventListener('click', (e) => {
@@ -181,7 +211,42 @@
       ${data.rows.length === 0 ? '<div class="coa-empty">No invoices match this view.</div>' : ''}`;
 
     app.querySelector('#ar-pager').innerHTML = data.pages > 1 ? pager() : '';
+    renderAllowance();
     renderSelection();
+  }
+
+  /** What 1215 holds against open claims, by ageing bucket, beside what the ageing rates call for. */
+  function renderAllowance() {
+    const a = data.allowance;
+    const differs = a.buckets.some(b => b.held !== b.byRates);
+    app.querySelector('#ar-allowance').innerHTML = `
+      <div class="ar-allow-head">
+        <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+          <span style="font-size:13px;font-weight:600;color:#16211E;">Allowance for doubtful debts <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:400;color:#7A857F;">1215</span></span>
+          <span style="font-size:11.5px;color:#7A857F;">Held <b style="color:#16211E;font-weight:600;">${esc(a.held)}</b> · receivables net of the allowance <b style="color:#16211E;font-weight:600;">${esc(a.net)}</b>${a.specific ? ` · ${plural(a.specific, 'claim', 'claims')} set by hand, which the rates leave alone` : ''}</span>
+        </div>
+        ${a.canManage ? `<div style="margin-inline-start:auto;display:flex;flex-wrap:wrap;gap:8px;">
+          ${editingRates
+            ? '<button type="button" class="btn" data-allow="cancel">Cancel</button><button type="button" class="btn btn-primary" data-allow="save">Save rates</button>'
+            : `<button type="button" class="btn" data-allow="edit">Edit rates</button><button type="button" class="btn ${differs ? 'btn-primary' : ''}" data-allow="apply" ${differs ? '' : 'disabled title="The allowance already matches the ageing rates"'}>Apply rates</button>`}
+        </div>` : ''}
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="ar-allow-table">
+          <thead><tr><th>Age past due</th><th>Rate</th><th>Outstanding</th><th>By the rates</th><th>Held</th></tr></thead>
+          <tbody>${a.buckets.map(b => `
+            <tr>
+              <td>${esc(b.bucket === 'Current' ? 'Not yet due' : b.bucket)}</td>
+              <td>${editingRates
+                ? `<input class="mono" data-rate="${esc(b.bucket)}" value="${esc(b.pct)}" inputmode="decimal" aria-label="Rate for ${esc(b.bucket)}"> %`
+                : esc(b.pct) + '%'}</td>
+              <td>${esc(b.outstanding)}</td>
+              <td>${esc(b.byRates)}</td>
+              <td style="${b.held !== b.byRates ? 'color:#A45B3E;font-weight:600;' : ''}">${esc(b.held)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
   }
 
   function renderSelection() {
@@ -251,6 +316,7 @@
     let el;
     let current = null; // { invoice, can, receiptAccounts }
     let writingOff = false;
+    let settingAllowance = false;
 
     function build() {
       el = document.createElement('div');
@@ -286,6 +352,29 @@
               return `${full ? 'Receipt in full' : 'Part receipt'} recorded against ${i.no} and posted to ${account}${full ? ' — settled.' : ` — ${fmt(d.invoice.outstanding)} still outstanding.`}`;
             });
           }
+          case 'recovery': {
+            const amount = el.querySelector('#ard-amount').value;
+            const account = el.querySelector('#ard-account').value;
+            const ref = el.querySelector('#ard-ref').value.trim();
+            return run(() => UI.postJSON(`/api/receivables/${encodeURIComponent(i.no)}/recovery`, { amount, account, ref }), (d) => {
+              const recovered = i.outstanding - d.invoice.outstanding;
+              return `${fmt(recovered)} recovered on ${i.no} and posted to ${account} — the write-off is reversed and ${fmt(recovered)} credited back to bad and doubtful debts (5370)${d.invoice.outstanding ? `; ${fmt(d.invoice.outstanding)} stays written off.` : '.'}`;
+            });
+          }
+          case 'set-allowance':
+            settingAllowance = true;
+            renderFoot();
+            el.querySelector('#ard-allowance').select();
+            return;
+          case 'cancel-allowance':
+            settingAllowance = false;
+            return renderFoot();
+          case 'confirm-allowance': {
+            const amount = el.querySelector('#ard-allowance').value.trim();
+            const reason = el.querySelector('#ard-reason').value.trim();
+            return run(() => UI.postJSON(`/api/receivables/${encodeURIComponent(i.no)}/allowance`, { amount, reason }),
+              (d) => `Allowance on ${i.no} ${d.invoice.allowance > i.allowance ? 'raised' : 'released'} to ${fmt(d.invoice.allowance)} — ${fmt(Math.abs(d.invoice.allowance - i.allowance))} ${d.invoice.allowance > i.allowance ? 'charged to' : 'credited back to'} bad and doubtful debts (5370).`);
+          }
           case 'write-off':
             writingOff = true;
             renderFoot();
@@ -298,16 +387,25 @@
             const reason = el.querySelector('#ard-reason').value.trim();
             if (!reason) return UI.toast('Say why the claim will not be paid — a write-off needs its reason on record.');
             return run(() => UI.postJSON(`/api/receivables/${encodeURIComponent(i.no)}/write-off`, { reason }),
-              () => `${i.no} written off — ${fmt(i.outstanding)} charged to bad debts (5370) and cleared from grants receivable.`);
+              () => `${i.no} written off and cleared from grants receivable — ${writeOffSplit(i)}.`);
           }
         }
       });
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el.hidden && !document.querySelector('.jd:not([hidden])')) close(); });
     }
 
+    /** How a write-off of what is outstanding splits between the allowance and a fresh charge. */
+    function writeOffSplit(i) {
+      const used = Math.min(i.allowance, i.outstanding);
+      const charged = i.outstanding - used;
+      return [used ? `${fmt(used)} met from the allowance (1215)` : '', charged || !used ? `${fmt(charged)} charged to bad and doubtful debts (5370)` : '']
+        .filter(Boolean).join(' and ');
+    }
+
     async function load(no) {
       current = await UI.fetchJSON('/api/receivables/' + encodeURIComponent(no));
       writingOff = false;
+      settingAllowance = false;
       render();
     }
 
@@ -353,6 +451,7 @@
           ${i.fx ? row('Currency', `${esc(i.ccy)} ${Number(i.amountFc).toLocaleString('en-US', { minimumFractionDigits: 2 })} at ${Number(i.fx).toFixed(2)} · carried in KES at the claim rate`) : ''}
           ${row('Basis', esc(i.basis))}
           ${i.journal ? row('Ledger', `Posted as <button type="button" class="ap-link" data-journal="${esc(i.journal)}">${esc(i.journal)}</button>`) : ''}
+          ${i.allowance || i.allowanceBasis ? row('Allowance', `${fmt(i.allowance)} held in 1215${i.allowanceBasis ? ' · ' + esc(i.allowanceBasis.toLowerCase()) : ''}`) : ''}
           ${i.status === 'Written off' && i.writeOffReason ? row('Written off', esc(i.writeOffReason)) : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:9px;">
@@ -386,6 +485,16 @@
               <label class="ap-f" style="flex:1 1 140px;"><span>Bank reference</span><input class="mono" id="ard-ref" placeholder="Optional"></label>
               <button type="button" class="btn btn-primary" data-act="receipt" style="height:34px;">Record receipt</button>
             </div>` : ''}
+          ${can.recover ? `
+            <span class="jd-sod" style="max-width:none;">Money in on a written-off claim reverses the write-off for what came in: 1210 is reinstated against the allowance (1215), the receipt clears it, and the allowance is released to bad and doubtful debts (5370).</span>
+            <div class="ar-receive">
+              <label class="ap-f" style="flex:1 1 140px;"><span>Amount recovered (KES)</span><input class="mono" id="ard-amount" inputmode="numeric" value="${i.outstanding}"></label>
+              <label class="ap-f" style="flex:1 1 170px;"><span>Banked in</span>
+                <select id="ard-account">${accounts.map(a => `<option value="${esc(a.code)}" ${a.code === defaultAccount ? 'selected' : ''}>${esc(a.code)} · ${esc(a.label)}</option>`).join('')}</select>
+              </label>
+              <label class="ap-f" style="flex:1 1 140px;"><span>Bank reference</span><input class="mono" id="ard-ref" placeholder="Optional"></label>
+              <button type="button" class="btn btn-primary" data-act="recovery" style="height:34px;">Record recovery</button>
+            </div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:9px;">
           <div class="jd-caps">Audit trail</div>
@@ -402,9 +511,19 @@
     function renderFoot() {
       const can = current.can;
       const foot = el.querySelector('#ard-foot');
+      if (settingAllowance) {
+        const i = current.invoice;
+        foot.innerHTML = `
+          <span class="jd-sod" style="max-width:none;flex:1 1 100%;">How much of the ${fmt(i.outstanding)} outstanding may not come in. The change posts between 1215 and bad and doubtful debts (5370); the ageing rates${i.byRates ? ` (${fmt(i.byRates)} on this claim)` : ''} leave it alone from then on.</span>
+          <label class="ap-f" style="flex:0 0 140px;"><span>Allowance (KES)</span><input class="mono" id="ard-allowance" inputmode="numeric" value="${i.allowance || i.byRates || i.outstanding}"></label>
+          <input class="jd-reason" id="ard-reason" placeholder="Why the claim is in doubt" style="align-self:flex-end;height:34px;">
+          <button type="button" class="btn" data-act="cancel-allowance" style="align-self:flex-end;">Cancel</button>
+          <button type="button" class="btn btn-primary" data-act="confirm-allowance" style="align-self:flex-end;">Save allowance</button>`;
+        return;
+      }
       if (writingOff) {
         foot.innerHTML = `
-          <span class="jd-sod" style="max-width:none;flex:1 1 100%;">Writes off ${fmt(current.invoice.outstanding)} to bad debts (5370). The reason goes on the claim's record.</span>
+          <span class="jd-sod" style="max-width:none;flex:1 1 100%;">Writes off ${fmt(current.invoice.outstanding)} — ${writeOffSplit(current.invoice)}. The reason goes on the claim's record.</span>
           <input class="jd-reason" id="ard-reason" placeholder="Why the donor will not pay">
           <button type="button" class="btn" data-act="cancel-write-off">Cancel</button>
           <button type="button" class="btn jd-quiet" style="color:#A6412F;border-color:#E4C7BF;" data-act="confirm-write-off">Write off</button>`;
@@ -413,6 +532,7 @@
       foot.innerHTML = `
         ${can.issue ? '<button type="button" class="btn btn-primary" data-act="issue">Issue to donor</button>' : ''}
         ${can.remind ? '<button type="button" class="btn" data-act="remind">Send reminder</button>' : ''}
+        ${can.allowance ? `<button type="button" class="btn" data-act="set-allowance">${current.invoice.allowance ? 'Change allowance' : 'Set allowance'}</button>` : ''}
         ${can.writeOff ? '<button type="button" class="btn" style="color:#A6412F;border-color:#E4C7BF;" data-act="write-off">Write off</button>' : ''}
         ${can.note ? `<span class="jd-sod">${esc(can.note)}</span>` : ''}
         <button type="button" class="btn" data-ar-close style="margin-inline-start:auto;">Close</button>`;

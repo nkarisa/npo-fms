@@ -23,6 +23,13 @@ class PayrollSeeder extends Seeder
     private const PAY_ITEMS = ['basic' => 'basic_salary', 'house' => 'house_allowance', 'transport' => 'transport_allowance',
         'acting' => 'acting_allowance', 'sacco' => 'sacco', 'advance' => 'advance_recovery'];
 
+    /**
+     * Advances are recovered over three runs from June, so the deduction does not
+     * appear in a run before it. The prototype holds this as a rule rather than a
+     * date on the record; the register holds it as the item's effective date.
+     */
+    private const RECOVERY_FROM = 'Jun 2026';
+
     public function run(): void
     {
         $ctx = SeedContext::get();
@@ -47,7 +54,11 @@ class PayrollSeeder extends Seeder
                 if (($s[$field] ?? 0) <= 0) {
                     continue;
                 }
-                $from = $field === 'acting' && isset($s['actingFrom']) ? $ctx->monthBounds($s['actingFrom'])[0] : $joined;
+                $from = match (true) {
+                    $field === 'acting' && isset($s['actingFrom']) => $ctx->monthBounds($s['actingFrom'])[0],
+                    $field === 'advance'                           => max($joined, $ctx->monthBounds(self::RECOVERY_FROM)[0]),
+                    default                                        => $joined,
+                };
                 $ctx->insert('staff_pay_items', [
                     'staff_id' => $id, 'pay_component_id' => $ctx->require('pay_components', $component), 'amount' => $s[$field],
                     'effective_from' => $from, 'created_at' => $now,

@@ -5,8 +5,8 @@
   </main>
 </div>
 <div id="toast" class="toast"></div>
-<script src="/assets/js/ui.js"></script>
-<script src="/assets/js/shell.js"></script>
-<script src="/assets/js/pages/<?= esc($jsPage) ?>.js"></script>
+<script src="<?= asset_url('/assets/js/ui.js') ?>"></script>
+<script src="<?= asset_url('/assets/js/shell.js') ?>"></script>
+<script src="<?= esc(asset_url('/assets/js/pages/' . $jsPage . '.js')) ?>"></script>
 </body>
 </html>

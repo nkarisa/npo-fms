@@ -29,60 +29,7 @@ abstract class BaseApiController extends BaseController
     {
         parent::initController($request, $response, $logger);
 
-        $this->i18n = new I18n($this->requestedLocale(), $this->requestedFallback());
-    }
-
-    /**
-     * Explicit ?locale= wins, then the X-Locale header the shell sends, then the
-     * saved preference cookie, then the browser's Accept-Language. Anything
-     * unrecognised falls back to the source language rather than erroring — a
-     * bad locale should never cost someone their ledger.
-     */
-    private function requestedLocale(): string
-    {
-        $candidates = [
-            $this->request->getGet('locale'),
-            $this->request->getHeaderLine('X-Locale') ?: null,
-            $this->request->getCookie('elog_locale'),
-        ];
-
-        foreach ($candidates as $c) {
-            if (I18n::isKnown($c)) {
-                return $c;
-            }
-        }
-
-        return $this->negotiated() ?? I18n::SOURCE_LOCALE;
-    }
-
-    /** First Accept-Language entry we actually publish, ignoring q-weights ordering nuance. */
-    private function negotiated(): ?string
-    {
-        $header = $this->request->getHeaderLine('Accept-Language');
-        if ($header === '') {
-            return null;
-        }
-
-        foreach (explode(',', $header) as $part) {
-            $tag = trim(explode(';', $part)[0]);
-            if (I18n::isKnown($tag)) {
-                return $tag;
-            }
-            // "fr-CH" and "ar-EG" should both land on the language we publish.
-            $base = explode('-', $tag)[0];
-            if (I18n::isKnown($base)) {
-                return $base;
-            }
-        }
-
-        return null;
-    }
-
-    private function requestedFallback(): string
-    {
-        $mode = $this->request->getGet('fallback') ?: $this->request->getCookie('elog_i18n_fallback');
-
-        return is_string($mode) ? $mode : I18n::DEFAULT_FALLBACK;
+        $this->i18n = I18n::forRequest($request);
     }
 
     /**

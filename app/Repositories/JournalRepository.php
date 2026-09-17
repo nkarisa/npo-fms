@@ -327,6 +327,16 @@ final class JournalRepository extends Repository
         if ($journal['source_type'] === 'archive' || $journal['source_type'] === 'fiscal_year') {
             throw new RuleViolation($ref . ' is held in a closed period\'s archive. Correct it with a new journal in an open period.');
         }
+        // Reversing a purchase already on the asset register would take the cost out
+        // of the ledger and leave the assets behind.
+        $tags = array_column($this->rows(
+            'SELECT a.tag FROM {assets} a JOIN {journal_lines} l ON l.id = a.acquisition_journal_line_id WHERE l.journal_id = ? ORDER BY a.tag',
+            [$journal['id']]
+        ), 'tag');
+        if ($tags !== []) {
+            throw new RuleViolation($ref . ' was capitalised on the asset register as ' . implode(', ', array_slice($tags, 0, 3)) . (count($tags) > 3 ? ' and ' . (count($tags) - 3) . ' more' : '')
+                . '. Take the assets off through a disposal, or correct the purchase with a new journal.');
+        }
         $pending = $this->value(
             "SELECT reference FROM {journals} WHERE reverses_journal_id = ? AND status IN ('pending_approval', 'posted') LIMIT 1",
             [$journal['id']]

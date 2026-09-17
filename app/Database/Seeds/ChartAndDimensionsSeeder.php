@@ -210,7 +210,10 @@ class ChartAndDimensionsSeeder extends Seeder
 
         // Accounts the screens post to that the prototype's chart lacks: its
         // receivables write-off names 5340, which the chart holds as bank charges,
-        // and the bank reconciliation posts an unidentified credit to suspense.
+        // so bad and doubtful debts get their own line with the allowance against
+        // receivables (a contra account, credit balance); and the bank
+        // reconciliation posts an unidentified credit to suspense; and an asset
+        // donated in kind is income when it comes onto the register.
         foreach (self::EXTRA_ACCOUNTS as [$code, $name, $parent, $fund, $type]) {
             $ctx->remember('accounts', $code, $ctx->insert('accounts', [
                 'code' => $code, 'name' => $name, 'type' => $type, 'parent_id' => $ctx->require('accounts', $parent), 'level' => 2,
@@ -222,8 +225,10 @@ class ChartAndDimensionsSeeder extends Seeder
 
     /** code, name, parent heading, default fund, type */
     private const EXTRA_ACCOUNTS = [
-        ['5370', 'Bad debts written off', '5300', 'General Fund', 'expense'],
+        ['1215', 'Allowance for doubtful debts', '1200', 'General Fund', 'asset'],
+        ['5370', 'Bad and doubtful debts', '5300', 'General Fund', 'expense'],
         ['2190', 'Suspense — unidentified receipts', '2100', 'General Fund', 'liability'],
+        ['4260', 'Donated assets (in kind)', '4200', 'Capital Fund', 'income'],
     ];
 
     private function seedGrants(SeedContext $ctx, int $entity, string $now): void

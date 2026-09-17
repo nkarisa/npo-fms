@@ -5,10 +5,12 @@ use App\Libraries\I18n;
 use App\Repositories\Repository;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
+use CodeIgniter\Test\FeatureTestTrait;
 
 final class I18nTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
+    use FeatureTestTrait;
 
     // The books are loaded into the test database once for this class.
     protected $namespace   = 'App';
@@ -109,6 +111,44 @@ final class I18nTest extends CIUnitTestCase
         $this->assertNotNull($lock);
         $this->assertSame('Finance Director', $lock['unlock']);
         $this->assertNull(I18n::lockOn('Chart of accounts'));
+    }
+
+    /**
+     * With no language chosen, the browser's preference decides — and an English
+     * browser reads the English source even when it also lists French. The page
+     * shell and the API it calls must land on the same language.
+     */
+    public function testTheBrowsersLanguageIsReadTheSameWayByThePageAndTheApi(): void
+    {
+        $cases = [
+            'en-US,en;q=0.9,fr;q=0.8' => 'en-GB',
+            'en'                      => 'en-GB',
+            'fr-CH,fr;q=0.9,en;q=0.8' => 'fr',
+            'de-DE,de;q=0.9'          => 'en-GB',
+        ];
+
+        foreach ($cases as $header => $expected) {
+            $api = json_decode($this->withHeaders(['Accept-Language' => $header])->get('api/me')->getJSON(), true);
+            $this->assertSame($expected, $api['locale']['code'], 'API for ' . $header);
+
+            $page = $this->withHeaders(['Accept-Language' => $header])->get('settings')->getBody();
+            $this->assertStringContainsString('<html lang="' . $expected . '"', $page, 'Page for ' . $header);
+        }
+    }
+
+    public function testTheLanguageChosenInTheTopBarWinsOverTheBrowser(): void
+    {
+        $_COOKIE['elog_locale'] = 'en-GB';
+        service('superglobals')->setCookie('elog_locale', 'en-GB');
+
+        try {
+            $api = json_decode($this->withHeaders(['Accept-Language' => 'fr-FR,fr;q=0.9'])->get('api/settings')->getJSON(), true);
+            $this->assertSame('en-GB', $api['locale']['code']);
+            $this->assertSame('Ledger', $api['sections'][1]['label']);
+        } finally {
+            unset($_COOKIE['elog_locale']);
+            service('superglobals')->unsetCookie('elog_locale');
+        }
     }
 
     public function testCoverageAreasAreCompleteForTheSourceLanguage(): void

@@ -1,0 +1,311 @@
+<?php
+
+namespace App\Repositories;
+
+use App\Libraries\Clock;
+use App\Libraries\StatementCsv;
+
+/**
+ * Statement formats: how each bank's CSV maps onto a line of the reconciliation's
+ * bank statement, and which format each cash account's statements use.
+ *
+ * A built-in format (the M-Pesa organisation portal's export) is the same for
+ * every organisation and cannot be changed, only copied. A format in use by an
+ * account cannot be deleted.
+ */
+final class StatementFormatRepository extends Repository
+{
+    private Lookups $lookups;
+
+    public function __construct(?\CodeIgniter\Database\BaseConnection $db = null)
+    {
+        parent::__construct($db);
+        $this->lookups = new Lookups();
+    }
+
+    /** @return list<array> every format, built-in first, in the screen shape */
+    public function formats(): array
+    {
+        return $this->cached('formats', function () {
+            $accounts = [];
+            foreach ($this->lookups->bankAccounts() as $code => $b) {
+                if ($b['statement_format_id'] !== null) {
+                    $accounts[(int) $b['statement_format_id']][] = (string) $code;
+                }
+            }
+
+            return array_map(fn ($f) => self::shape($f) + ['accounts' => $accounts[(int) $f['id']] ?? []], $this->rows(
+                'SELECT * FROM {bank_statement_formats} WHERE entity_id = ? ORDER BY is_builtin DESC, name',
+                [$this->lookups->entityId()]
+            ));
+        });
+    }
+
+    public function find(int $id): ?array
+    {
+        return current(array_filter($this->formats(), static fn ($f) => $f['id'] === $id)) ?: null;
+    }
+
+    /** The format a cash account's statements are read with, or null when none is set. */
+    public function forAccount(string $code): ?array
+    {
+        $bank = $this->lookups->bankAccounts()[$code] ?? null;
+
+        return $bank === null || $bank['statement_format_id'] === null ? null : $this->find((int) $bank['statement_format_id']);
+    }
+
+    /**
+     * The cash accounts a statement can be loaded for (bank and mobile money, not
+     * petty cash) and the format each uses.
+     *
+     * @return list<array{code: string, name: string, short: string, kind: string, currency: string, formatId: int|null, format: string}>
+     */
+    public function accounts(): array
+    {
+        $names = array_column($this->formats(), 'name', 'id');
+
+        return array_values(array_map(static fn ($b) => [
+            'code' => (string) $b['code'], 'name' => $b['name'], 'short' => $b['short_name'], 'kind' => $b['kind'], 'currency' => $b['currency'],
+            'formatId' => $b['statement_format_id'] === null ? null : (int) $b['statement_format_id'],
+            'format' => $names[(int) $b['statement_format_id']] ?? '',
+        ], array_filter($this->lookups->bankAccounts(), static fn ($b) => $b['status'] === 'active' && in_array($b['kind'], ['bank', 'mobile_money'], true))));
+    }
+
+    /**
+     * Creates a format (no id) or changes one.
+     *
+     * @return array the saved format
+     */
+    public function save(?int $id, array $input, int $actorId): array
+    {
+        $existing = $id === null ? null : ($this->find($id) ?? throw new RuleViolation('That statement format no longer exists.'));
+        if ($existing !== null && $existing['builtin']) {
+            throw new RuleViolation($existing['name'] . ' is built in and cannot be changed. Duplicate it to make a version of your own.');
+        }
+
+        $f = self::validate($input);
+        $clash = $this->value(
+            'SELECT id FROM {bank_statement_formats} WHERE entity_id = ? AND LOWER(name) = LOWER(?) AND id <> ?',
+            [$this->lookups->entityId(), $f['name'], $id ?? 0]
+        );
+        if ($clash !== null) {
+            throw new RuleViolation('A statement format called ' . $f['name'] . ' already exists.');
+        }
+
+        $row = self::toRow($f);
+        $now = Clock::timestamp();
+
+        $savedId = $this->transaction(function () use ($id, $row, $f, $actorId, $now) {
+            if ($id === null) {
+                $id = $this->insert('bank_statement_formats', $row + [
+                    'entity_id' => $this->lookups->entityId(), 'is_builtin' => 0, 'created_by' => $actorId, 'created_at' => $now, 'updated_at' => $now,
+                ]);
+                $this->logChange('Statement format ' . $f['name'] . ' created', $actorId);
+            } else {
+                $this->db->table('bank_statement_formats')->where('id', $id)->update($row + ['updated_by' => $actorId, 'updated_at' => $now]);
+                $this->logChange('Statement format ' . $f['name'] . ' changed', $actorId);
+            }
+
+            return $id;
+        });
+
+        return $this->find((int) $savedId);
+    }
+
+    public function delete(int $id, int $actorId): void
+    {
+        $f = $this->find($id) ?? throw new RuleViolation('That statement format no longer exists.');
+        if ($f['builtin']) {
+            throw new RuleViolation($f['name'] . ' is built in and cannot be deleted.');
+        }
+        if ($f['accounts'] !== []) {
+            throw new RuleViolation($f['name'] . ' is used by ' . implode(', ', $f['accounts']) . '. Give those accounts another format first.');
+        }
+
+        $this->transaction(function () use ($f, $actorId) {
+            $this->db->table('bank_statement_formats')->where('id', $f['id'])->delete();
+            $this->logChange('Statement format ' . $f['name'] . ' deleted', $actorId);
+        });
+    }
+
+    /** Sets the format an account's statements are read with (null clears it). */
+    public function assign(string $code, ?int $formatId, int $actorId): void
+    {
+        $account = current(array_filter($this->accounts(), static fn ($a) => $a['code'] === $code))
+            ?: throw new RuleViolation('Account ' . $code . ' is not a bank or mobile money account.');
+        $format = $formatId === null ? null : ($this->find($formatId) ?? throw new RuleViolation('That statement format no longer exists.'));
+
+        $this->transaction(function () use ($account, $format, $actorId) {
+            $this->db->table('bank_accounts')->where('id', $this->lookups->bankAccounts()[$account['code']]['id'])
+                ->update(['statement_format_id' => $format['id'] ?? null, 'updated_at' => Clock::timestamp()]);
+            $this->logChange($account['code'] . ' ' . $account['short'] . ' statements ' . ($format === null ? 'no longer have a format' : 'now read as ' . $format['name']), $actorId);
+        });
+    }
+
+    /** Format changes are settings changes, and show in Settings → Audit log. */
+    private function logChange(string $what, int $actorId): void
+    {
+        $this->audit('settings:bank statements', null, null, $what, $actorId, 'settings.changed', $this->lookups->entityId());
+    }
+
+    /**
+     * Reads a sample file with a format that may not be saved yet, for the editor's
+     * live preview. Only the column mapping has to be complete.
+     */
+    public function sample(string $csv, array $input): array
+    {
+        $f = self::normalise($input);
+        $read = StatementCsv::read($csv, $f);
+        $rows = array_values(array_filter($read['rows'], static fn ($r) => $r['skip'] === null));
+        $breaks = StatementCsv::balanceBreaks($rows);
+
+        return [
+            'headers' => $read['headers'], 'headerLine' => $read['headerLine'], 'error' => $read['error'],
+            'rowCount' => count($read['rows']), 'skipped' => count($read['rows']) - count($rows),
+            'problems' => count(array_filter($rows, static fn ($r) => $r['errors'] !== [])),
+            'balanceChecked' => ($f['balanceColumn'] ?? '') !== '' && $read['error'] === null,
+            'balanceBreaks' => $breaks['breaks'], 'newestFirst' => $breaks['newestFirst'],
+            'rows' => array_map([self::class, 'previewRow'], array_slice($read['rows'], 0, 30)),
+        ];
+    }
+
+    /** A read row as the bank statement card draws it. */
+    public static function previewRow(array $r): array
+    {
+        $entry = BankRepository::BANK_ENTRIES[$r['entry'] ?? ''] ?? null;
+
+        return [
+            'line' => $r['line'], 'date' => $r['date'] === null ? '—' : date('d M', strtotime($r['date'])), 'isoDate' => $r['date'],
+            'ref' => $r['ref'], 'desc' => $r['desc'], 'amt' => $r['amount'], 'amount' => $r['amount'] === null ? '—' : BankRepository::money($r['amount']),
+            'balance' => $r['balance'] === null ? '' : BankRepository::money($r['balance']),
+            'entry' => $r['entry'], 'entryLabel' => $entry['label'] ?? '', 'skip' => $r['skip'] ?? '', 'errors' => $r['errors'],
+        ];
+    }
+
+    /** What the editor offers. */
+    public static function options(): array
+    {
+        return [
+            'delimiters'  => array_map(static fn ($k) => ['value' => $k, 'text' => ucfirst($k)], array_keys(StatementCsv::DELIMITERS)),
+            'dateFormats' => array_keys(StatementCsv::DATE_FORMATS),
+            'layouts'     => array_map(static fn ($k, $v) => ['value' => $k, 'text' => $v], array_keys(StatementCsv::LAYOUTS), StatementCsv::LAYOUTS),
+            'entries'     => array_map(static fn ($k, $v) => ['value' => $k, 'text' => $v['desc']], array_keys(BankRepository::BANK_ENTRIES), BankRepository::BANK_ENTRIES),
+        ];
+    }
+
+    // ------------------------------------------------------------------
+
+    /** Screen input → a format the reader accepts, without insisting on a name. */
+    private static function normalise(array $in): array
+    {
+        $str = static fn (string $k, int $max = 80) => mb_substr(trim((string) ($in[$k] ?? '')), 0, $max);
+        $dateFormats = array_values(array_filter(array_map('trim', explode('|', (string) ($in['dateFormat'] ?? ''))), static fn ($d) => $d !== ''));
+
+        return [
+            'name'               => $str('name'),
+            'delimiter'          => array_key_exists((string) ($in['delimiter'] ?? ''), StatementCsv::DELIMITERS) ? (string) $in['delimiter'] : 'comma',
+            'dateColumn'         => $str('dateColumn'),
+            'dateFormat'         => implode('|', $dateFormats),
+            'referenceColumn'    => $str('referenceColumn'),
+            'descriptionColumns' => array_values(array_filter(array_map(static fn ($c) => mb_substr(trim((string) $c), 0, 80), (array) ($in['descriptionColumns'] ?? [])), static fn ($c) => $c !== '')),
+            'amountLayout'       => array_key_exists((string) ($in['amountLayout'] ?? ''), StatementCsv::LAYOUTS) ? (string) $in['amountLayout'] : 'signed',
+            'amountColumn'       => $str('amountColumn'),
+            'debitColumn'        => $str('debitColumn'),
+            'creditColumn'       => $str('creditColumn'),
+            'indicatorColumn'    => $str('indicatorColumn'),
+            'creditIndicator'    => $str('creditIndicator', 10),
+            'balanceColumn'      => $str('balanceColumn'),
+            'decimalMark'        => ($in['decimalMark'] ?? '.') === ',' ? ',' : '.',
+            'statusColumn'       => $str('statusColumn'),
+            'statusValue'        => $str('statusValue', 40),
+            'rules'              => array_values(array_filter(array_map(static fn ($r) => [
+                'match' => mb_substr(trim((string) ($r['match'] ?? '')), 0, 60), 'entry' => (string) ($r['entry'] ?? ''),
+            ], (array) ($in['rules'] ?? [])), static fn ($r) => $r['match'] !== '')),
+        ];
+    }
+
+    /** A complete format, or the first thing missing from it. */
+    private static function validate(array $in): array
+    {
+        $f = self::normalise($in);
+        $need = static function (string $value, string $what): void {
+            if ($value === '') {
+                throw new RuleViolation($what);
+            }
+        };
+
+        $need($f['name'], 'Give the format a name, such as the bank and where the file is downloaded from.');
+        $need($f['dateColumn'], 'Choose the column that holds the transaction date.');
+        $need($f['dateFormat'], 'Choose how the dates are written.');
+        foreach (explode('|', $f['dateFormat']) as $d) {
+            if (!isset(StatementCsv::DATE_FORMATS[$d])) {
+                throw new RuleViolation($d . ' is not a date layout the reader knows.');
+            }
+        }
+        if ($f['descriptionColumns'] === []) {
+            throw new RuleViolation('Choose at least one column for the description.');
+        }
+        match ($f['amountLayout']) {
+            'split' => [$need($f['debitColumn'], 'Choose the money out column.'), $need($f['creditColumn'], 'Choose the money in column.')],
+            'indicator' => [$need($f['amountColumn'], 'Choose the amount column.'), $need($f['indicatorColumn'], 'Choose the column that marks debits and credits.'),
+                $need($f['creditIndicator'], 'Say how that column marks money in, such as CR or C.')],
+            default => $need($f['amountColumn'], 'Choose the amount column.'),
+        };
+        if ($f['statusColumn'] !== '') {
+            $need($f['statusValue'], 'Say which status a completed transaction has, such as Completed.');
+        }
+        foreach ($f['rules'] as $r) {
+            if (!isset(BankRepository::BANK_ENTRIES[$r['entry']])) {
+                throw new RuleViolation('The rule for "' . $r['match'] . '" needs a kind of bank entry.');
+            }
+        }
+        if ($f['amountLayout'] === 'split' && strcasecmp($f['debitColumn'], $f['creditColumn']) === 0) {
+            throw new RuleViolation('Money out and money in must be different columns.');
+        }
+
+        return $f;
+    }
+
+    /** Screen shape → database row. */
+    private static function toRow(array $f): array
+    {
+        $layout = $f['amountLayout'];
+        $blank = static fn (string $v) => $v === '' ? null : $v;
+
+        return [
+            'name' => $f['name'], 'delimiter' => $f['delimiter'], 'date_column' => $f['dateColumn'], 'date_format' => $f['dateFormat'],
+            'reference_column' => $blank($f['referenceColumn']), 'description_columns' => json_encode($f['descriptionColumns']),
+            'amount_layout' => $layout,
+            'amount_column' => $layout === 'split' ? null : $blank($f['amountColumn']),
+            'debit_column' => $layout === 'split' ? $f['debitColumn'] : null,
+            'credit_column' => $layout === 'split' ? $f['creditColumn'] : null,
+            'indicator_column' => $layout === 'indicator' ? $f['indicatorColumn'] : null,
+            'credit_indicator' => $layout === 'indicator' ? $f['creditIndicator'] : null,
+            'balance_column' => $blank($f['balanceColumn']), 'decimal_mark' => $f['decimalMark'],
+            'status_column' => $blank($f['statusColumn']), 'status_value' => $f['statusColumn'] === '' ? null : $f['statusValue'],
+            'entry_rules' => json_encode($f['rules']),
+        ];
+    }
+
+    /** Database row → screen shape. */
+    private static function shape(array $r): array
+    {
+        $layout = $r['amount_layout'];
+
+        return [
+            'id' => (int) $r['id'], 'name' => $r['name'], 'builtin' => (bool) $r['is_builtin'], 'delimiter' => $r['delimiter'],
+            'dateColumn' => $r['date_column'], 'dateFormat' => $r['date_format'], 'referenceColumn' => (string) $r['reference_column'],
+            'descriptionColumns' => json_decode((string) $r['description_columns'], true) ?: [],
+            'amountLayout' => $layout, 'amountColumn' => (string) $r['amount_column'], 'debitColumn' => (string) $r['debit_column'],
+            'creditColumn' => (string) $r['credit_column'], 'indicatorColumn' => (string) $r['indicator_column'],
+            'creditIndicator' => (string) $r['credit_indicator'], 'balanceColumn' => (string) $r['balance_column'],
+            'decimalMark' => $r['decimal_mark'], 'statusColumn' => (string) $r['status_column'], 'statusValue' => (string) $r['status_value'],
+            'rules' => json_decode((string) $r['entry_rules'], true) ?: [],
+            'summary' => match ($layout) {
+                'split'     => 'Money out "' . $r['debit_column'] . '", money in "' . $r['credit_column'] . '"',
+                'indicator' => 'Amount "' . $r['amount_column'] . '", marked ' . $r['credit_indicator'] . ' in "' . $r['indicator_column'] . '"',
+                default     => 'Signed amount "' . $r['amount_column'] . '"',
+            } . ' · dates ' . str_replace('|', ' or ', $r['date_format']),
+        ];
+    }
+}

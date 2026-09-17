@@ -92,11 +92,11 @@ class Reports extends BaseApiController
 
     private function activities(array $seed): array
     {
-        $incUnres = ['4210', '4220', '4230', '4240'];
+        $incUnres = ['4210', '4220', '4230', '4240', '4250', '4260'];
         $incRes   = ['4110', '4120', '4130', '4140'];
         $expProg  = ['5110', '5120', '5130', '5140', '5150'];
         $expPers  = ['5210', '5220', '5230'];
-        $expAdmin = ['5310', '5320', '5330', '5340', '5350'];
+        $expAdmin = ['5310', '5320', '5330', '5340', '5350', '5360', '5370'];
         $expGrants= ['5410', '5420'];
 
         $tiU = $this->sumCodes($seed, $incUnres);
@@ -117,10 +117,12 @@ class Reports extends BaseApiController
 
     private function cashFlows(array $seed): array
     {
-        $surplus = $this->sumCodes($seed, ['4110', '4120', '4130', '4140', '4210', '4220', '4230', '4240'])
-            - $this->sumCodes($seed, ['5110', '5120', '5130', '5140', '5150', '5210', '5220', '5230', '5310', '5320', '5330', '5340', '5350', '5410', '5420']);
+        $surplus = $this->sumCodes($seed, ['4110', '4120', '4130', '4140', '4210', '4220', '4230', '4240', '4250', '4260'])
+            - $this->sumCodes($seed, ['5110', '5120', '5130', '5140', '5150', '5210', '5220', '5230', '5310', '5320', '5330', '5340', '5350', '5360', '5370', '5410', '5420']);
         $dep = $this->acctBal($seed, '5350');
-        $wcRecv = -$this->acctBal($seed, '1210') - $this->acctBal($seed, '1220') - $this->acctBal($seed, '1230');
+        // Receivables net of the allowance for doubtful debts (1215 carries a credit
+        // balance): providing for a debt is a charge in the surplus, not cash.
+        $wcRecv = -$this->acctBal($seed, '1210') - $this->acctBal($seed, '1215') - $this->acctBal($seed, '1220') - $this->acctBal($seed, '1230');
         // Every liability on the chart, not a list — the list missed 2250 and 2260.
         $wcPay  = $this->sumCodes($seed, Ledger::statementCodes('Liability'));
         $opCash = $surplus + $dep + $wcRecv + $wcPay;

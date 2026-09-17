@@ -65,6 +65,65 @@ class I18n
         $this->fallback = in_array($fallback, array_column(self::FALLBACKS, 'key'), true) ? $fallback : self::DEFAULT_FALLBACK;
     }
 
+    /**
+     * The language a request is read in, the same for the page shell and the API.
+     *
+     * An explicit ?locale= wins, then the X-Locale header, then the language chosen
+     * in the top bar (the elog_locale cookie), then the browser's Accept-Language.
+     * Browser languages are taken in the order listed, and any English variant
+     * ("en-US", "en") is the English source — so an English browser that also
+     * lists French reads English. Anything unrecognised falls back to the source
+     * rather than erroring: a bad locale should never cost someone their ledger.
+     */
+    public static function forRequest(\CodeIgniter\HTTP\RequestInterface $request): self
+    {
+        $get = $request instanceof \CodeIgniter\HTTP\IncomingRequest ? $request->getGet('locale') : null;
+        $cookie = $request instanceof \CodeIgniter\HTTP\IncomingRequest ? $request->getCookie('elog_locale') : null;
+
+        foreach ([$get, $request->getHeaderLine('X-Locale') ?: null, $cookie] as $candidate) {
+            if (is_string($candidate) && self::isKnown($candidate)) {
+                return new self($candidate, self::requestedFallback($request));
+            }
+        }
+
+        return new self(self::negotiate($request->getHeaderLine('Accept-Language')) ?? self::SOURCE_LOCALE, self::requestedFallback($request));
+    }
+
+    /** The first browser language we publish, in the order the browser lists them. */
+    public static function negotiate(string $header): ?string
+    {
+        foreach (explode(',', $header) as $part) {
+            $tag = trim(explode(';', $part)[0]);
+            if ($tag === '' || $tag === '*') {
+                continue;
+            }
+            $base = strtolower(explode('-', $tag)[0]);
+            // English in any variant is the source language.
+            if ($base === strtolower(explode('-', self::SOURCE_LOCALE)[0])) {
+                return self::SOURCE_LOCALE;
+            }
+            if (self::isKnown($tag)) {
+                return $tag;
+            }
+            // "fr-CH" and "ar-EG" land on the language we publish.
+            if (self::isKnown($base)) {
+                return $base;
+            }
+        }
+
+        return null;
+    }
+
+    private static function requestedFallback(\CodeIgniter\HTTP\RequestInterface $request): ?string
+    {
+        if (!$request instanceof \CodeIgniter\HTTP\IncomingRequest) {
+            return null;
+        }
+        $mode = $request->getGet('fallback') ?: $request->getCookie('elog_i18n_fallback');
+
+        return is_string($mode) ? $mode : null;
+    }
+
     // ---- Locales ----
 
     public static function locales(): array
@@ -277,6 +336,6 @@ class I18n
      */
     public static function formatsLocked(): bool
     {
-        return true;
+        return (new \App\Repositories\SettingsRepository())->formatsLocked();
     }
 }

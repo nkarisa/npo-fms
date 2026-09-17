@@ -40,6 +40,16 @@ use RuntimeException;
  * it settles (CASH_BOOK_CONTRAS). The opening journal's brought-forward lines
  * absorb their effect, so neither the balances nor the history move.
  *
+ * Receivables are posted from the claims (ReceivablesSeeder runs first): each
+ * issued claim's issue entry, dated when it was issued, and each receipt not
+ * already in the cash book, dated when it arrived. Grants receivable is a control
+ * account, so its balance is what the claims have outstanding, not the chart's
+ * figure. The opening journal absorbs the claims' entries like any other, except
+ * for the part of the newest claims that takes 1210 from the chart's figure to the
+ * claims' outstanding balance (plus what claims written off without an entry will
+ * take out of it, see RecordedWriteOffSeeder): that part is this year's income on
+ * top of the chart's, recognised as those claims were issued.
+ *
  * Journals are inserted as drafts, given their lines, and then moved to their
  * status through the same transitions the application uses, so every posting
  * passes the integrity triggers.
@@ -65,6 +75,8 @@ class LedgerSeeder extends Seeder
     private const PREPARERS = ['J. Achieng', 'M. Otieno', 'S. Njeri', 'P. Mwangi'];
 
     private const APPROVER = 'W. Kamau';
+
+    private const RECEIVABLE = '1210';
 
     /**
      * The account the other side of a cash book voucher goes to, by voucher series
@@ -99,18 +111,28 @@ class LedgerSeeder extends Seeder
         $lines  = array_map(fn ($j) => $this->resolveLines($j), array_column($journals, null, 'ref'));
         $posted = array_values(array_filter($journals, static fn ($j) => in_array($j['status'], self::POSTED, true)));
 
-        $fullOpening = $this->openingLines($posted, $lines);
+        $cashBook = $this->cashBook();
+        $claims = $this->claimJournals($cashBook);
+
+        $fullOpening = $this->openingLines($posted, $lines, $claims['absorbed']);
         // The restricted balance is split as the ledger stood before its history was drawn out,
         // so every fund keeps the balance it has always had.
-        $restrictedBalance = $this->restrictedBalanceLines($fullOpening, array_map(static fn ($j) => $lines[$j['ref']], $posted));
-        $cashBook = $this->cashBook();
-        [$opening, $history] = $this->history($fullOpening, array_merge(array_column($journals, 'ref'), array_column($cashBook, 'reference')));
+        $dated = array_merge(
+            array_map(fn ($j) => [$ctx->date($j['date']), $lines[$j['ref']]], $posted),
+            array_map(static fn ($c) => [$c['header']['journal_date'], $c['lines']], $claims['journals']),
+        );
+        usort($dated, static fn ($a, $b) => $a[0] <=> $b[0]);
+        $restrictedBalance = $this->restrictedBalanceLines($fullOpening, array_column($dated, 1));
+        $taken = array_merge(array_column($journals, 'ref'), array_column($cashBook, 'reference'));
+        [$opening, $history] = $this->history($fullOpening, $taken);
         $opening = $this->lessCashBook($opening, $cashBook);
+        $claimJournals = $this->numbered($claims['journals'], array_merge($taken, array_map(static fn ($h) => $h['header']['reference'], $history)));
 
-        // Everything after the opening journal posts in date order, history and JOURNALS together.
+        // Everything after the opening journal posts in date order: history, JOURNALS and the claims together.
         $sequence = array_merge(
             array_map(static fn ($h) => ['date' => $h['header']['journal_date'], 'ref' => $h['header']['reference'], 'history' => $h], $history),
             array_map(fn ($j) => ['date' => $ctx->date($j['date']), 'ref' => $j['ref'], 'journal' => $j], $journals),
+            array_map(static fn ($c) => ['date' => $c['header']['journal_date'], 'ref' => $c['header']['reference'], 'claim' => $c], $claimJournals),
         );
         usort($sequence, static fn ($a, $b) => [$a['date'], $a['ref']] <=> [$b['date'], $b['ref']]);
         $sequence = $this->fundedOrder($sequence, array_merge($opening, $restrictedBalance), $lines);
@@ -118,6 +140,8 @@ class LedgerSeeder extends Seeder
         foreach ($sequence as $item) {
             if (isset($item['history'])) {
                 $postedLines[] = $item['history']['lines'];
+            } elseif (isset($item['claim'])) {
+                $postedLines[] = $item['claim']['lines'];
             } elseif (in_array($item['journal']['status'], self::POSTED, true)) {
                 $postedLines[] = $lines[$item['ref']];
             }
@@ -142,6 +166,12 @@ class LedgerSeeder extends Seeder
                 $this->createJournal($item['history']['header'], $item['history']['lines'], 'posted', $item['history']['approval']);
                 continue;
             }
+            if (isset($item['claim'])) {
+                $c = $item['claim'];
+                $id = $this->createJournal($c['header'], $c['lines'], 'posted', $c['approval']);
+                $ctx->db()->table($c['links'][0])->where('id', $c['links'][1])->update(['journal_id' => $id]);
+                continue;
+            }
             $j = $item['journal'];
             $ids[$j['ref']] = $id = $this->createJournal($this->header($j, $ids), $lines[$j['ref']], $this->status($j), $this->approval($j));
             $ctx->writeTrail('journal', $id, $j['ref'], $j['trail'], $entity);
@@ -154,6 +184,15 @@ class LedgerSeeder extends Seeder
             $this->createJournal($voucher, $lines, 'posted', [
                 'approved_by' => $approver, 'approved_at' => $voucher['journal_date'] . ' 17:00:00', 'posted_at' => $voucher['journal_date'] . ' 17:00:00',
             ]);
+        }
+
+        // A receipt the cash book already carries is settled by that voucher.
+        foreach ($ctx->db()->table('receipts')->where('journal_id', null)->where('invoice_id IS NOT NULL', null, false)->get()->getResultArray() as $r) {
+            $voucher = $ctx->db()->table('journals')->select('id')->where(['reference' => $r['reference'], 'source_type' => 'cash_book', 'source_id' => $r['bank_account_id']])->get()->getRowArray();
+            if ($voucher === null) {
+                throw new RuntimeException("Receipt {$r['reference']} has no ledger entry.");
+            }
+            $ctx->db()->table('receipts')->where('id', $r['id'])->update(['journal_id' => $voucher['id']]);
         }
 
         // A reversed journal is marked once its reversal has posted.
@@ -206,14 +245,20 @@ class LedgerSeeder extends Seeder
         ];
     }
 
-    /** SEED balances less the effect of separately posted journals, as debit/credit lines. */
-    private function openingLines(array $posted, array $lines): array
+    /**
+     * SEED balances less the effect of separately posted journals, as debit/credit
+     * lines. `$absorbed` are further lines whose effect is taken out the same way.
+     */
+    private function openingLines(array $posted, array $lines, array $absorbed = []): array
     {
         $effect = [];
         foreach ($posted as $j) {
             foreach ($lines[$j['ref']] as $l) {
                 $effect[$l['code']] = ($effect[$l['code']] ?? 0) + $l['debit'] - $l['credit'];
             }
+        }
+        foreach ($absorbed as $l) {
+            $effect[$l['code']] = ($effect[$l['code']] ?? 0) + $l['debit'] - $l['credit'];
         }
 
         $chart  = array_values($this->chart);
@@ -298,6 +343,129 @@ class LedgerSeeder extends Seeder
         usort($journals, static fn ($a, $b) => [$a['journal_date'], $a['reference']] <=> [$b['journal_date'], $b['reference']]);
 
         return $journals;
+    }
+
+    /**
+     * The claims' entries: an issue entry per claim issued, and a receipt entry per
+     * receipt the cash book does not already carry. `absorbed` is what the opening
+     * journal takes out: every receipt, and every issue except the part of the newest
+     * claims that brings 1210 to what the claims have outstanding; see the class comment.
+     *
+     * @return array{journals: list<array>, absorbed: list<array>}
+     */
+    private function claimJournals(array $cashBook): array
+    {
+        $ctx = $this->ctx;
+        $db = $ctx->db();
+        $t = static fn (string $table) => $db->prefixTable($table);
+        $inCashBook = array_flip(array_map(static fn ($v) => $v['source_id'] . '|' . $v['reference'], $cashBook));
+
+        $receipts = [];
+        foreach ($db->query("SELECT r.*, a.code FROM {$t('receipts')} r JOIN {$t('bank_accounts')} b ON b.id = r.bank_account_id
+                             JOIN {$t('accounts')} a ON a.id = b.account_id WHERE r.invoice_id IS NOT NULL ORDER BY r.received_on, r.id")->getResultArray() as $r) {
+            $receipts[(int) $r['invoice_id']][] = $r;
+        }
+        $invoices = $db->query(
+            "SELECT i.*, COALESCE(f.name, i.bill_to) AS customer, g.award_ref, p.name AS programme
+             FROM {$t('invoices')} i LEFT JOIN {$t('funders')} f ON f.id = i.funder_id LEFT JOIN {$t('grants')} g ON g.id = i.grant_id
+             JOIN {$t('programmes')} p ON p.id = i.programme_id
+             WHERE i.status <> 'draft' ORDER BY i.issue_date DESC, i.reference DESC"
+        )->getResultArray();
+
+        $outstanding = 0.0;
+        foreach ($invoices as $i) {
+            if (in_array($i['status'], ['issued', 'part_received', 'written_off'], true)) {
+                $outstanding += (float) $i['amount'] - array_sum(array_column($receipts[(int) $i['id']] ?? [], 'amount'));
+            }
+        }
+        $remaining = round($outstanding - (float) $this->chart[self::RECEIVABLE]['balance'], 2);
+        if ($remaining < 0) {
+            throw new RuntimeException('The chart carries more in 1210 than the claims have outstanding.');
+        }
+
+        $journals = $absorbed = [];
+        foreach ($invoices as $i) {
+            $amount = (float) $i['amount'];
+            $coding = ['fund_id' => (int) $i['fund_id'], 'programme' => $i['programme'], 'grant_id' => $i['grant_id'] === null ? null : (int) $i['grant_id']];
+            $issued = [['code' => self::RECEIVABLE, 'description' => 'Receivable from ' . $i['customer'] . ' · ' . $i['reference'], 'debit' => $amount, 'credit' => 0.0] + $coding];
+            foreach ($db->query("SELECT l.*, a.code FROM {$t('invoice_lines')} l JOIN {$t('accounts')} a ON a.id = l.account_id WHERE l.invoice_id = ? ORDER BY l.line_no", [$i['id']])->getResultArray() as $l) {
+                $issued[] = ['code' => $l['code'], 'description' => $l['description'], 'debit' => 0.0, 'credit' => (float) $l['amount']] + $coding;
+            }
+
+            // The part of this claim that is new to the chart stays out of the opening journal.
+            $new = min($remaining, $amount);
+            $remaining = round($remaining - $new, 2);
+            $keep = round($amount - $new, 2);
+            $split = 0.0;
+            foreach ($issued as $k => $l) {
+                $share = $k === 0 ? $keep : ($k === array_key_last($issued) ? round($keep - $split, 2) : round($l['credit'] * $keep / $amount, 2));
+                $split += $k === 0 ? 0 : $share;
+                if ($share != 0) {
+                    $absorbed[] = ['debit' => $k === 0 ? $share : 0.0, 'credit' => $k === 0 ? 0.0 : $share] + $l;
+                }
+            }
+
+            $at = $i['issue_date'] . ' 17:00:00';
+            $journals[] = [
+                'header' => [
+                    'journal_date' => $i['issue_date'], 'type' => 'standard', 'document_type_id' => $ctx->lookup('document_types', 'JV'),
+                    'document_ref' => $i['reference'], 'source_type' => 'invoice', 'source_id' => (int) $i['id'],
+                    'narration' => $i['customer'] . ' — ' . strtolower(str_replace('_', ' ', $i['type'])) . ', ' . $i['reference'],
+                    'memo' => 'Claim issued to ' . $i['customer'] . ($i['award_ref'] ? ' under ' . $i['award_ref'] : '') . '.',
+                    'prepared_by' => (int) $i['prepared_by'],
+                ],
+                'lines' => $issued,
+                'approval' => ['approved_by' => $i['approved_by'], 'approved_at' => $i['approved_by'] === null ? null : $at, 'posted_at' => $at],
+                'links' => ['invoices', (int) $i['id']],
+            ];
+
+            foreach ($receipts[(int) $i['id']] ?? [] as $r) {
+                if (isset($inCashBook[$r['bank_account_id'] . '|' . $r['reference']])) {
+                    continue;
+                }
+                $lines = [
+                    ['code' => $r['code'], 'description' => 'Receipt banked · ' . $r['reference'], 'debit' => (float) $r['amount'], 'credit' => 0.0] + $coding,
+                    ['code' => self::RECEIVABLE, 'description' => 'Grants receivable settled — ' . $i['reference'], 'debit' => 0.0, 'credit' => (float) $r['amount']] + $coding,
+                ];
+                array_push($absorbed, ...$lines);
+                $at = $r['received_on'] . ' 17:00:00';
+                $journals[] = [
+                    'header' => [
+                        'journal_date' => $r['received_on'], 'type' => 'standard', 'document_type_id' => $ctx->lookup('document_types', 'RC'),
+                        'document_ref' => $r['reference'], 'source_type' => 'receipt', 'source_id' => (int) $r['id'],
+                        'narration' => 'Receipt from ' . $i['customer'] . ' against ' . $i['reference'], 'memo' => 'Donor receipt applied against the claim.',
+                        'prepared_by' => (int) $r['created_by'],
+                    ],
+                    'lines' => $lines,
+                    'approval' => ['approved_by' => null, 'approved_at' => null, 'posted_at' => $at],
+                    'links' => ['receipts', (int) $r['id']],
+                ];
+            }
+        }
+        if ($remaining > 0) {
+            throw new RuntimeException('The claims issued cannot bring 1210 to what they have outstanding.');
+        }
+
+        usort($journals, static fn ($a, $b) => [$a['header']['journal_date'], $a['header']['source_type'], $a['header']['source_id']] <=> [$b['header']['journal_date'], $b['header']['source_type'], $b['header']['source_id']]);
+
+        return ['journals' => $journals, 'absorbed' => $absorbed];
+    }
+
+    /** Gives the claims' entries the JV numbers after every reference already taken, in date order. */
+    private function numbered(array $journals, array $taken): array
+    {
+        $next = 1;
+        foreach ($taken as $ref) {
+            if (preg_match('/^JV-' . (SeedContext::YEAR % 100) . '-(\d{4})$/', $ref, $m) === 1) {
+                $next = max($next, (int) $m[1] + 1);
+            }
+        }
+
+        return array_map(static function ($j) use (&$next) {
+            $j['header']['reference'] = sprintf('JV-%02d-%04d', SeedContext::YEAR % 100, $next++);
+
+            return $j;
+        }, $journals);
     }
 
     /** Takes the cash book's effect out of the balances brought forward, line by line in the same coding. */
@@ -508,7 +676,8 @@ class LedgerSeeder extends Seeder
         $waiting = [];
         foreach ($sequence as $item) {
             $journalLines = isset($item['history']) ? $item['history']['lines']
-                : (in_array($item['journal']['status'], self::POSTED, true) ? $lines[$item['ref']] : []);
+                : (isset($item['claim']) ? $item['claim']['lines']
+                : (in_array($item['journal']['status'], self::POSTED, true) ? $lines[$item['ref']] : []));
             $delta = $effect($journalLines);
             if (isset($item['history']) && !$bears($delta)) {
                 $waiting[] = $item + ['delta' => $delta];
@@ -663,7 +832,8 @@ class LedgerSeeder extends Seeder
         foreach ($lines as $i => $l) {
             $ctx->insert('journal_lines', [
                 'journal_id' => $id, 'line_no' => $i + 1, 'account_id' => $ctx->accountId($l['code']), 'fund_id' => $l['fund_id'],
-                'programme_id' => $ctx->programmeId($l['programme']), 'grant_id' => $ctx->grantOfFund($l['fund_id']),
+                'programme_id' => $ctx->programmeId($l['programme']),
+                'grant_id' => array_key_exists('grant_id', $l) ? $l['grant_id'] : $ctx->grantOfFund($l['fund_id']),
                 'description' => mb_substr($l['description'], 0, 255), 'debit' => $l['debit'], 'credit' => $l['credit'],
             ]);
         }

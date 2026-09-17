@@ -99,14 +99,14 @@ class Search extends BaseApiController
                     'title' => $a['name'],
                     'sub'   => $a['cls'] . ' · ' . $a['fund'] . ' · acquired ' . $a['acquired'],
                     'value' => Prototype::fmt($a['cost']),
-                    'href'  => Navigation::url('assets'),
+                    'href'  => Navigation::url('assets') . '?asset=' . rawurlencode($a['tag']),
                 ]),
 
             // Staff are findable by name and role, but pay is never shown here.
             // Payroll is personal data under Kenya's Data Protection Act 2019 and
             // a search palette open on a shared screen is the wrong place for a
             // salary; the prototype shows basic pay, the README restricts it.
-            $this->group('Payroll', (new PayrollRepository())->staff(), $hit,
+            $this->group('Payroll', (new PayrollRepository())->staffList(), $hit,
                 static fn ($s) => [$s['no'], $s['name'], $s['role'], $s['grade']],
                 static fn ($s) => [
                     'ref'   => $s['no'],

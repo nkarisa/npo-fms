@@ -2,7 +2,6 @@
 
 namespace App\Libraries;
 
-use App\Controllers\Api\Assets;
 use App\Controllers\Api\Payables;
 use App\Repositories\AssetRepository;
 use App\Repositories\BudgetRepository;
@@ -222,10 +221,9 @@ class Ledger
 
     public static function depreciationRunRate(): float
     {
-        return array_sum(array_map(
-            fn ($a) => Assets::monthlyCharge($a),
-            array_filter((new AssetRepository())->register(), fn ($a) => $a['status'] === 'In use')
-        ));
+        $assets = new AssetRepository();
+
+        return $assets->chargeFor($assets->period());
     }
 
     // ---- Grants ----

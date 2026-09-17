@@ -11,19 +11,36 @@ use App\Libraries\Prototype;
  * A claim is built as a draft from expenditure already in the ledger; nothing
  * posts until a second person issues it to the donor. Issuing raises grants
  * receivable (1210) and recognises the income on each claim line. A receipt, in
- * full or in part, clears 1210 against the bank it lands in. A claim the donor
- * will not pay is written off to bad debts (5370). Every step is on the claim's
- * audit trail.
+ * full or in part, clears 1210 against the bank it lands in. Every step is on the
+ * claim's audit trail.
+ *
+ * What may not come in is provided for before it is lost: an allowance for
+ * doubtful debts (1215, against 5370 bad and doubtful debts) set on a claim by
+ * hand, or by the ageing rates on claims no one has judged individually. Money
+ * that does come in releases what the allowance no longer needs. A claim the
+ * donor will not pay is written off against its allowance, and only what was not
+ * provided for is charged to 5370 then. Money that still comes in after a
+ * write-off reverses it and credits 5370 back.
  */
 final class ReceivablesRepository extends Repository
 {
     private const TYPE_LABELS = ['grant_claim' => 'Grant claim', 'cost_reimbursement' => 'Cost reimbursement', 'other_income' => 'Other income'];
 
-    public const CURRENCIES = ['KES' => 1.0, 'USD' => 129.40, 'EUR' => 139.80];
+    /** The currencies a new claim can be stated in, with their indicative rates (Settings → Currencies). */
+    public static function currencies(): array
+    {
+        return (new SettingsRepository())->activeRates();
+    }
 
     private const RECEIVABLE   = '1210';
     private const GRANT_INCOME = '4110';
     private const BAD_DEBTS    = '5370';
+    private const ALLOWANCE    = '1215';
+
+    /** Ageing on the outstanding balance, by days past the due date. */
+    public const BUCKETS = ['Current', '1–30 days', '31–60 days', '61–90 days', 'Over 90 days'];
+
+    private const BASIS_LABELS = ['specific' => 'Set on the claim', 'ageing' => 'By age'];
 
     /** A claim falls due this many days after it is issued. */
     private const TERMS_DAYS = 30;
@@ -62,7 +79,18 @@ final class ReceivablesRepository extends Repository
 
             $trails = $this->trails('invoice');
 
-            return array_map(function ($i) use ($lines, $receipts, $trails) {
+            // An allowance set by hand stays until someone changes it by hand; the
+            // ageing rates only move allowances they set.
+            $allowances = [];
+            foreach ($this->rows('SELECT invoice_id, basis, amount FROM {receivable_allowances} ORDER BY id') as $a) {
+                $k = (int) $a['invoice_id'];
+                $allowances[$k]['amount'] = ($allowances[$k]['amount'] ?? 0) + (float) $a['amount'];
+                if (isset(self::BASIS_LABELS[$a['basis']])) {
+                    $allowances[$k]['basis'] = self::BASIS_LABELS[$a['basis']];
+                }
+            }
+
+            return array_map(function ($i) use ($lines, $receipts, $trails, $allowances) {
                 $id = (int) $i['id'];
                 $invoice = [
                     'no'         => $i['reference'],
@@ -84,6 +112,8 @@ final class ReceivablesRepository extends Repository
                     'preparer'   => $this->lookups->shortName((int) $i['prepared_by']),
                     'journal'    => $i['journal_ref'],
                     'writeOffReason' => $i['written_off_reason'] ?? '',
+                    'allowance'  => self::num($allowances[$id]['amount'] ?? 0),
+                    'allowanceBasis' => $allowances[$id]['basis'] ?? '',
                     'lines'      => $lines[$id] ?? [],
                     'receipts'   => $receipts[$id] ?? [],
                     'trail'      => $trails[$id] ?? [],
@@ -119,6 +149,35 @@ final class ReceivablesRepository extends Repository
     public static function isOpen(array $i): bool
     {
         return !in_array($i['status'], ['Received', 'Written off'], true);
+    }
+
+    /** An issued claim with a balance still to come in can carry an allowance. */
+    public static function canCarryAllowance(array $i): bool
+    {
+        return self::isOpen($i) && $i['status'] !== 'Draft';
+    }
+
+    /** The ageing bucket of an invoice's outstanding balance. */
+    public static function bucket(array $i): string
+    {
+        if ($i['dueIn'] >= 0) {
+            return 'Current';
+        }
+        $d = -$i['dueIn'];
+
+        return $d <= 30 ? '1–30 days' : ($d <= 60 ? '31–60 days' : ($d <= 90 ? '61–90 days' : 'Over 90 days'));
+    }
+
+    /** @return array<string, float> ageing bucket → % of the outstanding balance provided for */
+    public function rates(): array
+    {
+        return $this->cached('rates', fn () => array_map('floatval', array_column($this->rows('SELECT bucket, pct FROM {allowance_rates} ORDER BY sort_order'), 'pct', 'bucket')));
+    }
+
+    /** What the ageing rates would hold against a claim, before anyone's judgement on it. */
+    public function ageingAllowance(array $i): float
+    {
+        return round(self::outstanding($i) * ($this->rates()[self::bucket($i)] ?? 0) / 100, 2);
     }
 
     /** A draft has not been issued to the donor yet, so it cannot be late. */
@@ -222,7 +281,7 @@ final class ReceivablesRepository extends Repository
         $ccy = (string) ($f['ccy'] ?? 'KES');
         $fx = $ccy === 'KES' ? 1.0 : (float) ($f['fx'] ?? 0);
 
-        if (!array_key_exists($ccy, self::CURRENCIES)) {
+        if (!array_key_exists($ccy, self::currencies())) {
             throw new RuleViolation($ccy . ' is not a currency claims can be stated in.');
         }
         if ($ccy !== 'KES' && !($fx > 0)) {
@@ -390,48 +449,33 @@ final class ReceivablesRepository extends Repository
         $amount = round($amount, 2);
 
         $error = match (true) {
-            in_array($invoice['status'], ['draft', 'written_off'], true) => $no . ' is ' . strtolower(self::label($invoice['status'])) . ' — it cannot take a receipt' . ($invoice['status'] === 'draft' ? ' until it is issued to the donor.' : '.'),
+            in_array($invoice['status'], ['draft', 'written_off'], true) => $no . ' is ' . strtolower(self::label($invoice['status'])) . ' — it cannot take a receipt' . ($invoice['status'] === 'draft' ? ' until it is issued to the donor.' : '; record the money as a recovery.'),
             $invoice['status'] === 'received' => $no . ' has already been received in full.',
             $amount <= 0 => 'Enter a receipt amount first.',
             $amount > self::outstanding($current) + 0.005 => 'Receipt of ' . Prototype::fmt($amount) . ' exceeds the ' . Prototype::fmt(self::outstanding($current)) . ' outstanding on ' . $no . '.',
-            $bank === null || $bank['kind'] === 'petty_cash' || $bank['status'] !== 'active' => $accountCode . ' is not a bank or mobile-money account a receipt can land in.',
             default => null,
         };
         if ($error !== null) {
             throw new RuleViolation($error);
         }
         $bankRef = trim($bankRef);
-        if ($bankRef !== '' && $this->value('SELECT id FROM {receipts} WHERE bank_account_id = ? AND reference = ?', [$bank['id'], $bankRef]) !== null) {
-            throw new RuleViolation('A receipt with reference ' . $bankRef . ' is already recorded on ' . $bank['name'] . '.');
-        }
+        $this->checkReceiptBank($bank, $accountCode, $bankRef);
 
         $who = $this->lookups->shortName($actorId);
         $this->transaction(function () use ($invoice, $current, $amount, $bank, $bankRef, $note, $actorId, $who) {
             $now = Clock::timestamp();
             $today = Clock::date();
-            $ref = $bankRef !== '' ? $bankRef : $this->nextReceiptReference($today);
             $full = $amount >= self::outstanding($current) - 0.005;
-            $receiptId = $this->insert('receipts', [
-                'entity_id' => $invoice['entity_id'], 'invoice_id' => $invoice['id'], 'bank_account_id' => $bank['id'],
-                'received_on' => $today, 'reference' => $ref, 'currency' => $invoice['currency'], 'fx_rate' => $invoice['fx_rate'],
-                'amount_fc' => round($amount / (float) $invoice['fx_rate'], 2), 'amount' => $amount,
-                'note' => mb_substr($note !== '' ? $note : ($full ? 'Settled in full' : 'Part receipt recorded'), 0, 255),
-                'created_by' => $actorId, 'created_at' => $now,
-            ]);
-
-            $journal = (new JournalRepository())->postFromSource([
-                'date' => $today, 'sourceType' => 'receipt', 'sourceId' => $receiptId, 'docRef' => $ref, 'series' => 'RC',
-                'narration' => 'Receipt from ' . $current['donor'] . ' against ' . $invoice['reference'],
-                'memo' => 'Donor receipt applied against the claim.',
-            ], [
-                $this->posting($bank['code'], $invoice, 'Receipt banked — ' . $bank['short_name'] . ' · ' . $ref, $amount, 0),
-                $this->posting(self::RECEIVABLE, $invoice, 'Grants receivable settled — ' . $invoice['reference'], 0, $amount),
-            ], $actorId, null, 'Raised by Receivables on receipt ' . $ref . ' by ' . $who);
-
-            $this->db->table('receipts')->where('id', $receiptId)->update(['journal_id' => $this->value('SELECT id FROM {journals} WHERE reference = ?', [$journal])]);
+            [$journal, $ref] = $this->postReceipt($invoice, $current, $amount, $bank, $bankRef, $note !== '' ? $note : ($full ? 'Settled in full' : 'Part receipt recorded'), $actorId, $today);
             $this->db->table('invoices')->where('id', $invoice['id'])->update(['status' => $full ? 'received' : 'part_received', 'updated_at' => $now]);
             $this->audit('invoice', (int) $invoice['id'], $invoice['reference'],
                 ($full ? 'Receipt in full' : 'Part receipt') . ' of ' . Prototype::fmt($amount) . ' posted to ' . $bank['code'] . ' as ' . $journal . ' by ' . $who, $actorId, 'history', (int) $invoice['entity_id']);
+
+            // The allowance can never exceed what is still to come in.
+            $excess = round($current['allowance'] - max(0, self::outstanding($current) - $amount), 2);
+            if ($excess > 0) {
+                $this->moveAllowance($invoice, $current, -$excess, 'receipt', 'Released on receipt ' . $ref, $actorId, $today);
+            }
         });
 
         return $this->find($no);
@@ -492,8 +536,9 @@ final class ReceivablesRepository extends Repository
     }
 
     /**
-     * Writes off what is left on an overdue claim the donor will not pay: charged to
-     * bad debts and cleared from grants receivable, with the reason on record.
+     * Writes off what is left on an overdue claim the donor will not pay: cleared
+     * from grants receivable, met first from the allowance held against it, with
+     * only the balance not provided for charged to bad and doubtful debts.
      */
     public function writeOff(string $no, string $reason, int $actorId): array
     {
@@ -509,29 +554,367 @@ final class ReceivablesRepository extends Repository
 
         $who = $this->lookups->shortName($actorId);
         $this->transaction(function () use ($invoice, $current, $reason, $actorId, $who) {
-            $out = self::outstanding($current);
-            $journal = (new JournalRepository())->postFromSource([
-                'date' => Clock::date(), 'sourceType' => 'invoice', 'sourceId' => (int) $invoice['id'], 'docRef' => $invoice['reference'], 'series' => 'JV',
-                'narration' => 'Write-off of ' . $invoice['reference'] . ' — ' . $current['donor'],
-                'memo' => mb_substr('Irrecoverable claim written off: ' . $reason, 0, 255),
-            ], [
-                $this->posting(self::BAD_DEBTS, $invoice, 'Bad debt — ' . $current['donor'] . ' · ' . $invoice['reference'], $out, 0),
-                $this->posting(self::RECEIVABLE, $invoice, 'Receivable derecognised — ' . $invoice['reference'], 0, $out),
-            ], $actorId, null, 'Raised by Receivables on write-off of ' . $invoice['reference'] . ' by ' . $who);
+            [$journal, $charged, $used] = $this->postWriteOff($invoice, $current, $reason, $actorId, Clock::date(), '');
 
             $this->db->table('invoices')->where('id', $invoice['id'])->update([
                 'status' => 'written_off', 'written_off_reason' => $reason, 'updated_at' => Clock::timestamp(),
             ]);
             $this->audit('invoice', (int) $invoice['id'], $invoice['reference'],
-                'Written off by ' . $who . ' — ' . Prototype::fmt($out) . ' charged to ' . self::BAD_DEBTS . ' as ' . $journal . ': ' . $reason, $actorId, 'history', (int) $invoice['entity_id']);
+                'Written off by ' . $who . ' as ' . $journal . ' — ' . self::writeOffSplit($charged, $used) . ': ' . $reason, $actorId, 'history', (int) $invoice['entity_id']);
         });
 
         return $this->find($no);
     }
 
+    /**
+     * Banks money that comes in on a claim already written off. The write-off is
+     * reversed for what came in — grants receivable reinstated against the
+     * allowance (Dr 1210 / Cr 1215) — the receipt clears 1210 against the bank as
+     * any receipt does, and the allowance, no longer needed, is released to bad and
+     * doubtful debts (Dr 1215 / Cr 5370). The recovery reduces this period's charge.
+     * Recovered in full, the claim is received; in part, the rest stays written off.
+     */
+    public function recordRecovery(string $no, float $amount, string $accountCode, string $bankRef, string $note, int $actorId): array
+    {
+        $invoice = $this->header($no);
+        $current = $this->find($no);
+        $bank = $this->lookups->bankAccounts()[$accountCode] ?? null;
+        $amount = round($amount, 2);
+        $writtenOff = self::outstanding($current);
+
+        $error = match (true) {
+            $invoice['status'] !== 'written_off' => $no . ' is ' . strtolower(self::label($invoice['status'])) . ' — only a written-off claim takes a recovery.',
+            $amount <= 0 => 'Enter the amount recovered first.',
+            $amount > $writtenOff + 0.005 => 'Recovery of ' . Prototype::fmt($amount) . ' exceeds the ' . Prototype::fmt($writtenOff) . ' written off on ' . $no . '.',
+            default => null,
+        };
+        if ($error !== null) {
+            throw new RuleViolation($error);
+        }
+        $bankRef = trim($bankRef);
+        $this->checkReceiptBank($bank, $accountCode, $bankRef);
+
+        $who = $this->lookups->shortName($actorId);
+        $this->transaction(function () use ($invoice, $current, $amount, $writtenOff, $bank, $bankRef, $note, $actorId, $who) {
+            $today = Clock::date();
+            $full = $amount >= $writtenOff - 0.005;
+
+            $reinstated = (new JournalRepository())->postFromSource([
+                'date' => $today, 'sourceType' => 'invoice', 'sourceId' => (int) $invoice['id'], 'docRef' => $invoice['reference'], 'series' => 'JV',
+                'narration' => 'Write-off of ' . $invoice['reference'] . ' reversed on recovery — ' . $current['donor'],
+                'memo' => 'Money came in on a claim written off; the receivable is reinstated against the allowance.',
+            ], [
+                $this->posting(self::RECEIVABLE, $invoice, 'Receivable reinstated on recovery — ' . $invoice['reference'], $amount, 0),
+                $this->posting(self::ALLOWANCE, $invoice, 'Allowance reinstated on recovery — ' . $invoice['reference'], 0, $amount),
+            ], $actorId, null, 'Raised by Receivables on recovery of ' . $invoice['reference'] . ' by ' . $who);
+            $this->insert('receivable_allowances', [
+                'entity_id' => $invoice['entity_id'], 'invoice_id' => $invoice['id'], 'basis' => 'write_off', 'amount' => $amount,
+                'reason' => 'Write-off reversed on recovery', 'journal_id' => $this->journalId($reinstated), 'created_by' => $actorId, 'created_at' => Clock::timestamp(),
+            ]);
+
+            [$journal, $ref] = $this->postReceipt($invoice, $current, $amount, $bank, $bankRef, $note !== '' ? $note : ($full ? 'Recovered in full after write-off' : 'Part recovery after write-off'), $actorId, $today);
+            $this->audit('invoice', (int) $invoice['id'], $invoice['reference'],
+                ($full ? 'Recovery in full' : 'Part recovery') . ' of ' . Prototype::fmt($amount) . ' after write-off posted to ' . $bank['code'] . ' as ' . $journal
+                . ' by ' . $who . ' — write-off reversed as ' . $reinstated, $actorId, 'history', (int) $invoice['entity_id']);
+            $this->moveAllowance($invoice, ['allowance' => $amount] + $current, -$amount, 'receipt', 'Released on recovery ' . $ref, $actorId, $today);
+
+            if ($full) {
+                $this->db->table('invoices')->where('id', $invoice['id'])->update(['status' => 'received', 'updated_at' => Clock::timestamp()]);
+            }
+        });
+
+        return $this->find($no);
+    }
+
+    /**
+     * Sets the allowance held against one claim, by judgement: anything from nothing
+     * (the donor is expected to pay after all) to the whole outstanding balance.
+     * The ageing rates leave it alone from then on.
+     */
+    public function setAllowance(string $no, float $amount, string $reason, int $actorId): array
+    {
+        $invoice = $this->header($no);
+        $current = $this->find($no);
+        $amount = round($amount, 2);
+        $reason = trim($reason);
+
+        $error = match (true) {
+            !self::canCarryAllowance($current) => $no . ' is ' . strtolower($current['status']) . ' — only an issued claim with a balance still to come in carries an allowance.',
+            $amount < 0 => 'An allowance cannot be negative.',
+            $amount > self::outstanding($current) + 0.005 => 'An allowance of ' . Prototype::fmt($amount) . ' exceeds the ' . Prototype::fmt(self::outstanding($current)) . ' outstanding on ' . $no . '.',
+            abs($amount - $current['allowance']) < 0.005 => $no . ' already carries an allowance of ' . Prototype::fmt($amount) . '.',
+            $reason === '' => $amount < $current['allowance']
+                ? 'Say why less of the claim is now in doubt — the reason goes on the claim\'s record.'
+                : 'Say why the claim is in doubt — an allowance needs its reason on record.',
+            default => null,
+        };
+        if ($error !== null) {
+            throw new RuleViolation($error);
+        }
+
+        $this->transaction(fn () => $this->moveAllowance($invoice, $current, $amount - $current['allowance'], 'specific', $reason, $actorId, Clock::date()));
+
+        return $this->find($no);
+    }
+
+    /**
+     * Brings the allowance on every issued claim no one has judged by hand into line
+     * with the ageing rates, one entry per claim that moves.
+     *
+     * @return array{done: list<array>, raised: float, released: float}
+     */
+    public function applyAgeingRates(int $actorId): array
+    {
+        $changes = [];
+        foreach ($this->all() as $i) {
+            if (!self::canCarryAllowance($i) || $i['allowanceBasis'] === self::BASIS_LABELS['specific']) {
+                continue;
+            }
+            $delta = round($this->ageingAllowance($i) - $i['allowance'], 2);
+            if (abs($delta) >= 0.005) {
+                $changes[] = [$i, $delta];
+            }
+        }
+        if ($changes === []) {
+            throw new RuleViolation('The allowance already matches the ageing rates — there is nothing to post.');
+        }
+
+        $rates = $this->rates();
+        $this->transaction(function () use ($changes, $rates, $actorId) {
+            foreach ($changes as [$i, $delta]) {
+                $bucket = self::bucket($i);
+                $this->moveAllowance($this->header($i['no']), $i, $delta, 'ageing',
+                    'Ageing rate for ' . ($bucket === 'Current' ? 'claims not yet due' : $bucket . ' overdue') . ': ' . self::pctText($rates[$bucket] ?? 0) . ' of ' . Prototype::fmt(self::outstanding($i)), $actorId, Clock::date());
+            }
+        });
+
+        return [
+            'done'     => array_map(fn ($c) => $this->find($c[0]['no']), $changes),
+            'raised'   => self::num(array_sum(array_map(static fn ($c) => max(0, $c[1]), $changes))),
+            'released' => self::num(array_sum(array_map(static fn ($c) => max(0, -$c[1]), $changes))),
+        ];
+    }
+
+    /**
+     * Replaces the ageing rates. A claim later past its due date is no more likely
+     * to be paid, so a rate may not fall as the buckets age.
+     *
+     * @param array<string, float|string> $rates bucket → %
+     */
+    public function saveRates(array $rates, int $actorId): array
+    {
+        $clean = [];
+        $previous = 0.0;
+        foreach (self::BUCKETS as $bucket) {
+            $raw = trim((string) ($rates[$bucket] ?? ''));
+            if ($raw === '' || !is_numeric($raw) || (float) $raw < 0 || (float) $raw > 100) {
+                throw new RuleViolation('Enter a rate between 0 and 100% for ' . ($bucket === 'Current' ? 'claims not yet due' : $bucket . ' overdue') . '.');
+            }
+            $pct = round((float) $raw, 3);
+            if ($pct < $previous) {
+                throw new RuleViolation('The rate for ' . $bucket . ' cannot be lower than for younger balances — an older debt is no more likely to be paid.');
+            }
+            $clean[$bucket] = $previous = $pct;
+        }
+
+        $before = $this->rates();
+        $changed = array_filter(self::BUCKETS, static fn ($b) => abs(($before[$b] ?? 0) - $clean[$b]) >= 0.0005);
+        if ($changed === []) {
+            throw new RuleViolation('The ageing rates are unchanged.');
+        }
+
+        $who = $this->lookups->shortName($actorId);
+        $this->transaction(function () use ($clean, $before, $changed, $actorId, $who) {
+            foreach ($changed as $bucket) {
+                $this->db->table('allowance_rates')->where('bucket', $bucket)->update(['pct' => $clean[$bucket], 'updated_at' => Clock::timestamp()]);
+            }
+            $this->audit('allowance_rates', null, 'Allowance rates', 'Ageing rates for doubtful debts changed by ' . $who . ': '
+                . implode('; ', array_map(static fn ($b) => $b . ' ' . self::pctText($before[$b] ?? 0) . ' → ' . self::pctText($clean[$b]), $changed)), $actorId, 'history', $this->lookups->entityId());
+        });
+
+        return $this->rates();
+    }
+
+    /**
+     * Brings into the ledger claims that are recorded as written off but have no
+     * write-off entry behind them — written off before this system kept the books. Each is
+     * provided for in full and the allowance then used, as the write-off would be
+     * now. An entry goes in the month the claim was written off while that month is
+     * open, and otherwise in the current one, saying so.
+     *
+     * @return list<string> the invoices booked
+     */
+    public function bookRecordedWriteOffs(int $actorId): array
+    {
+        $unbooked = $this->rows(
+            "SELECT i.* FROM {invoices} i WHERE i.status = 'written_off'
+             AND NOT EXISTS (SELECT 1 FROM {journals} j WHERE j.source_type = 'invoice' AND j.source_id = i.id AND j.narration LIKE 'Write-off of %')
+             ORDER BY i.id"
+        );
+
+        $booked = [];
+        foreach ($unbooked as $invoice) {
+            $current = $this->find($invoice['reference']);
+            if (self::outstanding($current) <= 0) {
+                continue;
+            }
+            $recorded = substr((string) ($this->value(
+                "SELECT occurred_at FROM {audit_events} WHERE object_type = 'invoice' AND object_id = ? AND summary LIKE 'Written off%' ORDER BY occurred_at DESC, id DESC LIMIT 1",
+                [$invoice['id']]
+            ) ?? $invoice['updated_at'] ?? Clock::date()), 0, 10);
+            $period = array_values(array_filter($this->lookups->periods(), static fn ($p) => $p['starts_on'] <= $recorded && $recorded <= $p['ends_on']))[0] ?? null;
+            $date = $period !== null && $period['status'] === 'open' ? $recorded : Clock::date();
+            $note = $date === $recorded ? '' : ' (written off ' . self::dmy($recorded) . '; ' . ($period['name'] ?? 'that month') . ' is closed)';
+            $reason = (string) $invoice['written_off_reason'];
+
+            $this->transaction(function () use ($invoice, $current, $reason, $actorId, $date, $note) {
+                $raised = $this->moveAllowance($invoice, $current, self::outstanding($current), 'specific', 'Recorded as written off: ' . $reason, $actorId, $date, $note);
+                [$journal] = $this->postWriteOff($invoice, ['allowance' => self::outstanding($current)] + $current, $reason, $actorId, $date, $note);
+                $this->audit('invoice', (int) $invoice['id'], $invoice['reference'],
+                    'Write-off brought into the ledger' . $note . ' — ' . Prototype::fmt(self::outstanding($current)) . ' provided for as ' . $raised . ' and used as ' . $journal, $actorId, 'history', (int) $invoice['entity_id']);
+            });
+            $booked[] = $invoice['reference'];
+        }
+
+        return $booked;
+    }
+
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    /** A receipt lands in an active bank or mobile-money account, under a reference not already used there. */
+    private function checkReceiptBank(?array $bank, string $accountCode, string $bankRef): void
+    {
+        if ($bank === null || $bank['kind'] === 'petty_cash' || $bank['status'] !== 'active') {
+            throw new RuleViolation($accountCode . ' is not a bank or mobile-money account a receipt can land in.');
+        }
+        if ($bankRef !== '' && $this->value('SELECT id FROM {receipts} WHERE bank_account_id = ? AND reference = ?', [$bank['id'], $bankRef]) !== null) {
+            throw new RuleViolation('A receipt with reference ' . $bankRef . ' is already recorded on ' . $bank['name'] . '.');
+        }
+    }
+
+    /**
+     * Records a receipt against a claim and posts it: the bank debited, grants
+     * receivable credited. Without a bank reference the receipt takes the next
+     * receipt number. Call inside a transaction.
+     *
+     * @return array{0: string, 1: string} journal, receipt reference
+     */
+    private function postReceipt(array $invoice, array $current, float $amount, array $bank, string $bankRef, string $note, int $actorId, string $date): array
+    {
+        $ref = $bankRef !== '' ? $bankRef : $this->nextReceiptReference($date);
+        $receiptId = $this->insert('receipts', [
+            'entity_id' => $invoice['entity_id'], 'invoice_id' => $invoice['id'], 'bank_account_id' => $bank['id'],
+            'received_on' => $date, 'reference' => $ref, 'currency' => $invoice['currency'], 'fx_rate' => $invoice['fx_rate'],
+            'amount_fc' => round($amount / (float) $invoice['fx_rate'], 2), 'amount' => $amount,
+            'note' => mb_substr($note, 0, 255), 'created_by' => $actorId, 'created_at' => Clock::timestamp(),
+        ]);
+
+        $journal = (new JournalRepository())->postFromSource([
+            'date' => $date, 'sourceType' => 'receipt', 'sourceId' => $receiptId, 'docRef' => $ref, 'series' => 'RC',
+            'narration' => 'Receipt from ' . $current['donor'] . ' against ' . $invoice['reference'],
+            'memo' => 'Donor receipt applied against the claim.',
+        ], [
+            $this->posting($bank['code'], $invoice, 'Receipt banked — ' . $bank['short_name'] . ' · ' . $ref, $amount, 0),
+            $this->posting(self::RECEIVABLE, $invoice, 'Grants receivable settled — ' . $invoice['reference'], 0, $amount),
+        ], $actorId, null, 'Raised by Receivables on receipt ' . $ref . ' by ' . $this->lookups->shortName($actorId));
+
+        $this->db->table('receipts')->where('id', $receiptId)->update(['journal_id' => $this->journalId($journal)]);
+
+        return [$journal, $ref];
+    }
+
+    /**
+     * Posts the write-off entry: receivable cleared, allowance used first, the rest
+     * charged to bad and doubtful debts. Anything the allowance held beyond what is
+     * written off is released in the same entry. Call inside a transaction.
+     *
+     * @return array{0: string, 1: float, 2: float} journal, charged to 5370, met from the allowance
+     */
+    private function postWriteOff(array $invoice, array $current, string $reason, int $actorId, string $date, string $note): array
+    {
+        $out = self::outstanding($current);
+        $held = round($current['allowance'], 2);
+        $used = min($held, $out);
+        $charged = round($out - $held, 2);
+        $who = $this->lookups->shortName($actorId);
+
+        $journal = (new JournalRepository())->postFromSource([
+            'date' => $date, 'sourceType' => 'invoice', 'sourceId' => (int) $invoice['id'], 'docRef' => $invoice['reference'], 'series' => 'JV',
+            'narration' => 'Write-off of ' . $invoice['reference'] . ' — ' . $current['donor'] . $note,
+            'memo' => mb_substr('Irrecoverable claim written off: ' . $reason, 0, 255),
+        ], [
+            $this->posting(self::BAD_DEBTS, $invoice, 'Bad debt — ' . $current['donor'] . ' · ' . $invoice['reference'], max(0, $charged), max(0, -$charged)),
+            $this->posting(self::ALLOWANCE, $invoice, 'Allowance used on write-off — ' . $invoice['reference'], $held, 0),
+            $this->posting(self::RECEIVABLE, $invoice, 'Receivable derecognised — ' . $invoice['reference'], 0, $out),
+        ], $actorId, null, 'Raised by Receivables on write-off of ' . $invoice['reference'] . ' by ' . $who);
+
+        if ($held > 0) {
+            $this->insert('receivable_allowances', [
+                'entity_id' => $invoice['entity_id'], 'invoice_id' => $invoice['id'], 'basis' => 'write_off', 'amount' => -$held,
+                'reason' => $reason, 'journal_id' => $this->journalId($journal), 'created_by' => $actorId, 'created_at' => Clock::timestamp(),
+            ]);
+        }
+
+        return [$journal, $charged, $used];
+    }
+
+    /**
+     * Raises (+) or releases (−) the allowance on one claim: bad and doubtful debts
+     * against 1215, on the claim's own fund, programme and grant. Call inside a
+     * transaction.
+     */
+    private function moveAllowance(array $invoice, array $current, float $delta, string $basis, string $reason, int $actorId, string $date, string $note = ''): string
+    {
+        $delta = round($delta, 2);
+        $raise = $delta > 0;
+        $size = abs($delta);
+        $who = $this->lookups->shortName($actorId);
+
+        $journal = (new JournalRepository())->postFromSource([
+            'date' => $date, 'sourceType' => 'invoice', 'sourceId' => (int) $invoice['id'], 'docRef' => $invoice['reference'], 'series' => 'JV',
+            'narration' => ($raise ? 'Allowance for doubtful debt raised on ' : 'Allowance for doubtful debt released on ') . $invoice['reference'] . ' — ' . $current['donor'] . $note,
+            'memo' => mb_substr($reason, 0, 255),
+        ], [
+            $this->posting(self::BAD_DEBTS, $invoice, ($raise ? 'Doubtful debt provided for — ' : 'Doubtful debt provision released — ') . $invoice['reference'], $raise ? $size : 0, $raise ? 0 : $size),
+            $this->posting(self::ALLOWANCE, $invoice, 'Allowance for doubtful debts — ' . $current['donor'] . ' · ' . $invoice['reference'], $raise ? 0 : $size, $raise ? $size : 0),
+        ], $actorId, null, 'Raised by Receivables on the allowance for ' . $invoice['reference'] . ' by ' . $who);
+
+        $this->insert('receivable_allowances', [
+            'entity_id' => $invoice['entity_id'], 'invoice_id' => $invoice['id'], 'basis' => $basis, 'amount' => $delta,
+            'reason' => $reason, 'journal_id' => $this->journalId($journal), 'created_by' => $actorId, 'created_at' => Clock::timestamp(),
+        ]);
+        $after = round($current['allowance'] + $delta, 2);
+        $this->audit('invoice', (int) $invoice['id'], $invoice['reference'],
+            'Allowance ' . ($raise ? 'raised' : 'released') . ' by ' . Prototype::fmt($size) . ' to ' . Prototype::fmt($after) . ' as ' . $journal
+            . ($basis === 'ageing' ? ' by the ageing rates' : ($basis === 'receipt' ? ' on receipt' : ' by ' . $who)) . ': ' . $reason, $actorId, 'history', (int) $invoice['entity_id']);
+
+        return $journal;
+    }
+
+    private function journalId(string $reference): int
+    {
+        return (int) $this->value('SELECT id FROM {journals} WHERE reference = ?', [$reference]);
+    }
+
+    private static function writeOffSplit(float $charged, float $used): string
+    {
+        $parts = [];
+        if ($used > 0) {
+            $parts[] = Prototype::fmt($used) . ' met from the allowance (' . self::ALLOWANCE . ')';
+        }
+        if ($charged > 0 || $used <= 0) {
+            $parts[] = Prototype::fmt(max(0, $charged)) . ' charged to ' . self::BAD_DEBTS;
+        }
+
+        return implode(' and ', $parts);
+    }
+
+    private static function pctText(float $pct): string
+    {
+        return rtrim(rtrim(number_format($pct, 3, '.', ''), '0'), '.') . '%';
+    }
 
     private function header(string $no): array
     {

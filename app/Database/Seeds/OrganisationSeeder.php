@@ -9,7 +9,8 @@ use CodeIgniter\Database\Seeder;
  * Locales, entities, roles and permissions, users and the approval policy.
  *
  * Sources: LOCALES, ST_ENTITIES, ROLES, ACTORS, ST_USERS, ST_APPROVALS, ST_TOGGLES,
- * ST_SEGMENTS.
+ * ST_SEGMENTS, and the prototype's settings state (cfg, currencies,
+ * i18nFormatsLocked), which it holds inline rather than as data.
  */
 class OrganisationSeeder extends Seeder
 {
@@ -48,6 +49,37 @@ class OrganisationSeeder extends Seeder
     /** Approval ceilings for the roles that can approve (ACTORS "limit"). Null is no ceiling. */
     private const CEILINGS = ['Finance Manager' => 5000000, 'Executive Director' => null];
 
+    /**
+     * Approvals the prototype states in prose rather than in ST_APPROVALS:
+     * [document type, label, threshold, approver role, escalation role].
+     */
+    private const UNLISTED_APPROVALS = [
+        ['payroll_run', 'Payroll runs', 0, 'Executive Director', null],
+        ['advance', 'Staff and observer advances', 200000, 'Finance Manager', 'Executive Director'],
+    ];
+
+    /** The organisation as registered, held on the head office (the prototype's cfg). */
+    private const PROFILE = [
+        'registered_name' => 'Elections Observation Group', 'short_name' => 'ELOG',
+        'tax_pin' => 'P051290384H', 'registration_no' => 'OP/218/051/2010/0142',
+    ];
+
+    /** The reporting basis: [key, label, value]. The functional currency is the entity's own. */
+    private const CHOICES = [
+        ['framework', 'Framework', 'IFRS'],
+        ['yearEnd', 'Financial year end', '31 December'],
+        ['codeLength', 'Account code length', '4 digits'],
+    ];
+
+    /** [code, name, indicative rate to KES, active]. */
+    private const CURRENCIES = [
+        ['KES', 'Kenya Shilling', 1, true],
+        ['USD', 'US Dollar', 129.40, true],
+        ['EUR', 'Euro', 139.80, true],
+        ['DKK', 'Danish Krone', 18.75, true],
+        ['GBP', 'Pound Sterling', 163.20, false],
+    ];
+
     private const DOCUMENT_TYPES = ['journal' => 'journal', 'bill' => 'bill', 'payment' => 'payment_run',
         'subgrant' => 'subgrant', 'transfer' => 'transfer', 'revision' => 'budget_revision'];
 
@@ -71,6 +103,9 @@ class OrganisationSeeder extends Seeder
                 'parent_id' => $e['type'] === 'Head office' ? null : $secretariat, 'code' => $meta['code'], 'name' => $e['name'],
                 'type' => $e['type'], 'functional_currency' => $e['currency'], 'status' => strtolower($e['status']), 'created_at' => $now,
             ]);
+            if ($secretariat === null) {
+                $ctx->db()->table('entities')->where('id', $id)->update(self::PROFILE);
+            }
             $secretariat ??= $id;
             $ctx->remember('entities', $meta['code'], $id);
             $ctx->remember('entity_words', $meta['word'], $id);
@@ -106,6 +141,19 @@ class OrganisationSeeder extends Seeder
             ]);
         }
 
+        // Two approvals the prototype states in prose rather than in ST_APPROVALS:
+        // every payroll run goes to the Executive Director whatever it comes to,
+        // and an advance above the finance manager's 200,000 limit goes to them
+        // too. Kept here as data, like the rest of the policy.
+        foreach (self::UNLISTED_APPROVALS as [$type, $label, $threshold, $approver, $escalation]) {
+            $ctx->insert('approval_rules', [
+                'entity_id' => $secretariat, 'document_type' => $type, 'label' => $label, 'threshold' => $threshold,
+                'approver_role_id' => $ctx->require('roles', $approver),
+                'escalation_role_id' => $escalation === null ? null : $ctx->require('roles', $escalation),
+                'escalation_note' => null, 'created_at' => $now,
+            ]);
+        }
+
         foreach (self::CEILINGS as $role => $ceiling) {
             $ctx->insert('approval_limits', ['role_id' => $ctx->require('roles', $role), 'document_type' => null, 'ceiling' => $ceiling, 'created_at' => $now]);
         }
@@ -113,8 +161,20 @@ class OrganisationSeeder extends Seeder
         foreach ($ctx->data('ST_TOGGLES') as $t) {
             $ctx->insert('settings', [
                 'entity_id' => $secretariat, 'key' => $t['key'], 'label' => $t['label'], 'note' => $t['note'],
-                'value' => $t['on'] ? '1' : '0', 'created_at' => $now,
+                'value' => $t['on'] ? '1' : '0', 'kind' => 'toggle', 'created_at' => $now,
             ]);
+        }
+        foreach (self::CHOICES as [$key, $label, $value]) {
+            $ctx->insert('settings', ['entity_id' => $secretariat, 'key' => $key, 'label' => $label, 'value' => $value, 'kind' => 'choice', 'created_at' => $now]);
+        }
+        $ctx->insert('settings', [
+            'entity_id' => $secretariat, 'key' => 'formatsLocked', 'kind' => 'language', 'value' => '1', 'created_at' => $now,
+            'label' => "Hold numbers, dates and currency in the organisation's reporting locale (en-KE · KES)",
+            'note' => 'Recommended. Finance staff, auditors and funders read the same figure the same way in every language, so a report cannot be misread as a different amount.',
+        ]);
+
+        foreach (self::CURRENCIES as [$code, $name, $rate, $active]) {
+            $ctx->insert('currencies', ['code' => $code, 'name' => $name, 'indicative_rate' => $rate, 'is_active' => (int) $active, 'created_at' => $now]);
         }
 
         foreach ($ctx->data('ST_SEGMENTS') as $s) {

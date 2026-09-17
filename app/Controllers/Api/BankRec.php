@@ -4,6 +4,7 @@ namespace App\Controllers\Api;
 
 use App\Repositories\BankRepository;
 use App\Repositories\RuleViolation;
+use App\Repositories\StatementImportRepository;
 
 /**
  * Bank reconciliation (v5): one cash account's statement for a period against its
@@ -18,7 +19,52 @@ class BankRec extends BaseApiController
         try {
             return $this->json($this->view((new BankRepository())->reconciliation(...$this->target($this->request->getGet()))));
         } catch (RuleViolation $e) {
-            return $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage()]);
+            return $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage(), 'canUpload' => $this->actor()['canPrepare'], 'role' => $this->actor()['role']]);
+        }
+    }
+
+    /** The accounts, formats and open periods a statement can be uploaded for. */
+    public function importOptions()
+    {
+        return $this->json((new StatementImportRepository())->options() + ['canUpload' => $this->actor()['canPrepare']]);
+    }
+
+    /**
+     * Previews or loads a statement CSV. Multipart: `file`, and `payload` holding
+     * {account, period, reference, opening, closing, entries: {fileLine: kind}, commit}.
+     * A preview answers with the lines and checks; a load answers with the
+     * reconciliation as it now stands.
+     */
+    public function import()
+    {
+        $actor = $this->actor();
+        if (!$actor['canPrepare']) {
+            return $this->response->setStatusCode(403)->setJSON(['error' => $actor['role'] . ' cannot load bank statements. Switch to a preparer to upload one.']);
+        }
+
+        $body = json_decode((string) $this->request->getPost('payload'), true) ?? [];
+        $file = $this->request->getFile('file');
+        try {
+            if ($file === null || !$file->isValid()) {
+                throw new RuleViolation($file === null || $file->getError() === UPLOAD_ERR_NO_FILE ? 'Choose the statement file to upload.' : $file->getClientName() . ' did not upload: ' . $file->getErrorString());
+            }
+            $code = (string) ($body['account'] ?? '');
+            $period = (string) ($body['period'] ?? '');
+            $commit = !empty($body['commit']);
+            $result = (new StatementImportRepository())->run($code, $period, [
+                'path' => $file->getTempName(), 'name' => $file->getClientName(), 'size' => $file->getSize(), 'mime' => (string) $file->getClientMimeType(),
+            ], $body, $this->actorId(), $commit);
+
+            if (!$commit) {
+                return $this->json(['preview' => $result]);
+            }
+            $n = $result['summary']['new'];
+
+            return $this->json(['message' => $n . ($n === 1 ? ' line' : ' lines') . ' loaded onto the ' . $result['short'] . ' statement for ' . $period
+                . ($result['summary']['duplicate'] > 0 ? ' · ' . $result['summary']['duplicate'] . ' already there were skipped' : '') . '.']
+                + $this->view((new BankRepository())->reconciliation($code, $period)));
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
         }
     }
 
@@ -177,11 +223,18 @@ class BankRec extends BaseApiController
             'locked'      => $locked,
             'periodOpen'  => $r['periodOpen'],
             'signedOffBy' => $signedOff ? 'Signed off by ' . $r['reviewedBy'] . ' on ' . $r['completedAt'] : '',
+            'uploadBlocked' => $actor['canPrepare'] ? '' : $actor['role'] . ' cannot load bank statements. Switch to a preparer to upload one.',
+            'uploadNote'  => $r['lastUpload'] === null ? '' : 'Loaded from ' . $r['lastUpload']['file'] . ' by ' . $r['lastUpload']['by'] . ' on ' . $r['lastUpload']['on']
+                . ($r['lastUpload']['uploads'] > 1 ? ' · ' . $r['lastUpload']['uploads'] . ' uploads' : ''),
+            'printedClose' => $fmt($r['printedClose']),
+            'closeAgrees'  => round($r['statementClose'], 2) == round((float) $r['printedClose'], 2),
             'can' => [
                 'match'      => !$locked && ($actor['canPrepare'] || $actor['canApprove']),
                 'journalise' => !$locked && $actor['canPrepare'],
-                'complete'   => !$locked && $actor['canApprove'] && $gap == 0 && $open === [],
+                'complete'   => !$locked && $actor['canApprove'] && $gap == 0 && $open === [] && round($r['statementClose'], 2) == round((float) $r['printedClose'], 2),
                 'reopen'     => $signedOff && $r['periodOpen'] && $actor['canApprove'],
+                // Any statement can be loaded by a preparer; the panel says which months are locked.
+                'upload'     => $actor['canPrepare'],
             ],
             'completeLabel' => $signedOff ? 'Reconciled ✓' : ($gap == 0 && $open === [] ? 'Complete reconciliation' : 'Cannot complete · ' . $fmt($gap)),
             'statement' => [

@@ -36,8 +36,10 @@ final class GeneralLedgerTest extends CIUnitTestCase
         $archived = (int) db_connect()->table('journals')->where('source_type', 'archive')->countAllResults();
 
         $this->assertGreaterThan(400, $archived);
-        // The register is the opening balance journal plus the prototype's 12 JOURNALS entries.
-        $this->assertCount(13, (new JournalRepository())->all());
+        // The register is the opening balance journal, the prototype's 12 JOURNALS entries, the issue
+        // entries of the 7 claims issued and the receipt from Ford, and the allowance and write-off
+        // entries that bring INV-26-0020's recorded write-off into the ledger.
+        $this->assertCount(23, (new JournalRepository())->all());
         $this->assertSame([], array_filter((new JournalRepository())->all(), static fn ($j) => str_starts_with($j['doc'], 'ELOG/5')));
     }
 

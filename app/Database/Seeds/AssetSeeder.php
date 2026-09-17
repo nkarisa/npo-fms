@@ -11,10 +11,13 @@ use CodeIgniter\Database\Seeder;
  *
  * Sources: ASSETS (the register), AV_ASSETS and AV_INITIAL (the count).
  *
- * The count lists twelve assets the register does not. They are added to the
- * register at their carrying amount as deemed cost, dated at the start of FY2026
- * and coded to the General Fund, because the prototype gives no original cost,
- * acquisition date or funding for them. Their useful life is their class default.
+ * The count lists twelve assets the register does not, and the ledger does not
+ * carry them. They are loaded so they can be counted, but not capitalised: they
+ * stay off the register, are not depreciated and are left out of its tie to 1310,
+ * 1320 and 1390. Their value is the carrying amount the count sheet gives, dated
+ * at the start of FY2026 and coded to the General Fund, because the prototype
+ * gives no original cost, acquisition date or funding for them. Their useful life
+ * is their class default.
  */
 class AssetSeeder extends Seeder
 {
@@ -68,7 +71,8 @@ class AssetSeeder extends Seeder
                 'asset_class_id' => $ctx->require('asset_classes', $class), 'acquired_on' => self::DEEMED_COST_DATE, 'cost' => $a['nbv'],
                 'useful_life_years' => self::CLASSES[$class][1], 'fund_id' => $ctx->fundId('General Fund'),
                 'programme_id' => $ctx->programmeId('Shared services'), 'location_id' => $this->location($ctx, $a['location'], $now),
-                'custodian' => $a['custodian'], 'custodian_user_id' => $ctx->userId($a['custodian']), 'status' => 'in_use', 'created_at' => $now,
+                'custodian' => $a['custodian'], 'custodian_user_id' => $ctx->userId($a['custodian']), 'status' => 'in_use',
+                'capitalised' => 0, 'created_at' => $now,
             ]));
         }
 
@@ -108,7 +112,9 @@ class AssetSeeder extends Seeder
             // Approved by the board, which has no system account; no disposal journal was posted.
             $approval = $ctx->trailEntry($a['trail'], '/approved disposal/i');
             $ctx->insert('asset_disposals', [
-                'asset_id' => $id, 'disposed_on' => $ctx->date($a['disposed']), 'method' => 'sale', 'proceeds' => $a['proceeds'],
+                'asset_id' => $id, 'disposed_on' => $ctx->date($a['disposed']), 'method' => 'sale',
+                'sale_channel' => preg_match('/auction/i', $a['title'] . ' ' . ($approval['what'] ?? '')) === 1 ? 'public_auction' : 'direct_sale',
+                'proceeds' => $a['proceeds'], 'accumulated_depreciation' => $a['accum'],
                 'carrying_amount' => $a['cost'] - $a['accum'], 'reason' => $approval['what'] ?? $a['title'], 'status' => 'approved',
                 'requested_by' => $ctx->systemUserId(), 'approved_at' => $approval['when'] ?? null, 'created_at' => $now,
             ]);
