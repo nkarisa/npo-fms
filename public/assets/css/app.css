@@ -1282,3 +1282,40 @@ select.st-cell { cursor: pointer; }
   .adv-form-grid, .adv-form-pair, .adv-form-amount { grid-template-columns: 1fr; }
   .adv-modal-line { grid-template-columns: 1fr 1fr; }
 }
+
+/* ---- User manual ---------------------------------------------------------- */
+.doc-layout { display: grid; grid-template-columns: 236px minmax(0, 1fr); gap: 32px; align-items: start; }
+.doc-toc { position: sticky; top: 18px; align-self: start; max-height: calc(100vh - 40px); overflow-y: auto; border-inline-start: 1px solid var(--border); padding-inline-start: 14px; display: flex; flex-direction: column; gap: 2px; }
+.doc-toc-title { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+.doc-toc-link { display: block; font-size: 12px; line-height: 1.45; color: var(--muted); text-decoration: none; padding: 3px 0; border-inline-start: 2px solid transparent; margin-inline-start: -14px; padding-inline-start: 12px; }
+.doc-toc-link:hover { color: var(--ink); }
+.doc-toc-link.is-active { color: var(--accent); border-inline-start-color: var(--accent); font-weight: 600; }
+.doc-toc-l3 { padding-inline-start: 24px; font-size: 11.5px; }
+
+.doc-body { max-width: 760px; min-width: 0; color: #28352F; font-size: 13.5px; line-height: 1.65; }
+.doc-body .doc-h { color: var(--ink); font-weight: 600; letter-spacing: -.01em; scroll-margin-top: 18px; }
+.doc-body .doc-h1 { font-size: 24px; margin: 0 0 6px; }
+.doc-body .doc-h2 { font-size: 19px; margin: 30px 0 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+.doc-body .doc-h3 { font-size: 15px; margin: 22px 0 8px; }
+.doc-body .doc-h4 { font-size: 13.5px; margin: 18px 0 6px; }
+.doc-body .doc-p { margin: 0 0 12px; }
+.doc-body .doc-list { margin: 0 0 12px; padding-inline-start: 22px; display: flex; flex-direction: column; gap: 5px; }
+.doc-body .doc-li { line-height: 1.6; }
+.doc-body .doc-link { color: var(--accent); text-decoration: none; }
+.doc-body .doc-link:hover { text-decoration: underline; }
+.doc-body .doc-code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; background: #F1EFE9; border: 1px solid #E7E4DC; border-radius: 4px; padding: 1px 5px; color: #3E4A44; }
+.doc-body .doc-pre { background: #16211E; color: #E9EDEA; border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; line-height: 1.55; margin: 0 0 14px; }
+.doc-body .doc-pre code { background: none; border: none; padding: 0; color: inherit; }
+.doc-body .doc-hr { border: none; border-top: 1px solid var(--border); margin: 22px 0; }
+.doc-body .doc-quote { border-inline-start: 3px solid var(--green); background: #F1F8F5; color: #2C4A40; padding: 10px 14px; margin: 0 0 14px; border-radius: 0 6px 6px 0; font-size: 12.5px; }
+.doc-body .doc-img { display: block; max-width: 100%; height: auto; border: 1px solid var(--border); border-radius: 8px; margin: 6px 0 16px; box-shadow: 0 1px 3px rgba(22, 33, 30, .06); }
+.doc-body .doc-table { width: 100%; border-collapse: collapse; margin: 0 0 16px; font-size: 12.5px; }
+.doc-body .doc-table th, .doc-body .doc-table td { border: 1px solid var(--border); padding: 7px 10px; text-align: start; vertical-align: top; }
+.doc-body .doc-table th { background: #FAF9F6; font-weight: 600; color: var(--ink); }
+.doc-body .doc-table tbody tr:nth-child(even) { background: #FBFAF8; }
+
+@media (max-width: 900px) {
+  .doc-layout { grid-template-columns: 1fr; }
+  .doc-toc { position: static; max-height: none; border-inline-start: none; border-bottom: 1px solid var(--border); padding: 0 0 12px; padding-inline-start: 0; margin-bottom: 8px; }
+  .doc-toc-link { margin-inline-start: 0; padding-inline-start: 10px; }
+}

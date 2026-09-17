@@ -176,4 +176,9 @@ class Pages extends BaseController
     {
         return $this->render('pages/settings', 'settings', 'settings', 'Settings', 'Insight');
     }
+
+    public function userManual()
+    {
+        return $this->render('pages/user_manual', 'manual', 'user_manual', 'User manual', 'Insight');
+    }
 }

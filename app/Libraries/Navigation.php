@@ -41,6 +41,7 @@ class Navigation
             ['label' => 'Cashflow forecast', 'icon' => '⌇', 'page' => 'cashflow', 'url' => '/cashflow'],
             ['label' => 'Reports', 'icon' => '◍', 'page' => 'reports', 'url' => '/reports'],
             ['label' => 'Settings', 'icon' => '⚙', 'page' => 'settings', 'url' => '/settings'],
+            ['label' => 'User manual', 'icon' => '?', 'page' => 'manual', 'url' => '/user-manual'],
         ],
     ];
 

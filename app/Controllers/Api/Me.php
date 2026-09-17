@@ -29,7 +29,7 @@ class Me extends BaseApiController
                 ['icon' => '◍', 'label' => 'My profile'],
                 ['icon' => '⚙', 'label' => 'Preferences', 'href' => '/settings'],
                 ['icon' => '⌘', 'label' => 'Switch entity'],
-                ['icon' => '?', 'label' => 'Help and support'],
+                ['icon' => '?', 'label' => 'User manual', 'href' => '/user-manual'],
             ],
             'note'   => 'Walk an entry through preparation and approval as different people.',
         ]);

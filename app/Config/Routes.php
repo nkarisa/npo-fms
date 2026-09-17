@@ -28,6 +28,7 @@ $routes->get('donor-reports', 'Pages::donorReports');
 $routes->get('cashflow', 'Pages::cashflow');
 $routes->get('reports', 'Pages::reports');
 $routes->get('settings', 'Pages::settings');
+$routes->get('user-manual', 'Pages::userManual');
 
 $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('dashboard', 'Api\Dashboard::index');
@@ -165,6 +166,8 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('settings', 'Api\Settings::index');
     $routes->post('settings', 'Api\Settings::save');
     $routes->post('settings/invite', 'Api\Settings::invite');
+    $routes->get('manual', 'Api\Manual::index');
+    $routes->get('manual/image/(:segment)', 'Api\Manual::image/$1');
     $routes->get('i18n', 'Api\I18n::index');
     $routes->get('i18n/requests', 'Api\I18n::requests');
     $routes->post('i18n/requests', 'Api\I18n::raise');
