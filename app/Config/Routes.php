@@ -151,7 +151,12 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('advances/(:segment)/recover', 'Api\Advances::recover/$1');
     $routes->post('advances/(:segment)/surrender', 'Api\Advances::surrender/$1');
     $routes->get('programmes', 'Api\Programmes::index');
+    $routes->post('programmes', 'Api\Programmes::create');
     $routes->get('programmes/(:segment)', 'Api\Programmes::show/$1');
+    $routes->post('programmes/(:segment)/rename', 'Api\Programmes::rename/$1');
+    $routes->post('programmes/(:segment)/zero-share', 'Api\Programmes::zeroShare/$1');
+    $routes->post('programmes/(:segment)/deactivate', 'Api\Programmes::deactivate/$1');
+    $routes->post('programmes/(:segment)/reactivate', 'Api\Programmes::reactivate/$1');
     $routes->get('cashflow', 'Api\Cashflow::index');
     $routes->get('funds', 'Api\Funds::index');
     $routes->get('funds/(:segment)', 'Api\Funds::show/$1');

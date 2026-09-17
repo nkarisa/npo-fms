@@ -41,10 +41,16 @@ class ChartAndDimensionsSeeder extends Seeder
         $this->seedFunders($ctx, $now);
 
         foreach ($ctx->data('PROGS') as $p) {
+            // A live programme with no share of the base is the shared-cost pool:
+            // it collects what belongs to no single programme and charges it out
+            // each month. A closed programme also holds no share, which is why the
+            // two are told apart by a flag rather than by the share being null.
+            $allocatesOut = $p['share'] === null && $p['status'] !== 'Inactive';
+
             $ctx->remember('programmes', $p['name'], $ctx->insert('programmes', [
                 'code' => $p['code'], 'name' => $p['name'], 'manager_user_id' => $ctx->userId($p['manager']),
                 'status' => strtolower($p['status']), 'started_on' => $ctx->date($p['since']), 'purpose' => $p['purpose'],
-                'cost_share_pct' => $p['share'], 'created_at' => $now,
+                'cost_share_pct' => $p['share'], 'allocates_out' => (int) $allocatesOut, 'created_at' => $now,
             ]));
         }
 
