@@ -83,6 +83,8 @@ tags:
     description: Core financial statements.
   - name: Settings
     description: Organisation, ledger, users and configuration.
+  - name: M-Pesa
+    description: The Safaricom short code the organisation collects and pays through.
   - name: Internationalisation
     description: Interface languages and translation requests.
   - name: Me
@@ -3534,6 +3536,119 @@ paths:
               schema: { $ref: '#/components/schemas/Message' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Unprocessable' }
+
+  # -------------------------------------------------------------------- M-Pesa
+  /mpesa:
+    get:
+      tags: [M-Pesa]
+      summary: The M-Pesa integration as Settings → Integrations shows it
+      description: |
+        Credentials are never served. Each is reported as `set` with a `hint` of its
+        last four characters; `outstanding` says, per service, what is still missing
+        before it can be switched on.
+      responses:
+        '200':
+          description: The integration, the options its selects offer, and the management flag.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mpesa:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      environment: { type: string, enum: [sandbox, production] }
+                      shortcode: { type: string, description: 'Five to seven digits.' }
+                      shortcodeKind: { type: string, enum: [paybill, till] }
+                      accountReference: { type: string, description: 'What payers quote on a paybill.' }
+                      account: { type: string, description: 'The mobile-money account code it settles to.' }
+                      callbackBase: { type: string }
+                      initiatorName: { type: string }
+                      ceiling: { type: string, description: 'Most one payment may be; at most 250,000.' }
+                      collections: { type: boolean }
+                      disbursements: { type: boolean }
+                      autoMatch: { type: boolean }
+                      credentials:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key: { type: string, enum: [consumerKey, consumerSecret, passkey, securityCredential] }
+                            label: { type: string }
+                            set: { type: boolean }
+                            readable: { type: boolean, description: 'False once the application key has changed under it.' }
+                            hint: { type: string, description: 'Masked, e.g. "•••• 4f2a". Never the value.' }
+                      callbacks: { type: object, additionalProperties: true, description: 'The addresses to register on the Daraja portal.' }
+                      status: { type: object, additionalProperties: true }
+                      outstanding: { type: object, additionalProperties: true }
+                      checked: { type: object, nullable: true, additionalProperties: true }
+                  options: { type: object, additionalProperties: true }
+                  canManage: { type: boolean }
+                  locale: { $ref: '#/components/schemas/Locale' }
+    post:
+      tags: [M-Pesa]
+      summary: Save the integration
+      description: |
+        Finance Manager only. Send a credential only when it has been typed — an absent
+        one is left as it is held — and name credentials to remove in `clear`. A service
+        is refused until everything it needs is set, and payments cannot be switched off
+        while bills or advances are already committed to M-Pesa.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                environment: { type: string, enum: [sandbox, production] }
+                shortcode: { type: string }
+                shortcodeKind: { type: string, enum: [paybill, till] }
+                accountReference: { type: string }
+                account: { type: string, description: 'A mobile-money account code, or "" to clear.' }
+                callbackBase: { type: string, description: 'https address Safaricom posts results to.' }
+                initiatorName: { type: string }
+                ceiling: { type: string }
+                collections: { type: boolean }
+                disbursements: { type: boolean }
+                autoMatch: { type: boolean }
+                consumerKey: { type: string, writeOnly: true }
+                consumerSecret: { type: string, writeOnly: true }
+                passkey: { type: string, writeOnly: true }
+                securityCredential: { type: string, writeOnly: true }
+                clear:
+                  type: array
+                  items: { type: string, enum: [consumerKey, consumerSecret, passkey, securityCredential] }
+      responses:
+        '200':
+          description: The integration as it now stands, with a message and the change list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /mpesa/check:
+    post:
+      tags: [M-Pesa]
+      summary: Check the connection to Safaricom
+      description: |
+        Finance Manager only. Asks Daraja for an access token with the credentials held;
+        no money moves. What Safaricom answered is recorded against the integration and
+        in the audit log.
+      responses:
+        '200':
+          description: What Safaricom answered, with the refreshed integration.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Message'
+                  - type: object
+                    properties:
+                      ok: { type: boolean }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ----------------------------------------------------- Internationalisation
   /i18n:

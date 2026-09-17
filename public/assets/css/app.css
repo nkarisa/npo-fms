@@ -1028,6 +1028,31 @@ select.st-cell { cursor: pointer; }
 .st-pager button:disabled { opacity: .45; cursor: default; }
 .st-small { padding: 4px 9px; font-size: 11px; }
 .st-bar { display: block; height: 4px; background: #EEEDE8; border-radius: 3px; overflow: hidden; }
+
+/* Settings — Integrations (M-Pesa) */
+.mp-status { border: 1px solid #E4E2DB; background: #FBFAF7; border-radius: 8px; padding: 13px 15px; display: flex; flex-direction: column; gap: 4px; }
+.mp-status .sf-btns { margin-top: 6px; justify-content: flex-start; }
+.mp-status-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: #16211E; }
+.mp-status-note { font-size: 11.5px; color: #7A857F; line-height: 1.5; }
+.mp-checked { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #8B948F; }
+.mp-dot { width: 8px; height: 8px; border-radius: 50%; background: #C7C3B8; flex: 0 0 8px; }
+.mp-status.live { border-color: #CFE5DD; background: #F4FAF7; }
+.mp-status.live .mp-dot { background: #2C6B58; }
+.mp-status.sandbox { border-color: #E9E1D0; background: #FBF6EA; }
+.mp-status.sandbox .mp-dot { background: #B8863B; }
+.mp-cred { align-items: start; }
+.mp-cred .sf-btns { align-items: center; }
+.mp-cred input[type=password] { border: 1px solid #DDDAD2; background: #FFF; border-radius: 6px; padding: 6px 9px; font-size: 12px; font-family: inherit; color: #16211E; width: 210px; max-width: 100%; box-sizing: border-box; }
+.mp-cred input[type=password]:focus { border-color: #0F5C4A; outline: none; }
+.mp-cred input:disabled { background: #F6F5F1; color: #7A857F; }
+.mp-url { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-size: 11.5px; color: #3E4A44; }
+.mp-url .mono { font-size: 11px; word-break: break-all; }
+
+@media (max-width: 620px) {
+  .mp-cred { grid-template-columns: minmax(0, 1fr); }
+  .mp-cred .sf-btns { justify-content: flex-start; }
+  .mp-cred input[type=password] { width: 100%; }
+}
 .st-bar span { display: block; height: 4px; }
 .st-raise { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #6E7873; background: #F4F2ED; border: 1px solid #E4E2DB; border-radius: 5px; padding: 3px 8px; cursor: pointer; }
 .st-raise:hover { border-color: #C9D3CE; background: #EFEDE7; }

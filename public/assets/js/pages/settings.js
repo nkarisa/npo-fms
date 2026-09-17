@@ -1,10 +1,11 @@
 /**
  * Settings (v5): organisation, ledger, segments, currencies, approvals, bank
- * statements, payroll, language and translation, users and the audit log.
+ * statements, integrations, payroll, language and translation, users and the audit log.
  *
  * The sections edit one draft, saved together with "Save changes" (or thrown away
  * with "Discard"), so nothing reaches the ledger half-configured and every saved
- * change lands in the audit log. Bank statement formats save as they are made.
+ * change lands in the audit log. Bank statement formats and the M-Pesa integration
+ * save as they are made — a credential cannot sit in a draft in the browser.
  * /settings?section=Currencies opens a section straight away. Only the Finance
  * Manager can save; the API applies every rule again.
  */
@@ -144,10 +145,11 @@
     const main = app.querySelector('#st-main');
     const renderers = {
       Organisation: organisation, Ledger: ledger, Segments: segments, Currencies: currencies, Approvals: approvals,
-      'Bank statements': bankStatements, Payroll: payroll, 'Language and translation': language, Users: users, 'Audit log': audit,
+      'Bank statements': bankStatements, Integrations: integrations, Payroll: payroll, 'Language and translation': language,
+      Users: users, 'Audit log': audit,
     };
     (renderers[view.section] || organisation)(main);
-    if (!data.canManage && view.section !== 'Bank statements' && view.section !== 'Language and translation') {
+    if (!data.canManage && !['Bank statements', 'Integrations', 'Language and translation'].includes(view.section)) {
       main.querySelectorAll('input:not([data-free]), select:not([data-free]), textarea').forEach(el => { el.disabled = true; });
       main.querySelectorAll('[data-manage]').forEach(el => { el.disabled = true; });
     }
@@ -358,6 +360,11 @@
   function bankStatements(main) {
     main.innerHTML = `<div class="st-body wide">${head('Bank statements', 'How each bank\'s CSV statement maps onto the reconciliation, and which format each account uses. Changes in this section are saved as you make them.')}<div id="st-formats"></div></div>`;
     StatementFormats.mount(main.querySelector('#st-formats'));
+  }
+
+  function integrations(main) {
+    main.innerHTML = `<div class="st-body wide">${head('Integrations', 'Services outside the ledger that money moves through. Changes in this section are saved as you make them, and credentials are never shown again once entered.')}<div id="st-mpesa"></div></div>`;
+    Mpesa.mount(main.querySelector('#st-mpesa'));
   }
 
   function payroll(main) {
@@ -1124,6 +1131,266 @@ const StatementFormats = (() => {
     } catch (err) {
       UI.toast(err.message);
       button.disabled = false;
+    }
+  }
+
+  return { mount };
+})();
+
+/**
+ * Settings → Integrations → M-Pesa.
+ *
+ * The panel edits its own copy of the integration and saves it in one call: the
+ * API applies what differs and answers with the integration as it now stands, so
+ * turning a service on together with the credentials it needs is one save and one
+ * refusal if anything is missing.
+ *
+ * A credential is written and never read back — the panel shows which are set and
+ * their last four characters, keeps what has been typed until it is saved, and
+ * sends only that. "Check connection" asks Safaricom for an access token; no money
+ * moves and nothing is sent to the payer.
+ */
+const Mpesa = (() => {
+  const esc = UI.esc;
+  let root = null;
+  let data = null;
+  let form = null;
+  let typed = {};
+  let cleared = [];
+
+  const FIELDS = ['environment', 'shortcodeKind', 'shortcode', 'accountReference', 'account', 'callbackBase', 'initiatorName', 'ceiling'];
+  const SWITCHES = ['collections', 'disbursements', 'autoMatch'];
+
+  const toForm = (m) => Object.fromEntries([...FIELDS, ...SWITCHES].map(k => [k, m[k]]));
+  const dirty = () => JSON.stringify(form) !== JSON.stringify(toForm(data.mpesa)) || Object.keys(typed).length > 0 || cleared.length > 0;
+
+  async function mount(container) {
+    // Edits survive a trip to another section and back; only a clean panel reloads.
+    const unsaved = data !== null && form !== null && dirty();
+    root = container;
+    if (unsaved) {
+      render();
+      return;
+    }
+    root.innerHTML = '<div class="coa-empty">Loading the M-Pesa integration…</div>';
+    try {
+      data = await UI.fetchJSON('/api/mpesa');
+    } catch (err) {
+      root.innerHTML = `<div class="coa-empty">${esc(err.message)}</div>`;
+      return;
+    }
+    reset();
+    render();
+  }
+
+  function reset() {
+    form = toForm(data.mpesa);
+    typed = {};
+    cleared = [];
+  }
+
+  function render() {
+    if (!root || !root.isConnected) return;
+    const m = data.mpesa;
+    const o = data.options;
+    const can = data.canManage;
+    const paybill = form.shortcodeKind === 'paybill';
+    const field = (label, key, hint, attrs) => `
+      <label class="bu-field"><span>${esc(label)}${hint ? ` <em>${esc(hint)}</em>` : ''}</span>
+        <input data-k="${key}" value="${esc(form[key] ?? '')}" autocomplete="off" ${attrs || ''}></label>`;
+    const choose = (label, key, options, hint) => `
+      <label class="bu-field"><span>${esc(label)}${hint ? ` <em>${esc(hint)}</em>` : ''}</span>
+        <select data-k="${key}">${options.map(x => `<option value="${esc(x.value)}" ${x.value === form[key] ? 'selected' : ''}>${esc(x.text)}</option>`).join('')}</select></label>`;
+
+    root.innerHTML = `
+      <div class="sf-cards">
+        <div class="mp-status ${esc(m.status.state)}">
+          <div class="mp-status-head"><span class="mp-dot"></span>M-Pesa · ${esc(m.status.label)}</div>
+          <div class="mp-status-note">${esc(m.status.note)}</div>
+          ${m.checked ? `<div class="mp-status-note mp-checked">Last checked ${esc(m.checked.when)} — ${esc(m.checked.result)}</div>` : ''}
+          <div class="sf-btns"><button type="button" class="btn" data-check ${can ? '' : 'disabled'}>Check connection</button></div>
+        </div>
+        ${can ? '' : '<p class="bu-intro">Only the Finance Manager can change the integration — it moves money out of the organisation.</p>'}
+        ${m.encryption ? '' : '<div class="st-warn">This installation has no encryption key, so credentials cannot be stored. Set encryption.key in .env (php spark key:generate) first — everything else on this page can still be set up.</div>'}
+
+        <div class="sf-section">Short code</div>
+        <div class="bu-grid">
+          ${choose('Environment', 'environment', o.environments)}
+          ${choose('Short code is a', 'shortcodeKind', o.kinds, noteOf(o.kinds, form.shortcodeKind))}
+          ${field('Short code', 'shortcode', 'paybill or till', 'class="mono" inputmode="numeric" maxlength="7" placeholder="509118"')}
+          ${paybill ? field('Account number payers quote', 'accountReference', 'optional', 'maxlength="20" placeholder="ELOG"') : ''}
+          ${choose('Settles to', 'account', [{ value: '', text: 'No account — nothing can be collected or paid' }, ...o.accounts])}
+          ${field('Callback address', 'callbackBase', 'where Safaricom posts results', 'placeholder="https://finance.elog.or.ke"')}
+        </div>
+        <div class="bu-intro">${esc(host())}${m.statementFormat ? ` · statements for ${esc(m.account)} are read as ${esc(m.statementFormat)}` : ''}</div>
+        ${callbacks(m)}
+
+        <div class="sf-section">Daraja credentials</div>
+        <p class="bu-intro" style="margin-top:-6px;">Held encrypted and never shown again. Enter one only to set or replace it — leave it blank to keep what is held.</p>
+        <div class="coa-card">
+          ${m.credentials.map(c => credential(c, can)).join('')}
+        </div>
+
+        <div class="sf-section">Services</div>
+        ${switchRow('collections', 'Collections', 'Money paid to the short code is received into the ledger against the settlement account.', m.outstanding.collections, can)}
+        ${switchRow('disbursements', 'Payments', 'Supplier bills and staff advances can be paid out by M-Pesa.', m.outstanding.disbursements, can)}
+        ${form.disbursements || m.disbursements ? `
+          <div class="bu-grid" style="max-width:340px;">
+            ${field('Most one payment may be', 'ceiling', `Safaricom's ceiling is ${Number(o.ceiling).toLocaleString('en-US')}`, 'class="mono end" inputmode="decimal"')}
+          </div>` : ''}
+        ${switchRow('autoMatch', 'Match receipts automatically', 'A receipt is matched to the cash book by its M-Pesa receipt number on the reconciliation; anything unmatched is left to be matched by hand.', '', can)}
+        ${m.disbursements && m.pending.total ? `<div class="bu-intro">${esc(m.pending.note.charAt(0).toUpperCase() + m.pending.note.slice(1))}, so payments cannot be switched off until ${m.pending.total === 1 ? 'it is' : 'they are'} paid or rescheduled.</div>` : ''}
+
+        ${can ? `<div class="bu-actions">
+          <button type="button" class="btn" data-discard ${dirty() ? '' : 'hidden'}>Discard</button>
+          <button type="button" class="btn btn-primary" data-save ${dirty() ? '' : 'disabled'}>${dirty() ? 'Save changes' : 'Saved'}</button>
+        </div>` : ''}
+      </div>`;
+
+    if (!can) root.querySelectorAll('input, select').forEach(el => { el.disabled = true; });
+    wire();
+  }
+
+  const noteOf = (options, value) => (options.find(o => o.value === value) || {}).note || '';
+
+  const host = () => {
+    const known = data.options.hosts[form.environment] || '';
+    return form.environment === 'production'
+      ? `Requests go to ${known} and move real money.`
+      : `Requests go to ${known}. Nothing settles, and no money moves.`;
+  };
+
+  /**
+   * The addresses each service's results belong at, built from the callback
+   * address. They are registered on the Daraja portal alongside the short code.
+   */
+  function callbacks(m) {
+    const shown = Object.values(m.callbacks).filter(c => c.url);
+    if (!shown.length) return '';
+    return `
+      <div class="st-infobox">
+        <div class="st-kicker">Where Safaricom's results belong</div>
+        <div class="st-note">Register an address on the Daraja portal once the service it belongs to is switched on and can answer it.</div>
+        ${shown.map(c => `<div class="mp-url"><span class="mono">${esc(c.url)}</span><span class="st-sub">${esc(c.label)}</span></div>`).join('')}
+      </div>`;
+  }
+
+  function credential(c, can) {
+    const value = typed[c.key] ?? '';
+    const gone = cleared.includes(c.key);
+    const state = gone ? 'Will be cleared when saved' : value ? 'Will be saved' : c.set ? (c.readable ? 'Set · ' + c.hint : c.hint) : 'Not set';
+    return `
+      <div class="sf-row mp-cred">
+        <div>
+          <div class="sf-name">${esc(c.label)} ${c.set && !gone ? '<span class="jr-pill posted">Set</span>' : '<span class="jr-pill draft">Needed</span>'}</div>
+          <div class="sf-sub">${esc(c.note)}</div>
+          <div class="sf-sub">${esc(state)}</div>
+        </div>
+        <div class="sf-btns">
+          <input type="password" data-secret="${esc(c.key)}" value="${esc(value)}" placeholder="${c.set ? 'Enter to replace' : 'Enter the ' + c.label.toLowerCase()}" autocomplete="new-password" spellcheck="false">
+          ${c.set && can ? `<button type="button" class="btn st-small" data-clear="${esc(c.key)}">${gone ? 'Keep' : 'Clear'}</button>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function switchRow(key, label, note, missing, can) {
+    const on = !!form[key];
+    const blocked = !on && !!missing;
+    return `
+      <label class="st-check ${on ? 'on' : ''}">
+        <input type="checkbox" data-switch="${key}" ${on ? 'checked' : ''} ${can ? '' : 'disabled'}>
+        <span>
+          <span class="st-check-label">${esc(label)}</span>
+          <span class="st-check-note">${esc(note)}</span>
+          ${blocked ? `<span class="st-check-example">Still needed: ${esc(missing)}</span>` : ''}
+        </span>
+      </label>`;
+  }
+
+  function wire() {
+    root.oninput = (e) => {
+      const el = e.target;
+      if (el.dataset.secret !== undefined) {
+        if (el.value === '') delete typed[el.dataset.secret];
+        else typed[el.dataset.secret] = el.value;
+        refreshActions();
+        return;
+      }
+      if (el.dataset.k === undefined) return;
+      form[el.dataset.k] = el.value;
+      refreshActions();
+    };
+    root.onchange = (e) => {
+      const el = e.target;
+      if (el.dataset.switch !== undefined) {
+        form[el.dataset.switch] = el.checked;
+        render();
+        return;
+      }
+      if (el.tagName === 'SELECT' && el.dataset.k !== undefined) {
+        form[el.dataset.k] = el.value;
+        render();
+      }
+    };
+    root.onclick = async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.dataset.clear !== undefined) {
+        const key = btn.dataset.clear;
+        cleared = cleared.includes(key) ? cleared.filter(k => k !== key) : [...cleared, key];
+        delete typed[key];
+        render();
+        return;
+      }
+      if (btn.dataset.discard !== undefined) {
+        reset();
+        render();
+        UI.toast('Unsaved M-Pesa changes discarded.');
+        return;
+      }
+      if (btn.dataset.save !== undefined) await save(btn);
+      if (btn.dataset.check !== undefined) await check(btn);
+    };
+  }
+
+  /** Keeps the buttons honest while typing, without re-rendering the fields under the cursor. */
+  function refreshActions() {
+    const save = root.querySelector('[data-save]');
+    if (!save) return;
+    const changed = dirty();
+    save.disabled = !changed;
+    save.textContent = changed ? 'Save changes' : 'Saved';
+    root.querySelector('[data-discard]').hidden = !changed;
+  }
+
+  async function save(button) {
+    button.disabled = true;
+    try {
+      const res = await UI.postJSON('/api/mpesa', { ...form, ...typed, clear: cleared });
+      data = { mpesa: res.mpesa, options: res.options, canManage: res.canManage };
+      reset();
+      render();
+      UI.toast(res.message);
+    } catch (err) {
+      button.disabled = false;
+      UI.toast(err.message);
+    }
+  }
+
+  async function check(button) {
+    const was = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Checking…';
+    try {
+      const res = await UI.postJSON('/api/mpesa/check');
+      data.mpesa = res.mpesa;
+      render();
+      UI.toast(res.message);
+    } catch (err) {
+      UI.toast(err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = was;
     }
   }
 

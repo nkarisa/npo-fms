@@ -492,8 +492,8 @@ and section totals, followed by notes.
 ### Settings
 
 **Purpose:** configure the organisation, ledger, controls, currencies, approvals,
-bank-statement formats, payroll scales, language/translation, users and the audit
-log. Changes are edited into one draft and saved together.
+bank-statement formats, integrations, payroll scales, language/translation, users
+and the audit log. Changes are edited into one draft and saved together.
 
 **On screen:** a left navigation of sections and a content pane on the right. The
 top-right shows **Discard** (when there are unsaved changes) and a save button that
@@ -515,6 +515,17 @@ warning appears if you try to leave with unsaved changes.
 - **Bank statements** — assign a CSV statement format to each cash account and
   define formats (column mapping, separators, date and decimal formats). This
   section saves as you go.
+- **Integrations** — the M-Pesa (Safaricom Daraja) connection: environment
+  (sandbox or production), the paybill or till and the account number payers
+  quote, the mobile-money account it settles to, the callback address and the
+  addresses under it that Safaricom's results belong at, the four credentials, and
+  the two services — collections and payments — with the per-payment ceiling and
+  automatic receipt matching. A service switches on only once everything it needs
+  is set, and the screen says what is missing; payments cannot be switched off
+  while bills or advances are already committed to M-Pesa. **Check connection**
+  asks Safaricom for an access token without moving money. Credentials are held
+  encrypted and never shown again — only whether each is set and its last four
+  characters. This section saves as you go.
 - **Payroll** — benefits and the grade scale (each benefit becomes a payslip line
   and a grade column); add benefits and grades. In-use items cannot be disabled.
 - **Language and translation** — interface languages and coverage, fallback
@@ -527,7 +538,8 @@ warning appears if you try to leave with unsaved changes.
 
 **What you can do:** edit any section into the draft and **Save changes** or
 **Discard**; manage currencies, approvals, payroll scales, segments and posting
-controls; assign and define bank-statement formats; manage users and languages.
+controls; assign and define bank-statement formats; set up the M-Pesa integration
+and check its connection; manage users and languages.
 Saving is restricted to the Finance Manager.
 
 ---

@@ -8,17 +8,18 @@ use App\Repositories\SettingsRepository;
 
 /**
  * Settings (v5): organisation, ledger, segments, currencies, approvals, bank
- * statements, payroll, language, users and the audit log.
+ * statements, integrations, payroll, language, users and the audit log.
  *
  * The screen edits a draft and saves it in one go (save), so a change reaches the
  * ledger only when it is saved and every saved change is in the audit log. Bank
- * statement formats save as they are made (Api\StatementFormats), and "Language and
- * translation" is served in detail by Api\I18n. Only a user holding
- * settings.manage (the Finance Manager) can save; everyone else can look.
+ * statement formats save as they are made (Api\StatementFormats), so does the
+ * M-Pesa integration (Api\Mpesa) — a credential cannot sit in a draft in the
+ * browser — and "Language and translation" is served in detail by Api\I18n. Only a
+ * user holding settings.manage (the Finance Manager) can save; everyone else can look.
  */
 class Settings extends BaseApiController
 {
-    /** Sections in the order the screen lists them. "Bank statements" is the addition to the v5 prototype. */
+    /** Sections in the order the screen lists them. "Bank statements" and "Integrations" are the additions to the v5 prototype. */
     private const SECTIONS = [
         ['label' => 'Organisation', 'icon' => '◧'],
         ['label' => 'Ledger', 'icon' => '▤'],
@@ -26,6 +27,7 @@ class Settings extends BaseApiController
         ['label' => 'Currencies', 'icon' => '⇄'],
         ['label' => 'Approvals', 'icon' => '✓'],
         ['label' => 'Bank statements', 'icon' => '⇅'],
+        ['label' => 'Integrations', 'icon' => '⇌'],
         ['label' => 'Payroll', 'icon' => '◍'],
         ['label' => 'Language and translation', 'icon' => '⌾'],
         ['label' => 'Users', 'icon' => '◉'],

@@ -20,6 +20,10 @@ use CodeIgniter\Database\Seeder;
  *   the account in the month came through on the statement and was matched to it.
  *   Their statements chain back from August's opening balance, so each month's
  *   closing balance is the next month's opening.
+ * - The M-Pesa integration: the organisation's own paybill, pointed at the float
+ *   account its statement reconciles against. It is seeded as configured but not
+ *   connected — the Daraja credentials are entered by the Finance Manager on
+ *   Settings → Integrations and are not seed data.
  * - Statement formats: the M-Pesa organisation portal export (built in), and the
  *   KCB and Equity internet banking exports, each assigned to its account. Seeded
  *   lines carry the same fingerprint an upload gives them, so loading a statement
@@ -75,6 +79,7 @@ class BankAndCashflowSeeder extends Seeder
         $now = $ctx->now();
         $august = $ctx->periodId('2026-08-01');
         $this->formats($ctx);
+        $this->mpesa($ctx);
 
         foreach ($ctx->data('BR_ACCOUNTS') as $b) {
             $bank = $ctx->require('bank_accounts', $b['code']);
@@ -175,6 +180,26 @@ class BankAndCashflowSeeder extends Seeder
     }
 
     /** The statement formats, and the account each is assigned to. */
+    /**
+     * The organisation's M-Pesa short code, against the float account 1130 whose
+     * statement the reconciliation already reads. Neither service is switched on:
+     * nothing can collect or pay until the Daraja credentials are entered.
+     */
+    private function mpesa(SeedContext $ctx): void
+    {
+        $ctx->insert('mpesa_integrations', [
+            'entity_id'         => $ctx->entityId(),
+            'bank_account_id'   => $ctx->require('bank_accounts', '1130'),
+            'environment'       => 'sandbox',
+            'shortcode'         => '509118',
+            'shortcode_kind'    => 'paybill',
+            'account_reference' => 'ELOG',
+            'payment_ceiling'   => 150000,
+            'auto_match'        => 1,
+            'created_at'        => $ctx->now(),
+        ]);
+    }
+
     private function formats(SeedContext $ctx): void
     {
         foreach (self::FORMATS as $f) {
