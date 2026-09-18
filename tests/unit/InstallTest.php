@@ -428,6 +428,90 @@ final class InstallTest extends CIUnitTestCase
         $this->assertStringContainsString('Import the chart of accounts first', $refused['api/gl']);
     }
 
+    public function testAChartTemplateIsClonedIntoAnEmptyChartAndPayrollFollowsIt(): void
+    {
+        (new Installer())->install(self::ANSWERS);
+        Repository::forget();
+        $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
+
+        $offered = $this->api('api/coa/templates');
+        $this->assertSame(['nfp', 'nfp-compact'], array_column($offered['templates'], 'key'));
+        $this->assertTrue($offered['canManage']);
+
+        $plan = $this->api('api/coa/templates?template=nfp')['plan'];
+        $this->assertSame(64, $plan['adds'], 'Nothing is held yet, so every account is new.');
+        $this->assertSame(0, $plan['existing']);
+        $this->assertSame(['New'], array_unique(array_column($plan['payroll'], 'state')));
+
+        $done = $this->post('api/coa/templates', ['template' => 'nfp']);
+        $done->assertStatus(200);
+        $body = json_decode($done->getJSON(), true);
+        $this->assertSame(64, $body['added']);
+        $this->assertStringContainsString('64 accounts opened at zero', $body['message']);
+        $this->assertStringContainsString('Only journals move a balance', $body['message']);
+        Repository::forget();
+
+        // The tree is built, not flat: headings carry what sits under them.
+        $chart = array_column((new ChartRepository())->accounts(), null, 'code');
+        $this->assertSame(0, $chart['1000']['level']);
+        $this->assertSame(1, $chart['1100']['level']);
+        $this->assertSame(2, $chart['1110']['level']);
+        $this->assertSame('1100 · Cash and cash equivalents', $chart['1110']['parent']);
+        $this->assertSame('— (top level)', $chart['1000']['parent']);
+        $this->assertSame(0.0, (new Lookups())->balance('1110'), 'Every account opens at zero.');
+
+        // Only the leaves take postings.
+        $this->seeInDatabase('accounts', ['code' => '1110', 'is_leaf' => 1]);
+        $this->seeInDatabase('accounts', ['code' => '1100', 'is_leaf' => 0]);
+        $this->seeInDatabase('accounts', ['code' => '1000', 'is_leaf' => 0]);
+
+        // Every pay component now has an account. A template carries accounts, not
+        // funds and programmes, so those two are still the organisation's to open.
+        $left = (new PayrollRepository())->unmapped();
+        $this->assertSame([], array_values(array_filter($left, static fn ($m) => str_contains($m, 'account'))));
+        $this->assertSame([
+            'There is no active general fund for the statutory liabilities to be held against',
+            'There is no programme for the statutory liabilities to be charged to',
+        ], $left);
+
+        $this->fundAndProgramme($amina);
+        $this->assertSame([], (new PayrollRepository())->unmapped(), 'With a fund and a programme, payroll can post.');
+        $this->seeInDatabase('audit_events', ['action' => 'chart.template']);
+
+        // And the general ledger draws instead of refusing.
+        $this->assertArrayHasKey('rows', $this->api('api/gl'));
+    }
+
+    public function testCloningOntoAPartBuiltChartFillsTheGapsAndLeavesWhatIsThere(): void
+    {
+        (new Installer())->install(self::ANSWERS);
+        Repository::forget();
+        $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
+
+        // An account the organisation has already opened, named its own way.
+        $chart = new ChartRepository();
+        $chart->create(['code' => '1000', 'name' => 'What we own', 'type' => 'Asset'], $amina);
+        $chart->create(['code' => '1100', 'name' => 'Money', 'type' => 'Asset', 'parent' => '1000'], $amina);
+        $chart->create(['code' => '1110', 'name' => 'Co-op Bank current', 'type' => 'Asset', 'parent' => '1100'], $amina);
+        Repository::forget();
+
+        $plan = $this->api('api/coa/templates?template=nfp-compact')['plan'];
+        $this->assertSame(3, $plan['existing']);
+        $this->assertSame(41, $plan['adds']);
+
+        $body = json_decode($this->post('api/coa/templates', ['template' => 'nfp-compact'])->getJSON(), true);
+        $this->assertSame(41, $body['added']);
+        $this->assertSame(3, $body['skipped']);
+        $this->assertStringContainsString('3 already held and left as they are', $body['message']);
+        Repository::forget();
+
+        // Their names stand; the template does not rewrite what is already there.
+        $held = array_column((new ChartRepository())->accounts(), null, 'code');
+        $this->assertSame('Co-op Bank current', $held['1110']['name']);
+        $this->assertSame('What we own', $held['1000']['name']);
+        $this->assertSame('Petty cash', $held['1140']['name'] ?? '', 'The compact template has no petty cash account.');
+    }
+
     public function testAnInstanceIsInstalledOnceAndTheAnswersAreChecked(): void
     {
         (new Installer())->install(self::ANSWERS);

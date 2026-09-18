@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Libraries\ChartTemplate;
 use App\Libraries\Clock;
 
 /**
@@ -215,6 +216,118 @@ final class ChartRepository extends Repository
      * @param list<array{line?: int, code?: string, name?: string, type?: string, restriction?: string, fund?: string, program?: string, funder?: string}> $rows
      * @return list<array>
      */
+    /**
+     * What cloning a template would do, account by account, without doing it.
+     *
+     * @return array{name: string, rows: list<array>, adds: int, existing: int, payroll: list<array>}
+     */
+    public function templatePreview(string $key): array
+    {
+        if (!ChartTemplate::isKnown($key)) {
+            throw new RuleViolation('There is no chart template called "' . $key . '".');
+        }
+
+        $held = $this->lookups->accounts();
+        $rows = array_map(static fn ($r) => $r + [
+            'state' => isset($held[$r['code']]) ? 'Held' : 'New',
+            'held'  => $held[$r['code']]['name'] ?? '',
+        ], ChartTemplate::rows($key));
+
+        $components = array_column((new PayrollRepository())->components(), null, 'key');
+        $payroll = [];
+        foreach (ChartTemplate::payroll($key) as $component => $code) {
+            if (!isset($components[$component])) {
+                continue;
+            }
+            $payroll[] = [
+                'name' => $components[$component]['name'], 'code' => $code,
+                // A mapping already made is the organisation's own decision; it stands.
+                'state' => $components[$component]['code'] === null ? 'New' : 'Held',
+            ];
+        }
+
+        return [
+            'name'     => ChartTemplate::name($key),
+            'rows'     => $rows,
+            'adds'     => count(array_filter($rows, static fn ($r) => $r['state'] === 'New')),
+            'existing' => count(array_filter($rows, static fn ($r) => $r['state'] === 'Held')),
+            'payroll'  => $payroll,
+        ];
+    }
+
+    /**
+     * Opens the accounts a template carries that the chart does not already have.
+     *
+     * Headings first, then what sits under them, so every account is created after
+     * its parent. An account the chart already holds is left exactly as it is — its
+     * name, type and coding are the organisation's, not the template's — so cloning
+     * onto a part-built chart fills the gaps rather than overwriting them. Every
+     * account opens at zero; only journals move a balance.
+     *
+     * @return array{added: int, skipped: int, payroll: int, name: string}
+     */
+    public function applyTemplate(string $key, ?int $actorId = null): array
+    {
+        $plan = $this->templatePreview($key);
+        if ($plan['adds'] === 0) {
+            throw new RuleViolation('The chart already holds every account in ' . $plan['name'] . '. Nothing to add.');
+        }
+
+        return $this->transaction(function () use ($key, $plan, $actorId) {
+            $now = Clock::timestamp();
+            $ids = array_map(static fn ($a) => (int) $a['id'], $this->lookups->accounts());
+            $added = 0;
+
+            foreach ([0, 1, 2] as $level) {
+                foreach ($plan['rows'] as $r) {
+                    if ($r['level'] !== $level || $r['state'] !== 'New') {
+                        continue;
+                    }
+                    $ids[$r['code']] = $this->insert('accounts', [
+                        'code' => $r['code'], 'name' => $r['name'], 'type' => strtolower($r['type']),
+                        'parent_id' => $r['parent'] === null ? null : ($ids[$r['parent']] ?? null),
+                        'level' => $r['level'], 'is_leaf' => (int) ($r['level'] === 2),
+                        'restriction' => $r['restriction'], 'status' => 'active', 'created_at' => $now,
+                    ]);
+                    $added++;
+                }
+            }
+
+            // A heading the template puts accounts under stops being postable itself.
+            foreach ($plan['rows'] as $r) {
+                if ($r['parent'] !== null && isset($ids[$r['parent']])) {
+                    $this->db->table('accounts')->where('id', $ids[$r['parent']])->where('is_leaf', 1)
+                        ->update(['is_leaf' => 0, 'updated_at' => $now]);
+                }
+            }
+
+            $mapped = $this->mapPayroll($key, $ids, $now);
+
+            $this->audit('chart', null, null, $plan['name'] . ' template cloned — ' . $added
+                . ($added === 1 ? ' account opened' : ' accounts opened') . ' at zero'
+                . ($plan['existing'] > 0 ? ', ' . $plan['existing'] . ' already held and left as they are' : '')
+                . ($mapped > 0 ? ', ' . $mapped . ' payroll posting accounts set' : ''), $actorId, 'chart.template');
+
+            return ['added' => $added, 'skipped' => $plan['existing'], 'payroll' => $mapped, 'name' => $plan['name']];
+        });
+    }
+
+    /** Points the pay components with no account yet at the ones the template opened. */
+    private function mapPayroll(string $key, array $ids, string $now): int
+    {
+        $mapped = 0;
+        foreach (ChartTemplate::payroll($key) as $component => $code) {
+            if (!isset($ids[$code])) {
+                continue;
+            }
+            $this->db->table('pay_components')->where('key', $component)->where('account_id', null)
+                ->update(['account_id' => $ids[$code], 'updated_at' => $now]);
+            $mapped += $this->db->affectedRows();
+        }
+
+        return $mapped;
+    }
+
     public function importDryRun(array $rows, string $mode): array
     {
         $accounts = $this->lookups->accounts();

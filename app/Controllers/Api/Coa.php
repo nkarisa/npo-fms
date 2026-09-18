@@ -7,6 +7,7 @@ use App\Repositories\ChartRepository;
 use App\Repositories\Lookups;
 use App\Repositories\RuleViolation;
 use App\Libraries\Brand;
+use App\Libraries\ChartTemplate;
 use App\Repositories\SettingsRepository;
 
 /** The shared chart of accounts: listing, export, import, and adding, editing and archiving accounts. */
@@ -118,6 +119,53 @@ class Coa extends BaseApiController
      * Imports accounts from parsed CSV rows. Body: {rows: [...], mode: "update"|"skip",
      * fileName, commit: bool}. Without commit it is a dry run and nothing changes.
      */
+    /**
+     * The charts an organisation can start from, and what cloning one would do.
+     *
+     * Passing `template` answers for that one in detail — every account, whether the
+     * chart already holds it, and the payroll accounts it would set.
+     */
+    public function templates()
+    {
+        $key = trim((string) $this->request->getGet('template'));
+        $payload = ['templates' => ChartTemplate::all(), 'canManage' => $this->canManage()];
+
+        if ($key === '') {
+            return $this->json($payload);
+        }
+
+        try {
+            return $this->json($payload + ['plan' => (new ChartRepository())->templatePreview($key)]);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+    }
+
+    /** Clones a template into the chart. Body: {template}. Finance Manager only. */
+    public function cloneTemplate()
+    {
+        if (!$this->canManage()) {
+            return $this->forbidden();
+        }
+
+        try {
+            $done = (new ChartRepository())->applyTemplate(
+                trim((string) (($this->request->getJSON(true) ?? [])['template'] ?? '')),
+                $this->actorId()
+            );
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json([
+            'message' => $done['name'] . ' cloned — ' . $done['added'] . ($done['added'] === 1 ? ' account' : ' accounts')
+                . ' opened at zero'
+                . ($done['skipped'] > 0 ? ', ' . $done['skipped'] . ' already held and left as they are' : '')
+                . ($done['payroll'] > 0 ? '. ' . $done['payroll'] . ' payroll posting accounts set in Settings' : '')
+                . '. Only journals move a balance.',
+        ] + $done);
+    }
+
     public function import()
     {
         $body = $this->request->getJSON(true) ?? [];

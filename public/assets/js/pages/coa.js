@@ -63,6 +63,7 @@
           <p class="page-blurb" style="max-width:620px;">Master account structure shared across every entity. Segment values for fund, programme, grant and funder are validated at posting.</p>
         </div>
         <div class="page-actions" style="margin-left:0;margin-inline-start:auto;">
+          <button type="button" class="btn" id="coa-template">Start from a template</button>
           <button type="button" class="btn" id="coa-import">Import CSV</button>
           <button type="button" class="btn" id="coa-export">Export</button>
           <button type="button" class="btn btn-primary" id="coa-new">+ New account</button>
@@ -87,7 +88,7 @@
               <div>Fund</div><div>Programme</div><div>Funder</div><div style="text-align:end;">YTD balance (KES)</div><div>Status</div>
             </div>
             ${shown.map(rowHtml).join('')}
-            ${rows.length === 0 ? `<div class="coa-empty">No accounts match “${esc(state.q)}”.</div>` : ''}
+            ${rows.length === 0 ? (data.accounts.length === 0 ? emptyChart() : `<div class="coa-empty">No accounts match “${esc(state.q)}”.</div>`) : ''}
           </div>
         </div>
         ${rows.length > PAGE ? pagerHtml(rows.length, pages) : ''}
@@ -177,6 +178,9 @@
     document.getElementById('coa-new').addEventListener('click', () => openAccount(null));
     document.getElementById('coa-export').addEventListener('click', exportCsv);
     document.getElementById('coa-import').addEventListener('click', openImport);
+    document.getElementById('coa-template').addEventListener('click', openTemplates);
+    const first = document.getElementById('coa-template-first');
+    if (first) first.addEventListener('click', openTemplates);
   }
 
   async function reload() {
@@ -420,6 +424,121 @@
       UI.toast(err.message);
     }
     renderImport();
+  }
+
+  /** A chart with nothing in it yet: the one place a template is most of the answer. */
+  function emptyChart() {
+    return `
+      <div class="coa-empty">
+        Nothing in the chart yet. Nothing can be posted until there is at least one postable account.
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" id="coa-template-first">Start from a template</button>
+        </div>
+        <div style="margin-top:10px;font-size:11.5px;">Or import a CSV, or add accounts one at a time. A template can be cloned later too — it fills the gaps and leaves what is already there.</div>
+      </div>`;
+  }
+
+  let ct = { step: 1, templates: null, key: null, plan: null, busy: false };
+
+  async function openTemplates() {
+    ct = { step: 1, templates: ct.templates, key: null, plan: null, busy: false };
+    renderTemplates();
+    if (!ct.templates) {
+      try {
+        const res = await UI.fetchJSON('/api/coa/templates');
+        ct.templates = res.templates;
+        ct.canManage = res.canManage;
+      } catch (err) {
+        UI.toast(err.message);
+        return;
+      }
+    }
+    renderTemplates();
+  }
+
+  async function chooseTemplate(key) {
+    ct.key = key;
+    ct.plan = null;
+    ct.step = 2;
+    renderTemplates();
+    try {
+      ct.plan = (await UI.fetchJSON('/api/coa/templates?template=' + encodeURIComponent(key))).plan;
+    } catch (err) {
+      UI.toast(err.message);
+      ct.step = 1;
+    }
+    renderTemplates();
+  }
+
+  async function cloneTemplate() {
+    if (ct.busy) return;
+    ct.busy = true;
+    renderTemplates();
+    try {
+      const res = await UI.postJSON('/api/coa/templates', { template: ct.key });
+      drawerEl.hidden = true;
+      UI.toast(res.message);
+      await refresh();
+    } catch (err) {
+      UI.toast(err.message);
+    } finally {
+      ct.busy = false;
+    }
+  }
+
+  function renderTemplates() {
+    const head = `
+      <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:12px;padding:16px 20px;border-bottom:1px solid #E4E2DB;">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
+          <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;">Start from a template</span>
+          <span style="font-size:11px;color:#8B948F;">${ct.step === 1 ? 'Step 1 of 2 · choose a chart' : 'Step 2 of 2 · check what it would open'}</span>
+        </div>
+        <button type="button" class="jd-x" data-close aria-label="Close" style="margin-inline-start:auto;">×</button>
+      </div>`;
+
+    if (ct.step === 1) {
+      const panel = drawer(720, `${head}
+        <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;">
+          <p style="margin:0;font-size:12.5px;color:#5C665F;text-wrap:pretty;">A starting point, not a decision. Every account it opens can be renamed, archived or added to, accounts you already have are left exactly as they are, and every account opens at zero — only journals move a balance.</p>
+          ${ct.templates ? ct.templates.map(t => `
+            <button type="button" class="ct-card" data-template="${esc(t.key)}">
+              <span class="ct-name">${esc(t.name)}</span>
+              <span class="ct-count">${t.accounts} accounts · ${t.postable} postable</span>
+              <span class="ct-note">${esc(t.note)}</span>
+            </button>`).join('')
+          : '<div class="coa-empty">Loading…</div>'}
+        </div>`);
+      panel.querySelectorAll('[data-template]').forEach(b => b.addEventListener('click', () => chooseTemplate(b.dataset.template)));
+      return;
+    }
+
+    const p = ct.plan;
+    const panel = drawer(820, `${head}
+      ${p ? `
+        <div style="flex:0 0 auto;padding:14px 20px;border-bottom:1px solid #EEEDE8;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#5C665F;">
+          <span><b style="color:#16211E;">${p.adds}</b> to open</span>
+          ${p.existing ? `<span><b style="color:#16211E;">${p.existing}</b> already held — left as they are</span>` : ''}
+          ${p.payroll.filter(x => x.state === 'New').length ? `<span><b style="color:#16211E;">${p.payroll.filter(x => x.state === 'New').length}</b> payroll posting accounts set</span>` : ''}
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 20px;">
+          <div class="ct-rows">
+            ${p.rows.map(r => `
+              <div class="ct-row ${r.state === 'Held' ? 'held' : ''}" style="padding-inline-start:${r.level * 16}px;">
+                <span class="mono">${esc(r.code)}</span>
+                <span>${esc(r.name)}${r.state === 'Held' ? ` <em>— you have ${esc(r.held)}</em>` : ''}</span>
+                <span class="ct-state">${r.state === 'Held' ? 'Held' : 'New'}</span>
+              </div>`).join('')}
+          </div>
+        </div>
+        <div style="flex:0 0 auto;padding:14px 20px;border-top:1px solid #E4E2DB;display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" class="btn" id="ct-back">Back</button>
+          <button type="button" class="btn btn-primary" id="ct-go" ${ct.busy || !p.adds ? 'disabled' : ''}>${p.adds ? `Open ${p.adds} accounts` : 'Nothing to open'}</button>
+        </div>`
+      : '<div style="flex:1;padding:20px;"><div class="coa-empty">Reading the template…</div></div>'}`);
+
+    if (!p) return;
+    panel.querySelector('#ct-back').addEventListener('click', openTemplates);
+    panel.querySelector('#ct-go').addEventListener('click', cloneTemplate);
   }
 
   function openImport() {
