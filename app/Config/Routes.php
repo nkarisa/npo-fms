@@ -49,6 +49,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('coa/import', 'Api\Coa::import');
     $routes->get('coa/templates', 'Api\Coa::templates');
     $routes->post('coa/templates', 'Api\Coa::cloneTemplate');
+    $routes->post('coa/templates/adopt', 'Api\Coa::adopt');
     $routes->put('coa/(:segment)', 'Api\Coa::update/$1');
     $routes->post('coa/(:segment)/archive', 'Api\Coa::archive/$1');
     $routes->get('gl', 'Api\Gl::index');

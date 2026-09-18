@@ -312,6 +312,109 @@ final class ChartRepository extends Repository
         });
     }
 
+    /**
+     * Opens an adjusted template: the same accounts, but with the names, types and
+     * restrictions the organisation edited, and any it chose to leave out omitted.
+     *
+     * The template's codes still fix where each account sits — a code cannot be
+     * changed here, so the tree the chart reads from the codes stays coherent — but
+     * everything descriptive is the caller's. A row can be dropped (`include` false);
+     * dropping a heading drops the accounts under it too, so nothing is orphaned. As
+     * with a plain clone, accounts the chart already holds are left as they are,
+     * every account opens at zero, and payroll posting accounts are set only where
+     * both the account was opened and no mapping exists yet.
+     *
+     * @param list<array{code: string, name?: string, type?: string, restriction?: string|null, include?: bool}> $edits
+     * @return array{added: int, skipped: int, payroll: int, name: string}
+     */
+    public function adoptTemplate(string $key, array $edits, ?int $actorId = null): array
+    {
+        if (!ChartTemplate::isKnown($key)) {
+            throw new RuleViolation('There is no chart template called "' . $key . '".');
+        }
+
+        $baseline = array_column(ChartTemplate::rows($key), null, 'code');
+        $held     = $this->lookups->accounts();
+        $byCode   = array_column($edits, null, 'code');
+
+        // The caller's choices, folded onto the template row for each code, keeping
+        // to the codes the template defines so nothing outside it can be smuggled in.
+        $rows = [];
+        foreach ($baseline as $code => $base) {
+            $edit    = $byCode[$code] ?? [];
+            $include = !array_key_exists('include', $edit) || (bool) $edit['include'];
+            $rows[$code] = $base + ['include' => $include];
+            if (isset($edit['name']) && trim((string) $edit['name']) !== '') {
+                $rows[$code]['name'] = trim((string) $edit['name']);
+            }
+            if (isset($edit['type']) && in_array(strtolower((string) $edit['type']), self::TYPES, true)) {
+                $rows[$code]['type'] = ucfirst(strtolower((string) $edit['type']));
+            }
+            if (array_key_exists('restriction', $edit)) {
+                $r = strtolower((string) $edit['restriction']);
+                $rows[$code]['restriction'] = in_array($r, ['unrestricted', 'restricted', 'endowment'], true) && $r !== 'unrestricted' ? $r : null;
+            }
+        }
+
+        // Dropping a heading drops what sits under it, so no account is left parentless.
+        $isKept = static function (string $code) use (&$isKept, $rows): bool {
+            $row = $rows[$code] ?? null;
+            if ($row === null || !$row['include']) {
+                return false;
+            }
+
+            return $row['parent'] === null ? true : $isKept($row['parent']);
+        };
+
+        $toOpen = array_values(array_filter($rows, static fn ($r) => $r['include']
+            && $isKept($r['code']) && !isset($held[$r['code']])));
+
+        if ($toOpen === []) {
+            throw new RuleViolation('Nothing left to open — every account was either left out or already held.');
+        }
+
+        $name    = ChartTemplate::name($key);
+        $existing = count(array_filter($rows, static fn ($r) => isset($held[$r['code']])));
+
+        return $this->transaction(function () use ($key, $toOpen, $name, $existing, $actorId) {
+            $now = Clock::timestamp();
+            $ids = array_map(static fn ($a) => (int) $a['id'], $this->lookups->accounts());
+            $added = 0;
+
+            foreach ([0, 1, 2] as $level) {
+                foreach ($toOpen as $r) {
+                    if ($r['level'] !== $level) {
+                        continue;
+                    }
+                    $ids[$r['code']] = $this->insert('accounts', [
+                        'code' => $r['code'], 'name' => $r['name'], 'type' => strtolower($r['type']),
+                        'parent_id' => $r['parent'] === null ? null : ($ids[$r['parent']] ?? null),
+                        'level' => $r['level'], 'is_leaf' => (int) ($r['level'] === 2),
+                        'restriction' => $r['restriction'], 'status' => 'active', 'created_at' => $now,
+                    ]);
+                    $added++;
+                }
+            }
+
+            // A heading now carrying accounts stops being postable itself.
+            foreach ($toOpen as $r) {
+                if ($r['parent'] !== null && isset($ids[$r['parent']])) {
+                    $this->db->table('accounts')->where('id', $ids[$r['parent']])->where('is_leaf', 1)
+                        ->update(['is_leaf' => 0, 'updated_at' => $now]);
+                }
+            }
+
+            $mapped = $this->mapPayroll($key, $ids, $now);
+
+            $this->audit('chart', null, null, $name . ' template adopted with adjustments — ' . $added
+                . ($added === 1 ? ' account opened' : ' accounts opened') . ' at zero'
+                . ($existing > 0 ? ', ' . $existing . ' already held and left as they are' : '')
+                . ($mapped > 0 ? ', ' . $mapped . ' payroll posting accounts set' : ''), $actorId, 'chart.template');
+
+            return ['added' => $added, 'skipped' => $existing, 'payroll' => $mapped, 'name' => $name];
+        });
+    }
+
     /** Points the pay components with no account yet at the ones the template opened. */
     private function mapPayroll(string $key, array $ids, string $now): int
     {

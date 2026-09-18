@@ -438,10 +438,10 @@
       </div>`;
   }
 
-  let ct = { step: 1, templates: null, key: null, plan: null, busy: false };
+  let ct = { step: 1, templates: null, key: null, plan: null, edits: {}, busy: false };
 
   async function openTemplates() {
-    ct = { step: 1, templates: ct.templates, key: null, plan: null, busy: false };
+    ct = { step: 1, templates: ct.templates, key: null, plan: null, edits: {}, busy: false };
     renderTemplates();
     if (!ct.templates) {
       try {
@@ -459,6 +459,7 @@
   async function chooseTemplate(key) {
     ct.key = key;
     ct.plan = null;
+    ct.edits = {};
     ct.step = 2;
     renderTemplates();
     try {
@@ -470,12 +471,37 @@
     renderTemplates();
   }
 
-  async function cloneTemplate() {
+  // The edits for one row, defaulting to the template's own values until touched.
+  function ctEdit(code) {
+    if (!ct.edits[code]) ct.edits[code] = {};
+    return ct.edits[code];
+  }
+
+  // A row is left out when it, or any heading above it, was excluded.
+  function ctExcluded(code) {
+    const byCode = {};
+    (ct.plan.rows || []).forEach(r => { byCode[r.code] = r; });
+    for (let r = byCode[code]; r; r = r.parent ? byCode[r.parent] : null) {
+      if (ct.edits[r.code] && ct.edits[r.code].include === false) return true;
+    }
+    return false;
+  }
+
+  // Rows the chart does not already hold and that are still included — what adopting would open.
+  function ctOpening() {
+    return (ct.plan.rows || []).filter(r => r.state !== 'Held' && !ctExcluded(r.code));
+  }
+
+  async function adoptTemplate() {
     if (ct.busy) return;
     ct.busy = true;
     renderTemplates();
     try {
-      const res = await UI.postJSON('/api/coa/templates', { template: ct.key });
+      // Only send rows the user actually changed or excluded; the rest take the template's values.
+      const rows = Object.entries(ct.edits)
+        .map(([code, e]) => Object.assign({ code }, e))
+        .filter(r => r.name !== undefined || r.type !== undefined || r.restriction !== undefined || r.include === false);
+      const res = await UI.postJSON('/api/coa/templates/adopt', { template: ct.key, rows });
       drawerEl.hidden = true;
       UI.toast(res.message);
       await refresh();
@@ -486,12 +512,16 @@
     }
   }
 
+  const CT_TYPES = ['Asset', 'Liability', 'Equity', 'Income', 'Expense'];
+  const CT_RESTRICTIONS = ['Unrestricted', 'Restricted', 'Endowment'];
+
   function renderTemplates() {
+    const stepNote = { 1: 'Step 1 of 3 · choose a chart', 2: 'Step 2 of 3 · adjust it to fit', 3: 'Step 3 of 3 · confirm what it opens' };
     const head = `
       <div style="flex:0 0 auto;display:flex;align-items:flex-start;gap:12px;padding:16px 20px;border-bottom:1px solid #E4E2DB;">
         <div style="display:flex;flex-direction:column;gap:4px;min-width:0;">
           <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;">Start from a template</span>
-          <span style="font-size:11px;color:#8B948F;">${ct.step === 1 ? 'Step 1 of 2 · choose a chart' : 'Step 2 of 2 · check what it would open'}</span>
+          <span style="font-size:11px;color:#8B948F;">${stepNote[ct.step] || stepNote[1]}</span>
         </div>
         <button type="button" class="jd-x" data-close aria-label="Close" style="margin-inline-start:auto;">×</button>
       </div>`;
@@ -499,7 +529,7 @@
     if (ct.step === 1) {
       const panel = drawer(720, `${head}
         <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px;">
-          <p style="margin:0;font-size:12.5px;color:#5C665F;text-wrap:pretty;">A starting point, not a decision. Every account it opens can be renamed, archived or added to, accounts you already have are left exactly as they are, and every account opens at zero — only journals move a balance.</p>
+          <p style="margin:0;font-size:12.5px;color:#5C665F;text-wrap:pretty;">A starting point, not a decision. Choose a chart, adjust it to fit — rename an account, change its type, or leave one out — then adopt what remains. Accounts you already have are left exactly as they are, and every account opens at zero; only journals move a balance.</p>
           ${ct.templates ? ct.templates.map(t => `
             <button type="button" class="ct-card" data-template="${esc(t.key)}">
               <span class="ct-name">${esc(t.name)}</span>
@@ -513,32 +543,153 @@
     }
 
     const p = ct.plan;
-    const panel = drawer(820, `${head}
-      ${p ? `
-        <div style="flex:0 0 auto;padding:14px 20px;border-bottom:1px solid #EEEDE8;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#5C665F;">
-          <span><b style="color:#16211E;">${p.adds}</b> to open</span>
-          ${p.existing ? `<span><b style="color:#16211E;">${p.existing}</b> already held — left as they are</span>` : ''}
-          ${p.payroll.filter(x => x.state === 'New').length ? `<span><b style="color:#16211E;">${p.payroll.filter(x => x.state === 'New').length}</b> payroll posting accounts set</span>` : ''}
-        </div>
-        <div style="flex:1;overflow-y:auto;padding:0 20px 20px;">
-          <div class="ct-rows">
-            ${p.rows.map(r => `
-              <div class="ct-row ${r.state === 'Held' ? 'held' : ''}" style="padding-inline-start:${r.level * 16}px;">
-                <span class="mono">${esc(r.code)}</span>
-                <span>${esc(r.name)}${r.state === 'Held' ? ` <em>— you have ${esc(r.held)}</em>` : ''}</span>
-                <span class="ct-state">${r.state === 'Held' ? 'Held' : 'New'}</span>
-              </div>`).join('')}
-          </div>
-        </div>
-        <div style="flex:0 0 auto;padding:14px 20px;border-top:1px solid #E4E2DB;display:flex;gap:8px;justify-content:flex-end;">
-          <button type="button" class="btn" id="ct-back">Back</button>
-          <button type="button" class="btn btn-primary" id="ct-go" ${ct.busy || !p.adds ? 'disabled' : ''}>${p.adds ? `Open ${p.adds} accounts` : 'Nothing to open'}</button>
-        </div>`
-      : '<div style="flex:1;padding:20px;"><div class="coa-empty">Reading the template…</div></div>'}`);
+    if (!p) {
+      drawer(860, `${head}<div style="flex:1;padding:20px;"><div class="coa-empty">Reading the template…</div></div>`);
+      return;
+    }
 
-    if (!p) return;
+    if (ct.step === 2) return renderAdjust(head, p);
+    return renderConfirm(head, p);
+  }
+
+  // Step 2 — the template as an editable list. Codes are fixed; name, type,
+  // restriction and whether to include each account are the organisation's.
+  function renderAdjust(head, p) {
+    const editable = p.rows.filter(r => r.state !== 'Held');
+    const opening = ctOpening().length;
+
+    const rowHtml = (r) => {
+      const held = r.state === 'Held';
+      const e = ct.edits[r.code] || {};
+      const excluded = !held && ctExcluded(r.code);
+      const name = e.name !== undefined ? e.name : r.name;
+      const type = e.type !== undefined ? e.type : r.type;
+      const restriction = e.restriction !== undefined ? (e.restriction || 'Unrestricted') : (r.restriction || 'Unrestricted');
+      if (held) {
+        return `<div class="ct-row held" style="padding-inline-start:${r.level * 16}px;">
+            <span class="mono">${esc(r.code)}</span>
+            <span>${esc(r.name)} <em>— you have ${esc(r.held)}</em></span>
+            <span class="ct-state">Held</span>
+          </div>`;
+      }
+      return `<div class="ct-adjust-row${excluded ? ' excluded' : ''}" data-row="${esc(r.code)}" style="padding-inline-start:${r.level * 16}px;">
+          <label class="ct-inc"><input type="checkbox" data-inc="${esc(r.code)}" ${excluded ? '' : 'checked'}></label>
+          <span class="mono">${esc(r.code)}</span>
+          <input type="text" class="ct-name-in" data-name="${esc(r.code)}" value="${esc(name)}" ${excluded ? 'disabled' : ''} maxlength="120">
+          <select class="ct-type-in" data-type="${esc(r.code)}" ${excluded ? 'disabled' : ''}>
+            ${CT_TYPES.map(t => `<option value="${t}" ${t === type ? 'selected' : ''}>${t}</option>`).join('')}
+          </select>
+          <select class="ct-rest-in" data-rest="${esc(r.code)}" ${excluded ? 'disabled' : ''}>
+            ${CT_RESTRICTIONS.map(x => `<option value="${x}" ${x === restriction ? 'selected' : ''}>${x}</option>`).join('')}
+          </select>
+        </div>`;
+    };
+
+    const panel = drawer(860, `${head}
+      <div style="flex:0 0 auto;padding:12px 20px;border-bottom:1px solid #EEEDE8;display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-size:12px;color:#5C665F;">
+        <span><b style="color:#16211E;" id="ct-open-count">${opening}</b> to open</span>
+        ${p.existing ? `<span><b style="color:#16211E;">${p.existing}</b> already held — left as they are</span>` : ''}
+        <span style="margin-inline-start:auto;font-size:11px;color:#8B948F;">Rename, retype, or untick to leave out. Codes stay as they are.</span>
+      </div>
+      <div style="flex:0 0 auto;display:grid;grid-template-columns:34px 54px minmax(0,1fr) 116px 128px;gap:10px;padding:8px 20px;border-bottom:1px solid #EEEDE8;">
+        ${['', 'Code', 'Account', 'Type', 'Restriction'].map(l => `<span class="jd-caps" style="font-size:10.5px;">${l}</span>`).join('')}
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:4px 20px 20px;" id="ct-adjust-list">
+        ${p.rows.map(rowHtml).join('')}
+      </div>
+      <div style="flex:0 0 auto;padding:14px 20px;border-top:1px solid #E4E2DB;display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+        <button type="button" class="btn" id="ct-back" style="margin-inline-end:auto;">Back</button>
+        <button type="button" class="btn btn-primary" id="ct-next" ${opening ? '' : 'disabled'}>Review ${opening} ${opening === 1 ? 'account' : 'accounts'}</button>
+      </div>`);
+
+    const refreshCount = () => {
+      const n = ctOpening().length;
+      panel.querySelector('#ct-open-count').textContent = n;
+      const next = panel.querySelector('#ct-next');
+      next.disabled = !n;
+      next.textContent = `Review ${n} ${n === 1 ? 'account' : 'accounts'}`;
+    };
+
+    panel.querySelectorAll('[data-name]').forEach(i => i.addEventListener('input', () => {
+      const v = i.value.trim();
+      if (v === '' || v === p.rows.find(r => r.code === i.dataset.name).name) delete ctEdit(i.dataset.name).name;
+      else ctEdit(i.dataset.name).name = v;
+    }));
+    panel.querySelectorAll('[data-type]').forEach(s => s.addEventListener('change', () => { ctEdit(s.dataset.type).type = s.value; }));
+    panel.querySelectorAll('[data-rest]').forEach(s => s.addEventListener('change', () => { ctEdit(s.dataset.rest).restriction = s.value; }));
+    panel.querySelectorAll('[data-inc]').forEach(c => c.addEventListener('change', () => {
+      ctEdit(c.dataset.inc).include = c.checked;
+      // A heading toggled off greys out everything beneath it; re-render the list to reflect that.
+      const list = panel.querySelector('#ct-adjust-list');
+      list.innerHTML = p.rows.map(rowHtml).join('');
+      rebind();
+      refreshCount();
+    }));
+
+    function rebind() {
+      panel.querySelectorAll('[data-name]').forEach(i => i.addEventListener('input', () => {
+        const v = i.value.trim();
+        if (v === '' || v === p.rows.find(r => r.code === i.dataset.name).name) delete ctEdit(i.dataset.name).name;
+        else ctEdit(i.dataset.name).name = v;
+      }));
+      panel.querySelectorAll('[data-type]').forEach(s => s.addEventListener('change', () => { ctEdit(s.dataset.type).type = s.value; }));
+      panel.querySelectorAll('[data-rest]').forEach(s => s.addEventListener('change', () => { ctEdit(s.dataset.rest).restriction = s.value; }));
+      panel.querySelectorAll('[data-inc]').forEach(c => c.addEventListener('change', () => {
+        ctEdit(c.dataset.inc).include = c.checked;
+        panel.querySelector('#ct-adjust-list').innerHTML = p.rows.map(rowHtml).join('');
+        rebind();
+        refreshCount();
+      }));
+    }
+
     panel.querySelector('#ct-back').addEventListener('click', openTemplates);
-    panel.querySelector('#ct-go').addEventListener('click', cloneTemplate);
+    panel.querySelector('#ct-next').addEventListener('click', () => {
+      if (!ctOpening().length) return;
+      ct.step = 3;
+      renderTemplates();
+    });
+  }
+
+  // Step 3 — the adjusted chart exactly as it would be opened, and the adopt button.
+  function renderConfirm(head, p) {
+    const opening = ctOpening();
+    const shown = opening.map(r => {
+      const e = ct.edits[r.code] || {};
+      return {
+        code: r.code, level: r.level,
+        name: e.name !== undefined ? e.name : r.name,
+        type: e.type !== undefined ? e.type : r.type,
+        restriction: e.restriction !== undefined ? (e.restriction === 'Unrestricted' ? '' : e.restriction) : (r.restriction || ''),
+        changed: e.name !== undefined || e.type !== undefined || e.restriction !== undefined,
+      };
+    });
+    const renamed = shown.filter(r => r.changed).length;
+    const leftOut = p.rows.filter(r => r.state !== 'Held').length - opening.length;
+
+    const panel = drawer(820, `${head}
+      <div style="flex:0 0 auto;padding:14px 20px;border-bottom:1px solid #EEEDE8;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#5C665F;">
+        <span><b style="color:#16211E;">${shown.length}</b> to open</span>
+        ${renamed ? `<span><b style="color:#16211E;">${renamed}</b> adjusted</span>` : ''}
+        ${leftOut ? `<span><b style="color:#16211E;">${leftOut}</b> left out</span>` : ''}
+        ${p.existing ? `<span><b style="color:#16211E;">${p.existing}</b> already held</span>` : ''}
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:0 20px 20px;">
+        <div class="ct-rows">
+          ${shown.map(r => `
+            <div class="ct-row" style="padding-inline-start:${r.level * 16}px;">
+              <span class="mono">${esc(r.code)}</span>
+              <span>${esc(r.name)}${r.restriction ? ` <em>· ${esc(r.restriction)}</em>` : ''}${r.changed ? ' <em>· adjusted</em>' : ''}</span>
+              <span class="ct-state">${esc(r.type)}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 20px;border-top:1px solid #E4E2DB;display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="btn" id="ct-back" style="margin-inline-end:auto;">Back to adjust</button>
+        <button type="button" class="btn btn-primary" id="ct-go" ${ct.busy || !shown.length ? 'disabled' : ''}>${ct.busy ? 'Opening…' : `Adopt ${shown.length} ${shown.length === 1 ? 'account' : 'accounts'}`}</button>
+      </div>`);
+
+    panel.querySelector('#ct-back').addEventListener('click', () => { ct.step = 2; renderTemplates(); });
+    panel.querySelector('#ct-go').addEventListener('click', adoptTemplate);
   }
 
   function openImport() {

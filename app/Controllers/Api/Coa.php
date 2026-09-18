@@ -166,6 +166,40 @@ class Coa extends BaseApiController
         ] + $done);
     }
 
+    /**
+     * Adopts a template after the organisation has adjusted it. Body:
+     * {template, rows: [{code, name?, type?, restriction?, include?}]}. The rows carry
+     * the edits — a renamed account, a changed type or restriction, or one left out.
+     * Codes are the template's; only what each account says about itself is the
+     * organisation's. Finance Manager only.
+     */
+    public function adopt()
+    {
+        if (!$this->canManage()) {
+            return $this->forbidden();
+        }
+        $body = $this->request->getJSON(true) ?? [];
+        $rows = array_values(array_filter((array) ($body['rows'] ?? []), 'is_array'));
+
+        try {
+            $done = (new ChartRepository())->adoptTemplate(
+                trim((string) ($body['template'] ?? '')),
+                $rows,
+                $this->actorId()
+            );
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json([
+            'message' => $done['name'] . ' adopted — ' . $done['added'] . ($done['added'] === 1 ? ' account' : ' accounts')
+                . ' opened at zero'
+                . ($done['skipped'] > 0 ? ', ' . $done['skipped'] . ' already held and left as they are' : '')
+                . ($done['payroll'] > 0 ? '. ' . $done['payroll'] . ' payroll posting accounts set in Settings' : '')
+                . '. Only journals move a balance.',
+        ] + $done);
+    }
+
     public function import()
     {
         $body = $this->request->getJSON(true) ?? [];

@@ -512,6 +512,40 @@ final class InstallTest extends CIUnitTestCase
         $this->assertSame('Petty cash', $held['1140']['name'] ?? '', 'The compact template has no petty cash account.');
     }
 
+    public function testATemplateCanBeAdjustedBeforeItIsAdopted(): void
+    {
+        (new Installer())->install(self::ANSWERS);
+        Repository::forget();
+
+        // The organisation renames one account, retypes and re-restricts another, and
+        // leaves out a whole heading — everything under it goes with it.
+        $edits = [
+            ['code' => '1110', 'name' => 'Co-op Bank current'],
+            ['code' => '4130', 'type' => 'Income', 'restriction' => 'Restricted'],
+            ['code' => '5400', 'include' => false], // "Grants to partners" and its two children
+        ];
+        $done = $this->post('api/coa/templates/adopt', ['template' => 'nfp', 'rows' => $edits]);
+        $done->assertStatus(200);
+        $body = json_decode($done->getJSON(), true);
+
+        // 64 in the full template, less the excluded heading and its two children.
+        $this->assertSame(61, $body['added']);
+        $this->assertStringContainsString('adopted', $body['message']);
+        Repository::forget();
+
+        $chart = array_column((new ChartRepository())->accounts(), null, 'code');
+        $this->assertSame('Co-op Bank current', $chart['1110']['name'], 'The edited name is the one opened.');
+        $this->assertSame('Restricted', $chart['4130']['restriction']);
+        $this->assertArrayNotHasKey('5400', $chart, 'An excluded heading is not opened.');
+        $this->assertArrayNotHasKey('5410', $chart, 'Nor are the accounts that sat under it.');
+        $this->assertArrayNotHasKey('5420', $chart);
+
+        // Untouched accounts still take the template's own names and coding.
+        $this->assertSame('Petty cash', $chart['1140']['name']);
+        $this->assertSame(0.0, (new Lookups())->balance('1110'), 'An adopted account still opens at zero.');
+        $this->seeInDatabase('audit_events', ['action' => 'chart.template']);
+    }
+
     public function testAnInstanceIsInstalledOnceAndTheAnswersAreChecked(): void
     {
         (new Installer())->install(self::ANSWERS);
