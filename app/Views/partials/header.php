@@ -7,6 +7,7 @@
  * @var string $crumbPage
  */
 
+use App\Libraries\Brand;
 use App\Libraries\I18n;
 use App\Libraries\Navigation;
 use App\Libraries\Theme;
@@ -18,17 +19,24 @@ $request = service('request');
 $locale  = I18n::forRequest($request);
 $current = $locale->locale();
 
-// The theme is an organisation setting, so it is resolved here with the language
-// rather than in the browser: the shell paints in the right colours on first
-// paint, with no flash of the default palette while a script runs.
+// The theme and the brand are organisation settings, so they are resolved here
+// with the language rather than in the browser: the shell paints in the right
+// colours, under the right name, on first paint — no flash of the default palette
+// or of somebody else's name while a script runs.
 $theme = Theme::current();
+$brand = Brand::current();
+// Only the custom theme's two chosen colours are written inline. Every shade
+// derived from them is in app.css, so there is one statement of how a custom
+// palette is built rather than one here and another in the settings preview.
+$style = $theme === Theme::CUSTOM ? Theme::customStyle(Theme::currentCustom()) : '';
+$entities = Navigation::entities();
 ?>
 <!DOCTYPE html>
-<html lang="<?= esc($locale->code()) ?>" dir="<?= esc($locale->dir()) ?>" data-theme="<?= esc($theme) ?>">
+<html lang="<?= esc($locale->code()) ?>" dir="<?= esc($locale->dir()) ?>" data-theme="<?= esc($theme) ?>"<?= $style !== '' ? ' style="' . esc($style, 'attr') . '"' : '' ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= esc($title) ?> · ELOG Finance Suite</title>
+<title><?= esc($title) ?> · <?= esc(trim($brand['name'] . ' ' . $brand['tagline'])) ?></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -42,8 +50,12 @@ $theme = Theme::current();
 <div class="shell">
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark">EL</div>
-      <div class="brand-text"><span class="brand-name">ELOG</span><span class="brand-sub">Finance Suite</span></div>
+      <?php if ($brand['logo'] !== ''): ?>
+        <img class="brand-logo" src="<?= esc($brand['logo']) ?>" alt="<?= esc($brand['name']) ?>">
+      <?php else: ?>
+        <div class="brand-mark"><?= esc($brand['mark']) ?></div>
+      <?php endif; ?>
+      <div class="brand-text"><span class="brand-name"><?= esc($brand['name']) ?></span><?php if ($brand['tagline'] !== ''): ?><span class="brand-sub"><?= esc($brand['tagline']) ?></span><?php endif; ?></div>
       <button type="button" class="nav-toggle" id="nav-toggle" title="Collapse the menu" aria-label="Collapse the menu">‹</button>
     </div>
     <nav class="nav">
@@ -79,7 +91,7 @@ $theme = Theme::current();
 
         <label class="entity-picker">Entity
           <select>
-            <?php foreach (Navigation::ENTITIES as $e): ?><option><?= esc($e) ?></option><?php endforeach; ?>
+            <?php foreach ($entities as $e): ?><option><?= esc($e) ?></option><?php endforeach; ?>
           </select>
         </label>
 

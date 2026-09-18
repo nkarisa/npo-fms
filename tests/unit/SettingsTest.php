@@ -1,6 +1,8 @@
 <?php
 
 use App\Database\Seeds\DatabaseSeeder;
+use App\Libraries\Brand;
+use App\Libraries\Navigation;
 use App\Libraries\Theme;
 use App\Repositories\ApprovalPolicy;
 use App\Repositories\Lookups;
@@ -59,7 +61,13 @@ final class SettingsTest extends CIUnitTestCase
         $this->assertSame('Payment run threshold raised from 1,500,000 to 2,000,000', $s['audit'][0]['what']);
         $this->assertTrue($s['language']['formatsLocked']);
         $this->assertSame('evergreen', $s['appearance']['theme']);
-        $this->assertSame(['evergreen', 'deep-blue', 'indigo', 'burgundy', 'graphite'], array_column($s['themes'], 'key'));
+        $this->assertSame(['accent' => '#0f5c4a', 'rail' => '#0d1b18'], $s['appearance']['custom']);
+        $this->assertSame(['evergreen', 'deep-blue', 'indigo', 'burgundy', 'graphite', 'custom'], array_column($s['themes'], 'key'));
+        $this->assertSame(['ELOG', 'Finance Suite', ''], [$s['appearance']['appName'], $s['appearance']['appTagline'], $s['appearance']['logo']]);
+        $this->assertSame(['Head office', 'Branch', 'Related trust'], $s['entityTypes']);
+        $this->assertSame(['ELOG-NS', 'ELOG-CST', 'ELOG-WST', 'ELOG-TRUST', 'ELOG-RV'], array_column($s['entities'], 'code'));
+        $this->assertTrue($s['entities'][0]['head']);
+        $this->assertSame('Dormant', $s['entities'][4]['status']);
 
         // Claims offer the active currencies at their indicative rates.
         $this->assertEquals(['KES' => 1.0, 'USD' => 129.4, 'EUR' => 139.8, 'DKK' => 18.75], ReceivablesRepository::currencies());
@@ -190,12 +198,170 @@ final class SettingsTest extends CIUnitTestCase
         $this->assertSame('indigo', Theme::current());
     }
 
+    /**
+     * The name in the sidebar is the application's, not the registered entity's:
+     * the two are set separately and the shell carries the first.
+     */
+    public function testTheApplicationNameAndLogoAreSetFromSettings(): void
+    {
+        // The shell renders non-ASCII as HTML entities, so the tab title is asserted
+        // on the part of it the brand actually supplies.
+        $shell = $this->page('/settings');
+        $this->assertStringContainsString('ELOG Finance Suite</title>', $shell);
+        $this->assertStringContainsString('<div class="brand-mark">EL</div>', $shell);
+
+        $saved = $this->json($this->withBodyFormat('json')->post('api/settings', [
+            'appearance' => ['appName' => 'Coast Finance', 'appTagline' => 'Regional office'],
+        ]));
+        $this->assertSame([
+            'Application name changed from ELOG to Coast Finance',
+            'Line under the application name changed from Finance Suite to Regional office',
+        ], array_column($saved['changes'], 'what'));
+        $this->assertSame('Appearance', $saved['audit'][0]['area']);
+
+        Repository::forget();
+        $shell = $this->page('/');
+        $this->assertStringContainsString('Coast Finance Regional office</title>', $shell);
+        // The initials follow the name, and the registered name is untouched by it.
+        $this->assertStringContainsString('<div class="brand-mark">CF</div>', $shell);
+        $this->assertSame('Elections Observation Group', $saved['organisation']['registeredName']);
+
+        $this->withBodyFormat('json')->post('api/settings', ['appearance' => ['appName' => '']])->assertStatus(422);
+        // No logo is held, so there is nothing to serve or to remove.
+        $this->get('api/settings/logo')->assertStatus(404);
+        $this->withBodyFormat('json')->post('api/settings/logo/remove', [])->assertStatus(422);
+    }
+
+    /**
+     * An uploaded logo is stored outside the document root and served back by the
+     * API, so replacing it is a settings change rather than a deployment.
+     */
+    public function testALogoIsUploadedStoredAndServedBack(): void
+    {
+        $settings = new SettingsRepository();
+        $kamau = (new Lookups())->userId('W. Kamau');
+        $png = $this->pngFile();
+
+        $settings->setLogo(['path' => $png, 'name' => 'logo.png', 'size' => filesize($png), 'mime' => 'image/png'], $kamau);
+        Repository::forget();
+
+        $held = (new SettingsRepository())->appearance()['logo'];
+        $this->assertStringStartsWith('branding/', $held);
+        $this->assertFileExists(WRITEPATH . 'uploads/' . $held);
+        $this->assertStringContainsString('<img class="brand-logo"', $this->page('/'));
+
+        $response = $this->get('api/settings/logo');
+        $response->assertStatus(200);
+        $this->assertSame('image/png', $response->response()->getHeaderLine('Content-Type'));
+        $this->assertSame('nosniff', $response->response()->getHeaderLine('X-Content-Type-Options'));
+
+        // A replaced logo is not left behind, and the address changes with it.
+        $before = Brand::current()['logo'];
+        (new SettingsRepository())->setLogo(['path' => $this->pngFile(), 'name' => 'new.png', 'size' => filesize($png), 'mime' => 'image/png'], $kamau);
+        Repository::forget();
+        $this->assertFileDoesNotExist(WRITEPATH . 'uploads/' . $held);
+        $this->assertNotSame($before, Brand::current()['logo']);
+
+        // What a browser can be made to execute is not a logo.
+        try {
+            (new SettingsRepository())->setLogo(['path' => $png, 'name' => 'logo.svg', 'size' => 400, 'mime' => 'image/svg+xml'], $kamau);
+            $this->fail('Expected an SVG to be refused.');
+        } catch (RuleViolation $e) {
+            $this->assertStringContainsString('SVG can carry script', $e->getMessage());
+        }
+
+        (new SettingsRepository())->clearLogo($kamau);
+        Repository::forget();
+        $this->assertSame('', (new SettingsRepository())->appearance()['logo']);
+        $this->assertStringContainsString('<div class="brand-mark">EL</div>', $this->page('/'));
+    }
+
+    /** Entities are added and amended in Settings, and the topbar picker follows. */
+    public function testEntitiesAreAddedAndAmendedFromSettings(): void
+    {
+        $s = $this->api('api/settings');
+        $entities = array_map(static fn ($e) => ['code' => $e['code'], 'name' => $e['name'], 'type' => $e['type'], 'currency' => $e['currency'], 'status' => $e['status']], $s['entities']);
+        $draft = $entities;
+        $draft[1]['name'] = 'ELOG Coast Office';
+        $draft[4]['status'] = 'Live';
+        $draft[] = ['code' => 'ELOG-NYZ', 'name' => 'ELOG Nyanza Regional Office', 'type' => 'Branch', 'currency' => 'USD', 'status' => 'Live'];
+
+        $saved = $this->json($this->withBodyFormat('json')->post('api/settings', ['entities' => $draft]));
+        $this->assertSame([
+            'ELOG-CST renamed from ELOG Coast Regional Office to ELOG Coast Office',
+            'ELOG-RV made live',
+            'ELOG Nyanza Regional Office (ELOG-NYZ) added as a branch reporting in USD',
+        ], array_column($saved['changes'], 'what'));
+
+        $added = end($saved['entities']);
+        $this->assertSame(['ELOG-NYZ', 'Branch', 'USD', 'Live', false], [$added['code'], $added['type'], $added['currency'], $added['status'], $added['head']]);
+
+        // The topbar picker offers the live entities, so a new office appears without a deployment.
+        Repository::forget();
+        $picker = Navigation::entities();
+        $this->assertContains('ELOG Nyanza Regional Office', $picker);
+        $this->assertSame(Navigation::CONSOLIDATED, end($picker));
+
+        $refused = function (array $entities, string $reason) {
+            $response = $this->withBodyFormat('json')->post('api/settings', ['entities' => $entities]);
+            $response->assertStatus(422);
+            $this->assertStringContainsString($reason, json_decode($response->getJSON(), true)['error']);
+        };
+        $head = $entities[0];
+        $refused([['code' => 'ELOG-NS'] + ['name' => $head['name'], 'type' => 'Branch', 'currency' => 'KES', 'status' => 'Live']], 'is the head office');
+        $refused([['code' => 'ELOG-NS'] + ['name' => $head['name'], 'type' => 'Head office', 'currency' => 'KES', 'status' => 'Dormant']], 'cannot be made dormant');
+        $refused([['code' => 'X', 'name' => 'Too short', 'type' => 'Branch', 'currency' => 'KES', 'status' => 'Live']], 'is not an entity code');
+        $refused([['code' => 'ELOG-NEW', 'name' => 'ELOG Coast Office', 'type' => 'Branch', 'currency' => 'KES', 'status' => 'Live']], 'already the name of another entity');
+        $refused([['code' => 'ELOG-NEW', 'name' => 'Second head', 'type' => 'Head office', 'currency' => 'KES', 'status' => 'Live']], 'already a head office');
+        $refused([['code' => 'ELOG-NEW', 'name' => 'Sterling office', 'type' => 'Branch', 'currency' => 'GBP', 'status' => 'Live']], 'not an active currency');
+        // The head office holds postings, so its functional currency is settled.
+        $refused([['code' => 'ELOG-NS'] + ['name' => $head['name'], 'type' => 'Head office', 'currency' => 'USD', 'status' => 'Live']], 'once it holds postings');
+    }
+
+    /**
+     * The custom theme is two colours; every other shade is mixed from them in the
+     * stylesheet. Both carry light text, so both are held to a contrast ratio.
+     */
+    public function testACustomThemeIsTwoColoursHeldToTheirContrast(): void
+    {
+        $saved = $this->json($this->withBodyFormat('json')->post('api/settings', [
+            'appearance' => ['theme' => 'custom', 'custom' => ['accent' => '#6A1B9A', 'rail' => '#1A0E24']],
+        ]));
+        $this->assertSame([
+            'Custom accent colour changed from #0f5c4a to #6a1b9a',
+            'Custom menu colour changed from #0d1b18 to #1a0e24',
+            'Interface theme changed from Evergreen to Custom for everyone',
+        ], array_column($saved['changes'], 'what'));
+        $this->assertSame(['accent' => '#6a1b9a', 'rail' => '#1a0e24'], $saved['appearance']['custom']);
+
+        // Only the two chosen colours are written onto the shell; the rest are derived in app.css.
+        Repository::forget();
+        $shell = $this->page('/');
+        $this->assertStringContainsString('data-theme="custom"', $shell);
+        $this->assertStringContainsString('--accent: #6a1b9a; --rail-bg: #1a0e24;', $shell);
+
+        $refused = function (array $custom, string $reason) {
+            $response = $this->withBodyFormat('json')->post('api/settings', ['appearance' => ['custom' => $custom]]);
+            $response->assertStatus(422);
+            $this->assertStringContainsString($reason, json_decode($response->getJSON(), true)['error']);
+        };
+        $refused(['accent' => '#8BD3C7'], 'too light to carry white text');
+        $refused(['rail' => '#7A6FA0'], 'too light to carry white text');
+        $refused(['accent' => 'purple'], 'is not a colour');
+
+        // The palette that was refused was not written.
+        Repository::forget();
+        $this->assertSame(['accent' => '#6a1b9a', 'rail' => '#1a0e24'], (new SettingsRepository())->appearance()['custom']);
+    }
+
     public function testOnlyTheFinanceManagerSavesAndInvitesUsers(): void
     {
         $this->actAs('d.kiptoo@elog.or.ke');
         $this->assertFalse($this->api('api/settings')['canManage']);
         $this->withBodyFormat('json')->post('api/settings', ['toggles' => ['budgetCheck' => true]])->assertStatus(403);
         $this->withBodyFormat('json')->post('api/settings/invite', ['name' => 'A B', 'email' => 'a@b.co', 'role' => 'Accountant'])->assertStatus(403);
+        $this->withBodyFormat('json')->post('api/settings/logo/remove', [])->assertStatus(403);
+        $this->withBodyFormat('json')->post('api/settings', ['entities' => [['code' => 'ELOG-X', 'name' => 'X', 'type' => 'Branch', 'currency' => 'KES', 'status' => 'Live']]])->assertStatus(403);
 
         $this->actAs('w.kamau@elog.or.ke');
         $this->withBodyFormat('json')->post('api/settings/invite', ['name' => 'Joyce Achieng', 'email' => 'J.Achieng@elog.or.ke', 'role' => 'Accountant'])->assertStatus(422);
@@ -213,6 +379,15 @@ final class SettingsTest extends CIUnitTestCase
     private function api(string $url): array
     {
         return json_decode($this->get($url)->getJSON(), true);
+    }
+
+    /** A one-pixel PNG on disk, standing in for an uploaded logo. */
+    private function pngFile(): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'logo') . '.png';
+        file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='));
+
+        return $path;
     }
 
     /** The rendered shell of a page, as a browser receives it. */

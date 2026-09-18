@@ -2,6 +2,9 @@
 
 namespace App\Libraries;
 
+use App\Repositories\SettingsRepository;
+use Throwable;
+
 /**
  * The application's page map: sidebar groups, and the URL each page lives at.
  *
@@ -45,13 +48,26 @@ class Navigation
         ],
     ];
 
-    public const ENTITIES = [
-        'ELOG National Secretariat',
-        'ELOG Coast Regional Office',
-        'ELOG Western Regional Office',
-        'ELOG Trust (Endowment)',
-        'Consolidated — all entities',
-    ];
+    /** What the topbar picker offers when the entity list cannot be read. */
+    public const CONSOLIDATED = 'Consolidated — all entities';
+
+    /**
+     * The entities the topbar picker offers: the live ones, then consolidated.
+     *
+     * Read rather than listed, because the entity list is now something the Finance
+     * Manager adds to in Settings — a branch opened this morning has to appear in
+     * the picker without a deployment.
+     */
+    public static function entities(): array
+    {
+        try {
+            $names = array_column((new SettingsRepository())->entityOptions(), 'name');
+        } catch (Throwable $e) {
+            $names = [];
+        }
+
+        return array_merge($names, [self::CONSOLIDATED]);
+    }
 
     /** URL for a page key, falling back to the dashboard for an unknown key. */
     public static function url(string $page): string

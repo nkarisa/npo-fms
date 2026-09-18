@@ -48,7 +48,7 @@
       { label: 'Opening', num: true, key: 'opening' },
       { label: 'In', num: true, key: 'inflow' },
       { label: 'Out', num: true, key: 'outflow' },
-      { label: 'Net', num: true, render: (r) => `<span style="color:${r.positive ? '#2C6B58' : '#A6412F'};">${UI.esc(r.net)}</span>` },
+      { label: 'Net', num: true, render: (r) => `<span style="color:${r.positive ? 'var(--calm-ink)' : '#A6412F'};">${UI.esc(r.net)}</span>` },
       { label: 'Closing', num: true, key: 'closing' },
       {
         label: 'Of which unrestricted',

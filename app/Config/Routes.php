@@ -171,6 +171,9 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('settings', 'Api\Settings::index');
     $routes->post('settings', 'Api\Settings::save');
     $routes->post('settings/invite', 'Api\Settings::invite');
+    $routes->get('settings/logo', 'Api\Settings::logoFile');
+    $routes->post('settings/logo', 'Api\Settings::logo');
+    $routes->post('settings/logo/remove', 'Api\Settings::removeLogo');
     $routes->get('mpesa', 'Api\Mpesa::index');
     $routes->post('mpesa', 'Api\Mpesa::save');
     $routes->post('mpesa/check', 'Api\Mpesa::check');

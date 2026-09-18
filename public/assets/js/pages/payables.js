@@ -54,7 +54,7 @@
       </div>
       <div class="ap-selbar" id="ap-selbar" hidden>
         <span style="font-size:12.5px;font-weight:600;" id="ap-sel-count"></span>
-        <span style="font-size:12.5px;color:#9DB0A8;" id="ap-sel-total"></span>
+        <span style="font-size:12.5px;color:var(--rail-sub);" id="ap-sel-total"></span>
         <div style="margin-inline-start:auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
           <button type="button" class="ap-selbar-btn" data-bulk="approve">Approve</button>
           <button type="button" class="ap-selbar-btn" data-bulk="schedule">Schedule</button>
@@ -449,7 +449,7 @@
             <div><span>VAT at 16%</span><span>${fmt(b.vat)}</span></div>
             <div class="rule"><span>Gross invoice value</span><span style="font-weight:600;">${fmt(b.gross)}</span></div>
             <div><span>Withholding tax at ${esc(b.whtRate)}%</span><span style="color:#A45B3E;">${b.wht ? '(' + fmt(b.wht) + ')' : 'nil'}</span></div>
-            <div class="rule" style="font-size:13.5px;"><span style="font-weight:600;color:#16211E;">Net payable to supplier</span><span style="font-weight:700;color:#0F5C4A;">${fmt(b.net)}</span></div>
+            <div class="rule" style="font-size:13.5px;"><span style="font-weight:600;color:#16211E;">Net payable to supplier</span><span style="font-weight:700;color:var(--accent);">${fmt(b.net)}</span></div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">

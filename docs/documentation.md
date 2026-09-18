@@ -46,7 +46,9 @@ The shell wraps every page and is always available.
 
 ### Sidebar
 
-The left sidebar carries the brand (**ELOG · Finance Suite**) and the full page
+The left sidebar carries the brand — the application name, the line under it and
+the logo, all set in *Settings → Appearance*, and **ELOG · Finance Suite** until
+they are — and the full page
 menu, grouped into four sections:
 
 | Group | Pages |
@@ -491,9 +493,9 @@ and section totals, followed by notes.
 
 ### Settings
 
-**Purpose:** configure the organisation, ledger, controls, currencies, approvals,
-bank-statement formats, integrations, payroll scales, appearance,
-language/translation, users and the audit log. Changes are edited into one draft and saved together.
+**Purpose:** configure the organisation and its entities, the ledger, controls,
+currencies, approvals, bank-statement formats, integrations, payroll scales,
+appearance, language/translation, users and the audit log. Changes are edited into one draft and saved together.
 
 **On screen:** a left navigation of sections and a content pane on the right. The
 top-right shows **Discard** (when there are unsaved changes) and a save button that
@@ -503,7 +505,15 @@ warning appears if you try to leave with unsaved changes.
 
 **Sections:**
 - **Organisation** — registered name, short name, KRA PIN, NGO Board registration;
-  a read-only entities table.
+  and the entities the accounts consolidate. An entity's name, type, functional
+  currency and status are edited in place, and a new one is added below the table
+  and reaches the ledger with the rest of the draft. An entity is never deleted:
+  every posting carries the entity it was made against, so one that closes is made
+  dormant, which keeps its history and drops it out of the lists that offer a
+  choice. The code is fixed once saved, since user access and imported files refer
+  to it; the head office cannot change type or go dormant; there is only ever one
+  of it; and an entity that holds postings can no longer change its functional
+  currency.
 - **Ledger** — reporting framework, functional currency, year end, code length;
   posting-control toggles; open-period chips.
 - **Segments** — which coding segments are required and shown on reports, with a
@@ -528,13 +538,32 @@ warning appears if you try to leave with unsaved changes.
   characters. This section saves as you go.
 - **Payroll** — benefits and the grade scale (each benefit becomes a payslip line
   and a grade column); add benefits and grades. In-use items cannot be disabled.
-- **Appearance** — the interface theme: the accent colour, the brand colour and
-  the navigation rail. One theme is held for the whole organisation, so everyone
-  reads the shell in the same colours; picking one repaints the screen
-  immediately as a preview, and it takes effect for everyone once saved.
-  Urgent, warning and settled keep their own colours in every theme, so an
-  exception always reads as an exception, and a theme changes nothing about who
-  can post, approve or read a record.
+- **Appearance** — what the application calls itself and the colours it is drawn
+  in.
+  - *Name and logo*: the name in the sidebar and the browser tab, and the line
+    under it. This is the name on the screen staff work in — the registered name
+    that prints on statements is on the Organisation section, and the two need not
+    match. A logo is uploaded (PNG, JPEG or WebP under 500 KB; an SVG is refused,
+    since it can carry script as well as a picture) and saved as it is chosen
+    rather than with the draft. With no logo the sidebar draws the initials of the
+    application name.
+  - *Interface theme*: one theme is held for the whole organisation, so everyone
+    reads the shell in the same colours; picking one repaints the screen
+    immediately as a preview, and it takes effect for everyone once saved. Five
+    are supplied, and **Custom** takes two colours of your own — an accent and a
+    menu colour — from which every other shade is derived, so a picked pair cannot
+    come out as a palette whose parts do not belong together. Both carry light
+    text, so each is held to a WCAG contrast ratio against white (4.5:1 for the
+    accent, 7:1 for the menu); the measured ratio is shown as you pick, and
+    anything below the mark is refused on save.
+  - A theme reaches the whole screen, not just the sidebar: the accent, the
+    buttons and links, the selected row, the tinted panels and the colours the
+    page scripts draw badges and bars in all follow it. Two families deliberately
+    do not. Urgent and warning keep their own colours, and so does **settled** —
+    a posted journal, a signed reconciliation, a balanced period and an account
+    that is live read the same green whatever theme is on, because "this one is
+    done" has to mean the same thing on every screen. A theme changes nothing
+    about who can post, approve or read a record.
 - **Language and translation** — interface languages and coverage, fallback
   behaviour, raising wording for review, approving/declining translation requests,
   the locked reporting locale and terminology.
@@ -546,7 +575,8 @@ warning appears if you try to leave with unsaved changes.
 **What you can do:** edit any section into the draft and **Save changes** or
 **Discard**; manage currencies, approvals, payroll scales, segments and posting
 controls; assign and define bank-statement formats; set up the M-Pesa integration
-and check its connection; choose the interface theme; manage users and languages.
+and check its connection; add and amend entities; name the application, upload a
+logo and choose the interface theme; manage users and languages.
 Saving is restricted to the Finance Manager.
 
 ---

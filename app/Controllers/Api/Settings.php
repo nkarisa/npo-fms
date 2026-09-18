@@ -2,14 +2,16 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Brand;
 use App\Libraries\I18n as I18nLib;
 use App\Libraries\Theme;
 use App\Repositories\RuleViolation;
 use App\Repositories\SettingsRepository;
 
 /**
- * Settings (v5): organisation, ledger, segments, currencies, approvals, bank
- * statements, integrations, payroll, appearance, language, users and the audit log.
+ * Settings (v5): organisation and its entities, ledger, segments, currencies,
+ * approvals, bank statements, integrations, payroll, appearance, language, users
+ * and the audit log.
  *
  * The screen edits a draft and saves it in one go (save), so a change reaches the
  * ledger only when it is saved and every saved change is in the audit log. Bank
@@ -42,9 +44,10 @@ class Settings extends BaseApiController
     }
 
     /**
-     * Saves the draft. Body: any of organisation, ledger, toggles, segments,
+     * Saves the draft. Body: any of organisation, entities, ledger, toggles, segments,
      * currencies, approvals, payroll, appearance, users, language — only what differs
-     * from what is held is changed.
+     * from what is held is changed. The logo is not in the draft; it has its own
+     * endpoints below.
      */
     public function save()
     {
@@ -88,6 +91,72 @@ class Settings extends BaseApiController
         ] + $this->payload(new SettingsRepository()));
     }
 
+    /**
+     * Replaces the logo. Multipart, with the image in `logo`; saved as it is chosen
+     * rather than drafted, because a file cannot sit in a draft in the browser.
+     */
+    public function logo()
+    {
+        if ($refusal = $this->cannotManage()) {
+            return $refusal;
+        }
+
+        $file = $this->request->getFile('logo');
+        $settings = new SettingsRepository();
+        try {
+            if ($file === null || !$file->isValid()) {
+                throw new RuleViolation($file === null || $file->getError() === UPLOAD_ERR_NO_FILE
+                    ? 'Choose the image to use as the logo.'
+                    : $file->getClientName() . ' did not upload: ' . $file->getErrorString());
+            }
+            $settings->setLogo([
+                'path' => $file->getTempName(), 'name' => $file->getClientName(),
+                'size' => (int) $file->getSize(), 'mime' => (string) $file->getMimeType(),
+            ], $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['message' => 'Logo saved. It is on every page for everyone.'] + $this->payload(new SettingsRepository()));
+    }
+
+    /** Removes the logo, leaving the sidebar to draw the initials of the application name. */
+    public function removeLogo()
+    {
+        if ($refusal = $this->cannotManage()) {
+            return $refusal;
+        }
+
+        try {
+            (new SettingsRepository())->clearLogo($this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['message' => 'Logo removed.'] + $this->payload(new SettingsRepository()));
+    }
+
+    /**
+     * The logo itself. Served from storage rather than from public/, so replacing it
+     * is a settings change rather than a deployment, and with the headers that keep
+     * an image an image: nothing else may load it, and the browser is told not to
+     * second-guess its type.
+     */
+    public function logoFile()
+    {
+        $path = (new SettingsRepository())->logoPath();
+        if ($path === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'No logo is set.']);
+        }
+
+        return $this->response
+            ->setHeader('Content-Type', mime_content_type($path) ?: 'application/octet-stream')
+            ->setHeader('X-Content-Type-Options', 'nosniff')
+            ->setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+            ->setHeader('Cache-Control', 'public, max-age=86400')
+            ->setBody((string) file_get_contents($path));
+    }
+
     // ------------------------------------------------------------------
 
     private function cannotManage()
@@ -98,6 +167,18 @@ class Settings extends BaseApiController
         }
 
         return $this->response->setStatusCode(403)->setJSON(['error' => $actor['role'] . ' cannot change settings. Only the Finance Manager can — every change is recorded in the audit log.']);
+    }
+
+    /** The brand and the palette, with the logo's address rather than its storage key. */
+    private function appearance(SettingsRepository $settings): array
+    {
+        $held = $settings->appearance();
+
+        return [
+            'theme' => $held['theme'], 'custom' => $held['custom'],
+            'appName' => $held['appName'], 'appTagline' => $held['appTagline'],
+            'logo' => Brand::current()['logo'],
+        ];
     }
 
     private function payload(SettingsRepository $settings): array
@@ -127,8 +208,9 @@ class Settings extends BaseApiController
             'roles'        => $settings->roles(),
             'users'        => $settings->users(),
             'entityOptions' => $settings->entityOptions(),
-            'appearance'   => ['theme' => $settings->theme()],
+            'appearance'   => $this->appearance($settings),
             'themes'       => Theme::THEMES,
+            'entityTypes'  => SettingsRepository::ENTITY_TYPES,
             'audit'        => $settings->auditLog(),
             'language'     => $this->languageSummary($settings),
         ];

@@ -260,7 +260,7 @@
               </span>
               <span style="font-size:11px;">
                 <span style="color:#9AA39E;">${x.lines.length} lines · ${esc(x.type.toLowerCase())}</span>
-                <span style="margin-inline-start:auto;color:${active ? '#2C6B58' : '#9AA39E'};">${active ? 'Next ' : 'Was due '}${esc(x.next)}</span>
+                <span style="margin-inline-start:auto;color:${active ? 'var(--calm-ink)' : '#9AA39E'};">${active ? 'Next ' : 'Was due '}${esc(x.next)}</span>
               </span>
             </button>`;
         }).join('') + `
@@ -279,7 +279,7 @@
           <span class="jd-caps">${esc(label)}</span>
           <span style="${mono ? "font-family:'IBM Plex Mono',monospace;font-size:11.5px;" : 'font-size:12.5px;'}color:#3E4A44;">${esc(value)}</span>
         </div>`;
-      const runColour = (s) => s === 'Posted' ? '#2C6B58' : s === 'Pending approval' ? '#8A5B2E' : '#7A857F';
+      const runColour = (s) => s === 'Posted' ? 'var(--calm-ink)' : s === 'Pending approval' ? '#8A5B2E' : '#7A857F';
 
       $('rt-body').style.gap = '18px';
       $('rt-body').innerHTML = `
@@ -297,8 +297,8 @@
           <div style="border:1px solid #EEEDE8;border-radius:7px;overflow:hidden;">
             ${t.lines.map(l => `
               <div class="rt-line">
-                <span style="padding:0 12px;font-size:10.5px;font-weight:600;color:${l.dr ? '#2C6B58' : '#8A5B2E'};">${l.dr ? 'Dr' : 'Cr'}</span>
-                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#0F5C4A;">${esc(l.code)}</span>
+                <span style="padding:0 12px;font-size:10.5px;font-weight:600;color:${l.dr ? 'var(--accent-ink)' : '#8A5B2E'};">${l.dr ? 'Dr' : 'Cr'}</span>
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);">${esc(l.code)}</span>
                 <span style="padding:0 10px;display:flex;flex-direction:column;gap:1px;min-width:0;">
                   <span class="coa-cell" style="color:#28352F;">${esc(l.desc)}</span>
                   <span class="coa-cell" style="font-size:10.5px;color:#9AA39E;">${esc(l.fund)} · ${esc(l.program)}</span>
@@ -316,7 +316,7 @@
           ${t.runs.map(r => `
             <button type="button" class="rt-run" data-run-ref="${esc(r.ref)}">
               <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#9AA39E;min-width:88px;">${esc(r.when)}</span>
-              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#0F5C4A;">${esc(r.ref)}</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--accent);">${esc(r.ref)}</span>
               <span style="margin-inline-start:auto;font-size:11px;color:${runColour(r.status)};">${esc(r.status)}</span>
             </button>`).join('')}
           ${t.runs.length ? '' : '<span style="font-size:11.5px;color:#8B948F;">Not yet run.</span>'}

@@ -3487,9 +3487,26 @@ paths:
                   canManage: { type: boolean }
                   appearance:
                     type: object
-                    description: The interface theme the organisation reads the shell in.
+                    description: How the shell is branded and painted — the name it carries, the logo, and the theme.
                     properties:
                       theme: { type: string, example: evergreen }
+                      appName: { type: string, example: ELOG }
+                      appTagline: { type: string, example: Finance Suite }
+                      logo:
+                        type: string
+                        description: The logo's address, or empty when the sidebar draws the initials instead.
+                        example: /api/settings/logo?v=9f2c1ab4de
+                      custom:
+                        type: object
+                        description: The two colours the custom theme is built from; every other shade is derived from them in the stylesheet.
+                        properties:
+                          accent: { type: string, example: '#0f5c4a' }
+                          rail: { type: string, example: '#0d1b18' }
+                  entityTypes:
+                    type: array
+                    description: What an entity may be. There is exactly one head office.
+                    items: { type: string }
+                    example: [Head office, Branch, Related trust]
                   themes:
                     type: array
                     description: The themes that may be chosen, in the order the picker lists them.
@@ -3511,10 +3528,70 @@ paths:
             schema:
               type: object
               additionalProperties: true
-              description: Any subset of organisation, ledger, toggles, segments, currencies, approvals, payroll, appearance, users, language.
+              description: |
+                Any subset of organisation, entities, ledger, toggles, segments, currencies,
+                approvals, payroll, appearance, users, language. The logo is not part of the
+                draft — it has its own endpoints. Entities are added and amended here; an
+                entity is never removed, because every posting carries the entity it was made
+                against, so one that leaves service is made dormant.
       responses:
         '200':
           description: The saved settings with a message and change list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /settings/logo:
+    get:
+      tags: [Settings]
+      summary: The logo
+      description: |
+        Served from storage rather than from the document root, so replacing it is a
+        settings change rather than a deployment. Sent with nosniff and a content
+        security policy, and cached for a day — a new logo is stored under a new
+        address, so the cache never serves a stale one.
+      responses:
+        '200':
+          description: The image.
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404': { description: No logo is set; the sidebar draws the initials of the application name. }
+    post:
+      tags: [Settings]
+      summary: Replace the logo
+      description: |
+        Finance Manager only. PNG, JPEG or WebP under 500 KB — an SVG is refused, since
+        it can carry script as well as a picture. Saved as it is chosen rather than with
+        the draft, and the logo it replaces is deleted.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                logo: { type: string, format: binary }
+      responses:
+        '200':
+          description: The refreshed settings with a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /settings/logo/remove:
+    post:
+      tags: [Settings]
+      summary: Remove the logo
+      description: Finance Manager only. The sidebar goes back to drawing the initials of the application name.
+      responses:
+        '200':
+          description: The refreshed settings with a message.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Message' }

@@ -110,7 +110,7 @@
               <div></div><div></div><div></div><div></div>
               <div class="coa-amount" style="font-weight:600;color:#16211E;">${esc(data.totalDebit)}</div>
               <div class="coa-amount" style="font-weight:600;color:#16211E;">${esc(data.totalCredit)}</div>
-              <div class="coa-amount" style="font-size:13px;font-weight:700;color:#0F5C4A;">${esc(data.closing)}</div>
+              <div class="coa-amount" style="font-size:13px;font-weight:700;color:var(--accent);">${esc(data.closing)}</div>
             </div>
           </div>
         </div>
@@ -118,7 +118,7 @@
         ${data.awards.length ? `
           <div class="gl-awards">
             <span class="jd-caps">By award</span>
-            ${data.awards.map(a => `<span class="gl-award">${esc(a.grant)}<span class="pc-mono" style="color:#0F5C4A;">${esc(a.value)}</span></span>`).join('')}
+            ${data.awards.map(a => `<span class="gl-award">${esc(a.grant)}<span class="pc-mono" style="color:var(--accent);">${esc(a.value)}</span></span>`).join('')}
           </div>` : ''}
         <div class="coa-foot">
           <span>${esc(data.footer)}</span>
@@ -244,7 +244,7 @@
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
             ${detail('Posting date', esc(r.fullDate))}
             ${detail('Source', esc(r.source))}
-            ${detail('Status', '● Posted', 'color:#3E7A69;')}
+            ${detail('Status', '● Posted', 'color:var(--calm);')}
           </div>
           <div style="display:flex;flex-direction:column;gap:9px;">
             <div class="jd-caps">Entry lines</div>
@@ -265,7 +265,7 @@
                 <div class="coa-amount" style="font-size:11.5px;font-weight:600;">${esc(entry.total)}</div>
               </div>
             </div>
-            <div style="font-size:11px;color:#3E7A69;">✓ Entry is in balance</div>
+            <div style="font-size:11px;color:var(--calm);">✓ Entry is in balance</div>
           </div>
           <div style="display:flex;flex-direction:column;gap:9px;">
             <div class="jd-caps">Segments</div>

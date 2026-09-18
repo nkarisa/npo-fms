@@ -61,7 +61,7 @@
       </div>
       <div class="ap-selbar" id="ar-selbar" hidden>
         <span style="font-size:12.5px;font-weight:600;" id="ar-sel-count"></span>
-        <span style="font-size:12.5px;color:#9DB0A8;" id="ar-sel-total"></span>
+        <span style="font-size:12.5px;color:var(--rail-sub);" id="ar-sel-total"></span>
         <div style="margin-inline-start:auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
           <button type="button" class="ap-selbar-btn" data-bulk="issue">Issue</button>
           <button type="button" class="ap-selbar-btn" data-bulk="remind">Send reminder</button>
@@ -443,7 +443,7 @@
       el.querySelector('#ard-body').innerHTML = `
         <div class="ar-figures">
           <div><span class="jd-caps">Invoiced</span><span>${fmt(i.amount)}</span></div>
-          <div><span class="jd-caps">Received</span><span style="color:#2C6B58;">${fmt(i.received)}</span></div>
+          <div><span class="jd-caps">Received</span><span style="color:var(--calm-ink);">${fmt(i.received)}</span></div>
           <div><span class="jd-caps">Outstanding</span><span style="font-weight:600;">${fmt(i.outstanding)}</span></div>
         </div>
         <div class="ar-kvs">
@@ -474,7 +474,7 @@
                 <span style="font-size:12px;color:#28352F;">${esc(r.note)}</span>
                 <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#9AA39E;">${esc(r.ref)} · ${esc(r.account)}${r.journal ? ` · <button type="button" class="ap-link" style="font-size:10.5px;" data-journal="${esc(r.journal)}">${esc(r.journal)}</button>` : ''}</span>
               </span>
-              <span class="coa-amount" style="font-weight:600;color:#2C6B58;">${fmt(r.amount)}</span>
+              <span class="coa-amount" style="font-weight:600;color:var(--calm-ink);">${fmt(r.amount)}</span>
             </div>`).join('') : '<div class="ar-empty">Nothing received against this invoice yet.</div>'}
           ${can.receive ? `
             <div class="ar-receive">
@@ -684,7 +684,7 @@
             <div><span class="jd-caps">Award value</span><span class="pc-mono">${fmt(d.g.value)}</span></div>
             <div><span class="jd-caps">Claimed to date</span><span class="pc-mono">${fmt(d.g.claimed)}</span></div>
             <div><span class="jd-caps">Left on the award</span><span class="pc-mono">${fmt(d.g.left)}</span></div>
-            <div><span class="jd-caps">Unclaimed expenditure</span><span class="pc-mono" style="color:#0F5C4A;font-weight:600;">${fmt(d.g.unclaimed)}</span></div>
+            <div><span class="jd-caps">Unclaimed expenditure</span><span class="pc-mono" style="color:var(--accent);font-weight:600;">${fmt(d.g.unclaimed)}</span></div>
           </div>
           <div class="ap-lines">
             <div class="ar-claim" style="background:#FAF9F6;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8B948F;">
@@ -738,8 +738,8 @@
           <div class="ap-note" style="padding-bottom:4px;">The claim is presented to the donor in <strong style="color:#16211E;">${esc(f.ccy)}</strong> and carried in the ledger in shillings at the rate on the claim. Any movement by the time cash lands is an exchange difference, not a shortfall in the claim.</div>
         </div>
         <div class="ar-total">
-          <span class="jd-caps" style="color:#2C6B58;">Total claim</span>
-          <span id="an-total" class="pc-mono" style="font-size:16px;font-weight:600;color:#0F5C4A;"></span>
+          <span class="jd-caps" style="color:var(--accent-ink);">Total claim</span>
+          <span id="an-total" class="pc-mono" style="font-size:16px;font-weight:600;color:var(--accent);"></span>
           <span id="an-fc" style="font-size:11.5px;color:#7A857F;"></span>
           <span style="margin-inline-start:auto;font-size:11.5px;color:#7A857F;">Due ${esc(form.due)} · 30 days after issue</span>
         </div>`;

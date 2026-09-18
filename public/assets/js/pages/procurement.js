@@ -172,7 +172,7 @@
             <div class="jr-date" style="font-size:11px;">${esc(g.when)}</div>
             <div class="coa-cell">${esc(g.receivedBy)}</div>
             <div class="coa-amount" style="color:#16211E;">${fmt(g.value)}</div>
-            <div>${g.bill ? `<span class="pc-mono" style="font-size:11px;color:#2C6B58;">${esc(g.bill)}</span>` : '<span style="font-size:11px;color:#8B948F;">Not yet invoiced</span>'}</div>
+            <div>${g.bill ? `<span class="pc-mono" style="font-size:11px;color:var(--calm-ink);">${esc(g.bill)}</span>` : '<span style="font-size:11px;color:#8B948F;">Not yet invoiced</span>'}</div>
           </div>`).join('')}
         ${empty('Nothing has been received against an order yet.')}`;
     } else {
@@ -351,7 +351,7 @@
             <div class="pq-quote ${q.chosen ? 'chosen' : ''}">
               <span class="pq-radio ${q.chosen ? 'on' : ''}"></span>
               <span style="display:flex;flex-direction:column;gap:2px;min-width:0;">
-                <span style="font-size:12.5px;color:#16211E;">${esc(q.supplier)}${q.chosen ? ' <span style="font-size:10.5px;color:#2C6B58;">· selected</span>' : ''}</span>
+                <span style="font-size:12.5px;color:#16211E;">${esc(q.supplier)}${q.chosen ? ' <span style="font-size:10.5px;color:var(--accent-ink);">· selected</span>' : ''}</span>
                 ${q.note ? `<span style="font-size:11px;color:#7A857F;">${esc(q.note)}</span>` : ''}
                 ${q.document
                   ? `<a class="ap-link" style="font-size:11px;" href="/api/procurement/${encodeURIComponent(r.no)}/documents/${q.document.id}">◫ ${esc(q.document.name)} · ${esc(q.document.size)}</a>`

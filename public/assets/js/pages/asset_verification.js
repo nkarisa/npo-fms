@@ -132,7 +132,7 @@
         <input id="av-note" placeholder="What was found" value="${UI.esc(asset.note || '')}"
                style="width:100%;box-sizing:border-box;margin-top:8px;border:1px solid #DDDAD2;border-radius:6px;padding:7px 8px;font-size:12px;">
         <div class="muted" style="font-size:11px;margin-top:7px;line-height:1.5;">Anything other than "Sighted" needs a note — a count without a reason is not evidence.</div>
-        <button id="av-save" style="margin-top:10px;border:1px solid #0F5C4A;background:#0F5C4A;color:#fff;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;">Save result</button>
+        <button id="av-save" style="margin-top:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;">Save result</button>
       </div>`);
 
     document.getElementById('av-save').addEventListener('click', async (e) => {

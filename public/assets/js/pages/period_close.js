@@ -42,7 +42,7 @@
 
     const y = data.years;
     const r = data.readiness;
-    const barColour = r.tone === 'done' ? '#2C6B58' : r.tone === 'blocked' ? '#B4703A' : '#8A9A5B';
+    const barColour = r.tone === 'done' ? 'var(--calm-ink)' : r.tone === 'blocked' ? '#B4703A' : '#8A9A5B';
     const closeButton = data.period.closed
       ? `<button type="button" class="btn" id="pc-reopen">Reopen ${esc(data.period.name)}</button>`
       : `<button type="button" class="${data.close.blockers ? 'pc-close-blocked' : 'btn btn-primary'}" id="pc-close">${esc(data.close.label)}</button>`;
@@ -91,7 +91,7 @@
               <div>
                 ${t.kind === 'confirmation'
                   ? `<input type="checkbox" data-step="${esc(t.key)}" ${t.ticked ? 'checked' : ''} ${t.locked || !t.canTick ? 'disabled' : ''} title="${t.locked ? 'Locked with the period' : t.canTick ? '' : 'For ' + esc(t.owner)}" aria-label="${esc(t.label)}">`
-                  : `<span style="font-size:13px;color:${t.settled ? '#2C6B58' : '#A5442F'};">${t.settled ? '✓' : '!'}</span>`}
+                  : `<span style="font-size:13px;color:${t.settled ? 'var(--calm-ink)' : '#A5442F'};">${t.settled ? '✓' : '!'}</span>`}
               </div>
               <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
                 <span class="pc-task-label">${esc(t.label)}</span>
@@ -130,7 +130,7 @@
                 <span class="pc-mono" style="margin-inline-start:auto;font-size:12px;font-weight:600;color:#16211E;">${esc(row.value)}</span>
               </div>`).join('')}
             <div style="padding:10px 16px;background:#FAF9F6;font-size:11px;">
-              ${data.totals.state === 'balanced' ? '<span style="color:#2C6B58;">✓ Debits and credits agree for the period</span>'
+              ${data.totals.state === 'balanced' ? '<span style="color:var(--calm-ink);">✓ Debits and credits agree for the period</span>'
                 : data.totals.state === 'unbalanced' ? '<span style="color:#A5442F;">! The period does not balance</span>'
                 : `<span style="color:#8A5B2E;">◐ ${esc(data.totals.note)}</span>`}
             </div>

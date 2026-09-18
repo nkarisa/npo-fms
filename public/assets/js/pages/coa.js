@@ -123,7 +123,7 @@
         <div class="coa-cell">${esc(a.program)}</div>
         <div class="coa-cell" style="color:#6E7873;">${esc(a.funder)}</div>
         <div class="coa-amount">${UI.fmtMoney(a.amount)}</div>
-        <div>${a.status === 'Archived' ? '<span style="font-size:10.5px;color:#A3948B;">○ Archived</span>' : '<span style="font-size:10.5px;color:#3E7A69;">● Active</span>'}</div>
+        <div>${a.status === 'Archived' ? '<span style="font-size:10.5px;color:#A3948B;">○ Archived</span>' : '<span style="font-size:10.5px;color:var(--calm);">● Active</span>'}</div>
       </div>`;
   }
 
@@ -246,7 +246,7 @@
       fund: 'General Fund', program: 'Shared', grant: 'Unassigned', funder: '—', notes: '', postable: true, reconcile: false, donorReport: true,
     };
     const locked = !data.canManage;
-    const check = (name, label, on) => `<label style="display:flex;align-items:center;gap:9px;font-size:12px;cursor:pointer;"><input type="checkbox" name="${name}" ${on ? 'checked' : ''} style="accent-color:#0F5C4A;width:14px;height:14px;">${esc(label)}</label>`;
+    const check = (name, label, on) => `<label style="display:flex;align-items:center;gap:9px;font-size:12px;cursor:pointer;"><input type="checkbox" name="${name}" ${on ? 'checked' : ''} style="accent-color:var(--accent);width:14px;height:14px;">${esc(label)}</label>`;
 
     const panel = drawer(480, `
       <div style="flex:0 0 auto;padding:18px 22px 14px;border-bottom:1px solid #EEEDE8;display:flex;align-items:flex-start;gap:12px;">

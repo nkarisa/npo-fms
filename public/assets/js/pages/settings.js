@@ -18,6 +18,7 @@
     section: params.get('section') || 'Organisation',
     userQuery: '', userPage: 0, auditQuery: '', auditPage: 0,
     curForm: { code: '', name: '', rate: '' },
+    entForm: { code: '', name: '', type: 'Branch', currency: '' },
     benForm: { name: '', basis: 'flat', taxable: true },
     gradeForm: { grade: '', band: '', ben: {} },
     newBenefits: 0,
@@ -33,13 +34,23 @@
   const num = (v) => parseFloat(String(v).replace(/[^0-9.]/g, '')) || 0;
   const fmt = (n) => Number(n).toLocaleString('en-US');
   const setCookie = (name, value) => { document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${60 * 60 * 24 * 365}; SameSite=Lax`; };
-  /** Repaints the shell in a theme. The server writes the saved one onto <html>; this is the preview of an unsaved pick. */
-  const paintTheme = (key) => { document.documentElement.dataset.theme = key; };
+  /**
+   * Repaints the shell in a theme. The server writes the saved one onto <html>;
+   * this is the preview of an unsaved pick. Only the two chosen colours are set —
+   * every shade derived from them is in the stylesheet.
+   */
+  function paintTheme(appearance) {
+    const root = document.documentElement;
+    root.dataset.theme = appearance.theme;
+    root.style.setProperty('--accent', appearance.theme === 'custom' ? appearance.custom.accent : '');
+    root.style.setProperty('--rail-bg', appearance.theme === 'custom' ? appearance.custom.rail : '');
+  }
 
   /** The editable part of the settings, in the shape the API saves. */
   function toDraft(d) {
     return structuredClone({
       organisation: d.organisation,
+      entities: d.entities.map(e => ({ code: e.code, name: e.name, type: e.type, currency: e.currency, status: e.status })),
       ledger: d.ledger,
       toggles: Object.fromEntries(d.toggles.map(t => [t.key, t.on])),
       segments: Object.fromEntries(d.segments.map(s => [s.key, s.required])),
@@ -50,7 +61,10 @@
         grades: d.grades.map(g => ({ grade: g.grade, band: g.band, ben: { ...g.ben }, active: g.active })),
       },
       users: Object.fromEntries(d.users.map(u => [u.email, u.role])),
-      appearance: { theme: d.appearance.theme },
+      appearance: {
+        theme: d.appearance.theme, appName: d.appearance.appName, appTagline: d.appearance.appTagline,
+        custom: { ...d.appearance.custom },
+      },
       language: { formatsLocked: d.language.formatsLocked },
     });
   }
@@ -91,8 +105,9 @@
     app.querySelector('#st-save').addEventListener('click', save);
     app.querySelector('#st-discard').addEventListener('click', () => {
       draft = toDraft(data);
-      paintTheme(draft.appearance.theme);
+      paintTheme(draft.appearance);
       view.curForm = { code: '', name: '', rate: '' };
+      view.entForm = { code: '', name: '', type: 'Branch', currency: '' };
       view.benForm = { name: '', basis: 'flat', taxable: true };
       view.gradeForm = { grade: '', band: '', ben: {} };
       render();
@@ -229,19 +244,64 @@
           </div>
         </div>
         ${rule}
-        <div class="st-block">
-          <div class="st-kicker">Entities</div>
-          <div class="st-table"><div style="min-width:480px;">
-            <div class="st-tr st-th" style="grid-template-columns:minmax(0,1fr) 140px 108px 92px;"><div>Entity</div><div>Type</div><div>Currency</div><div>Status</div></div>
-            ${data.entities.map(e => `
-              <div class="st-tr" style="grid-template-columns:minmax(0,1fr) 140px 108px 92px;">
-                <div class="st-ellipsis">${esc(e.name)}</div><div class="st-muted">${esc(e.type)}</div><div class="st-muted mono">${esc(e.currency)}</div>
-                <div>${e.status === 'Live' ? '<span class="st-live">● Live</span>' : '<span class="st-dormant">○ Dormant</span>'}</div>
-              </div>`).join('')}
-          </div></div>
-          <div class="st-note">Consolidation eliminates inter-entity balances automatically. Regional offices post into the shared master chart of accounts.</div>
-        </div>
+        ${entities()}
       </div>`;
+  }
+
+  /**
+   * The entities the organisation consolidates. A row is edited in place; a new
+   * one is added below and reaches the ledger with the rest of the draft.
+   *
+   * There is no way to remove an entity here, and that is deliberate: every
+   * posting ever made carries the entity it was made against, so an office that
+   * closes is made dormant — it keeps its history and drops out of the lists that
+   * offer a choice.
+   */
+  function entities() {
+    const held = Object.fromEntries(data.entities.map(e => [e.code, e]));
+    const cols = 'grid-template-columns:104px minmax(0,1fr) 148px 104px 116px;';
+    const currencies = draft.currencies.filter(c => c.active).map(c => c.code);
+    const f = view.entForm;
+    return `
+        <div class="st-block">
+          ${head('Entities', 'The offices, branches and related trusts the accounts consolidate. Consolidation eliminates inter-entity balances automatically, and every entity posts into the shared master chart of accounts.')}
+          <div class="st-table"><div style="min-width:620px;">
+            <div class="st-tr st-th" style="${cols}"><div>Code</div><div>Entity</div><div>Type</div><div>Currency</div><div>Status</div></div>
+            ${draft.entities.map((e, i) => {
+              const h = held[e.code];
+              const head_ = h && h.head;
+              const posted = h && h.postings > 0;
+              return `
+              <div class="st-tr" style="${cols}min-height:44px;">
+                <div class="mono st-strong st-ellipsis">${esc(e.code)}${h ? '' : ' <span class="st-sub">new</span>'}</div>
+                <div><input class="st-cell" data-bind="entities.${i}.name" value="${esc(e.name)}" aria-label="${esc(e.code)} name"></div>
+                <div><select class="st-cell" data-bind="entities.${i}.type" aria-label="${esc(e.code)} type" ${head_ ? 'disabled' : ''}>
+                  ${data.entityTypes.map(t => `<option ${t === e.type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+                <div>${posted
+                  ? `<span class="st-muted mono" title="${esc(fmt(h.postings))} journals are posted in ${esc(e.currency)}">${esc(e.currency)}</span>`
+                  : `<select class="st-cell mono" data-bind="entities.${i}.currency" aria-label="${esc(e.code)} currency">
+                      ${(currencies.includes(e.currency) ? currencies : [e.currency, ...currencies]).map(c => `<option ${c === e.currency ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`}</div>
+                <div>${head_
+                  ? '<span class="st-live">● Head office</span>'
+                  : `<select class="st-cell" data-bind="entities.${i}.status" aria-label="${esc(e.code)} status">
+                      <option ${e.status === 'Live' ? 'selected' : ''}>Live</option><option ${e.status === 'Dormant' ? 'selected' : ''}>Dormant</option></select>`}</div>
+              </div>`;
+            }).join('')}
+          </div></div>
+          <div class="st-addbox">
+            <span class="st-addtitle">Add an entity</span>
+            <div class="st-addrow">
+              <label class="st-field" style="flex:0 0 116px;">Code<input data-bind="form.entForm.code" value="${esc(f.code)}" placeholder="ELOG-NYZ" maxlength="20" class="mono upper"></label>
+              <label class="st-field" style="flex:1 1 220px;min-width:170px;">Entity name<input data-bind="form.entForm.name" value="${esc(f.name)}" placeholder="ELOG Nyanza Regional Office"></label>
+              <label class="st-field" style="flex:0 0 150px;">Type<select data-bind="form.entForm.type">
+                ${data.entityTypes.filter(t => t !== data.entityTypes[0]).map(t => `<option ${t === f.type ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label>
+              <label class="st-field" style="flex:0 0 110px;">Currency<select data-bind="form.entForm.currency" class="mono">
+                ${currencies.map(c => `<option ${c === (f.currency || draft.ledger.currency) ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+              <button type="button" class="btn btn-primary" data-act="ent-add" data-manage>Add entity</button>
+            </div>
+            <span class="st-sub">The code is what user access, imported files and inter-entity references call it by, so it is fixed once the entity is saved. A new entity reports to the head office.</span>
+          </div>
+        </div>`;
   }
 
   function ledger(main) {
@@ -529,25 +589,160 @@
    * Discard puts the old theme back.
    */
   function appearance(main) {
-    const chosen = draft.appearance.theme;
+    const a = draft.appearance;
+    const logo = data.appearance.logo;
     main.innerHTML = `
       <div class="st-body">
+        <div class="st-block">
+          ${head('Name and logo', 'What the application calls itself in the sidebar and the browser tab. This is the name on the screen your staff work in — the registered name that prints on statements is on the Organisation section, and the two need not match.')}
+          <div class="st-grid">
+            ${field('Application name', 'appearance.appName', a.appName, 'maxlength="40"')}
+            ${field('Line underneath', 'appearance.appTagline', a.appTagline, 'maxlength="60"')}
+          </div>
+          <div class="st-brandrow">
+            <div class="st-brandmark">
+              ${logo ? `<img src="${esc(logo)}" alt="" class="st-brandlogo">` : `<span class="st-brandinitials">${esc(mark(a.appName))}</span>`}
+            </div>
+            <div class="st-stack">
+              <span class="st-strong">${logo ? 'Logo' : 'No logo — the initials are drawn instead'}</span>
+              <span class="st-sub">PNG, JPEG or WebP, under 500 KB. It is drawn at 30 pixels square, so a mark reads better than a wordmark. Saved as it is chosen, not with the draft.</span>
+            </div>
+            <div class="st-brandbtns">
+              <label class="btn">${logo ? 'Replace' : 'Upload'}<input type="file" id="st-logo" accept="image/png,image/jpeg,image/webp" hidden></label>
+              ${logo ? '<button type="button" class="btn" data-act="logo-remove" data-manage>Remove</button>' : ''}
+            </div>
+          </div>
+        </div>
+        ${rule}
         <div class="st-block">
           ${head('Interface theme', 'The colours everyone here reads the ledger in. It changes what is on screen — never a figure, a code or a date. Urgent, warning and settled keep their own colours in every theme, so an exception always reads as an exception.')}
           <div class="st-themes">
             ${data.themes.map(t => `
-              <button type="button" class="st-theme ${t.key === chosen ? 'on' : ''}" data-act="theme" data-id="${esc(t.key)}" data-manage aria-pressed="${t.key === chosen}">
-                <span class="st-theme-swatch" data-theme="${esc(t.key)}" aria-hidden="true">
+              <button type="button" class="st-theme ${t.key === a.theme ? 'on' : ''}" data-act="theme" data-id="${esc(t.key)}" data-manage aria-pressed="${t.key === a.theme}">
+                <span class="st-theme-swatch" data-theme="${esc(t.key)}" ${t.key === 'custom' ? `style="--accent:${esc(a.custom.accent)};--rail-bg:${esc(a.custom.rail)}"` : ''} aria-hidden="true">
                   <span class="st-theme-rail"><span class="st-theme-mark"></span><span class="st-theme-line"></span><span class="st-theme-line short"></span></span>
                   <span class="st-theme-page"><span class="st-theme-btn"></span><span class="st-theme-text"></span><span class="st-theme-text short"></span></span>
                 </span>
-                <span class="st-theme-name">${esc(t.name)}${t.key === chosen ? '<span class="st-theme-tick">✓</span>' : ''}</span>
+                <span class="st-theme-name">${esc(t.name)}${t.key === a.theme ? '<span class="st-theme-tick">✓</span>' : ''}</span>
                 <span class="st-theme-note">${esc(t.note)}</span>
               </button>`).join('')}
           </div>
+          ${a.theme === 'custom' ? customColours(a.custom) : ''}
           <div class="st-note">A theme is not a permission. It changes nothing about who can post, approve or read a record.</div>
         </div>
       </div>`;
+
+    main.querySelector('#st-logo')?.addEventListener('change', uploadLogo);
+    main.querySelectorAll('[data-colour]').forEach(el => el.addEventListener('change', onColour));
+  }
+
+  /**
+   * The two colours a custom theme is built from. Only these are chosen: the
+   * hover, the active row, the menu labels and the darker button state are all
+   * mixed from them by the stylesheet, so a picked pair cannot come out as a
+   * palette whose parts do not belong together.
+   *
+   * Each is held to a contrast ratio against white, because both carry light text.
+   * The ratio is shown as it is picked rather than only when a save is refused.
+   */
+  function customColours(custom) {
+    const parts = [
+      { key: 'accent', label: 'Accent', note: 'Buttons, links and the active state.', least: 4.5 },
+      { key: 'rail', label: 'Menu', note: 'The sidebar the navigation sits on.', least: 7 },
+    ];
+    return `
+      <div class="st-custom">
+        ${parts.map(p => {
+          const value = custom[p.key];
+          const ratio = contrast(value);
+          const ok = ratio >= p.least;
+          return `
+          <div class="st-customrow">
+            <input type="color" class="st-swatchpick" value="${esc(value)}" data-colour="${p.key}" data-manage aria-label="${esc(p.label)} colour">
+            <div class="st-stack">
+              <span class="st-strong">${esc(p.label)}</span>
+              <span class="st-sub">${esc(p.note)}</span>
+            </div>
+            <input class="st-cell mono boxed" style="max-width:104px;" value="${esc(value)}" data-colour="${p.key}" data-manage aria-label="${esc(p.label)} hex value">
+            <span class="${ok ? 'st-live' : 'st-fail'}">${ok ? '●' : '▲'} ${ratio}:1${ok ? '' : ' · needs ' + p.least}</span>
+          </div>`;
+        }).join('')}
+        <span class="st-sub">Contrast is measured against white text. Anything below the mark is refused on save — the figure is here so you can see how much darker to go.</span>
+      </div>`;
+  }
+
+  /** A colour picked from the swatch or typed as hex. Picking one also selects the custom theme — that is what picking it means. */
+  function onColour(e) {
+    const value = String(e.target.value || '').trim().toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(value)) {
+      UI.toast('Give the colour as a hex value, such as #0F5C4A.');
+      renderSection();
+      return;
+    }
+    draft.appearance.custom[e.target.dataset.colour] = value;
+    draft.appearance.theme = 'custom';
+    paintTheme(draft.appearance);
+    renderHead();
+    renderSection();
+  }
+
+  /** The initials the sidebar draws when there is no logo, as the server derives them. */
+  function mark(name) {
+    const words = String(name).trim().split(/\s+/);
+    return (words.length > 1 ? words[0][0] + words[1][0] : String(name).slice(0, 2)).toUpperCase() || '··';
+  }
+
+  /** The WCAG contrast ratio of a colour against white, as the API measures it. */
+  function contrast(hex) {
+    const v = /^#([0-9a-f]{6})$/i.test(hex) ? hex : '#000000';
+    const channel = (c) => { const x = parseInt(c, 16) / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+    const l = 0.2126 * channel(v.slice(1, 3)) + 0.7152 * channel(v.slice(3, 5)) + 0.0722 * channel(v.slice(5, 7));
+    return Math.round((1.05 / (l + 0.05)) * 10) / 10;
+  }
+
+  async function uploadLogo(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const body = new FormData();
+    body.append('logo', file);
+    try {
+      const res = await fetch('/api/settings/logo', { method: 'POST', headers: { Accept: 'application/json' }, body });
+      const saved = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(saved.error || `Request failed: ${res.status}`);
+      afterLogo(saved);
+    } catch (err) {
+      UI.toast(err.message);
+    } finally {
+      e.target.value = '';
+    }
+  }
+
+  /** A logo change lands outside the draft, so the held settings are replaced and the shell repainted without touching unsaved edits elsewhere. */
+  function afterLogo(res) {
+    const edits = draft;
+    data = res;
+    draft = edits;
+    renderHead();
+    renderSection();
+    paintBrand(res.appearance);
+    UI.toast(res.message);
+  }
+
+  /** The sidebar and the tab, repainted after a logo or a name change without a reload. */
+  function paintBrand(appearance) {
+    const brand = document.querySelector('.brand');
+    if (!brand) return;
+    const mark_ = brand.querySelector('.brand-mark, .brand-logo');
+    if (mark_) {
+      mark_.outerHTML = appearance.logo
+        ? `<img class="brand-logo" src="${esc(appearance.logo)}" alt="${esc(appearance.appName)}">`
+        : `<div class="brand-mark">${esc(mark(appearance.appName))}</div>`;
+    }
+    const name = brand.querySelector('.brand-name');
+    const sub = brand.querySelector('.brand-sub');
+    if (name) name.textContent = appearance.appName;
+    if (sub) sub.textContent = appearance.appTagline;
+    document.title = document.title.split(' · ')[0] + ' · ' + [appearance.appName, appearance.appTagline].filter(Boolean).join(' ');
   }
 
   async function language(main) {
@@ -565,7 +760,7 @@
     const isSource = current.source;
     const canDecide = me && me.me.canApprove;
     const tone = (status) => ({ Published: 'posted', Source: 'approved', 'In review': 'pending', Approved: 'posted', Declined: 'reversed', 'With reviewer': 'pending' }[status] || 'draft');
-    const covColour = (pct) => pct >= 95 ? '#2C6B58' : pct >= 80 ? '#8A6A2E' : '#A45B3E';
+    const covColour = (pct) => pct >= 95 ? 'var(--calm-ink)' : pct >= 80 ? '#8A6A2E' : '#A45B3E';
     const open = i18n.requests.filter(q => q.open).length;
     const locked = draft.language.formatsLocked;
 
@@ -758,10 +953,30 @@
 
     if (act === 'theme') {
       draft.appearance.theme = id;
-      paintTheme(id);
+      paintTheme(draft.appearance);
       renderHead();
       renderSection();
       return;
+    }
+    if (act === 'logo-remove') {
+      try {
+        afterLogo(await UI.postJSON('/api/settings/logo/remove', {}));
+      } catch (err) {
+        UI.toast(err.message);
+      }
+      return;
+    }
+    if (act === 'ent-add') {
+      const f = view.entForm;
+      const code = f.code.trim().toUpperCase();
+      const name = f.name.trim();
+      if (!/^[A-Z0-9][A-Z0-9-]{1,19}$/.test(code)) return UI.toast('Use 2 to 20 letters, digits and hyphens for the code — ELOG-RV.');
+      if (draft.entities.some(e => e.code === code)) return UI.toast(code + ' is already an entity code.');
+      if (!name) return UI.toast('Name the entity as it should read on a consolidated statement.');
+      if (draft.entities.some(e => e.name.toLowerCase() === name.toLowerCase())) return UI.toast(name + ' is already the name of another entity.');
+      draft.entities.push({ code, name, type: f.type, currency: f.currency || draft.ledger.currency, status: 'Live' });
+      view.entForm = { code: '', name: '', type: 'Branch', currency: '' };
+      UI.toast(`${name} added — save to open it for posting.`);
     }
     if (act === 'cur-toggle') {
       const c = draft.currencies[Number(id)];

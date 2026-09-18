@@ -43,8 +43,8 @@
       <div class="stat-grid" id="br-stats" style="margin:16px 0 0;"></div>
       <div class="ap-selbar br-selbar" id="br-selbar" hidden>
         <span style="font-size:12px;font-weight:600;" id="br-sel-label"></span>
-        <span class="br-mono" style="font-size:11.5px;color:#B9C6C0;" id="br-sel-sums"></span>
-        <span style="margin-inline-start:auto;font-size:11.5px;color:#B9C6C0;" id="br-sel-verdict"></span>
+        <span class="br-mono" style="font-size:11.5px;color:var(--rail-text);" id="br-sel-sums"></span>
+        <span style="margin-inline-start:auto;font-size:11.5px;color:var(--rail-text);" id="br-sel-verdict"></span>
         <button type="button" class="ap-selbar-btn quiet" id="br-clear">Clear</button>
         <button type="button" class="ap-selbar-btn go" id="br-match">Match</button>
       </div>
@@ -244,7 +244,7 @@
       </div>
       <div style="overflow-x:auto;"><div style="min-width:520px;">${rows}</div></div>
       <div class="br-foot">${data.reconciled
-        ? '<span style="color:#2C6B58;">✓ The statement and the cash book agree. This reconciliation can be signed off and will satisfy the period-close check.</span>'
+        ? '<span style="color:var(--calm-ink);">✓ The statement and the cash book agree. This reconciliation can be signed off and will satisfy the period-close check.</span>'
         : `<span style="color:#A5442F;">! ${esc(data.gapNote)}</span>`}</div>`;
   }
 

@@ -62,8 +62,8 @@
     const ok = data.control.reconciled;
     const div = document.createElement('div');
     div.className = 'card';
-    div.style.cssText = ok ? 'background:#F4F9F7;border-color:#DCE7E2;' : 'background:#FDF7EE;border-color:#F0DFC8;';
-    div.innerHTML = `<div style="padding:12px 16px;font-size:12px;line-height:1.55;color:${ok ? '#2C6B58' : '#8A5B2E'};">
+    div.style.cssText = ok ? 'background:var(--calm-wash);border-color:var(--calm-line);' : 'background:#FDF7EE;border-color:#F0DFC8;';
+    div.innerHTML = `<div style="padding:12px 16px;font-size:12px;line-height:1.55;color:${ok ? 'var(--calm-ink)' : '#8A5B2E'};">
       <strong>${ok ? 'Register agrees to 1220' : 'Register leads the ledger'}</strong> —
       register ${UI.esc(data.control.register)} against ${UI.esc(data.control.balance)} posted.
       <div style="margin-top:5px;">${UI.esc(data.control.note)}</div></div>`;

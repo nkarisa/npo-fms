@@ -240,7 +240,7 @@
             ${r.pending ? `
               <button type="button" class="btn" data-disp="withdraw" data-tag="${esc(r.tag)}" ${r.canWithdraw ? '' : 'disabled'}>Withdraw</button>
               <button type="button" class="btn btn-primary" data-disp="approve" data-tag="${esc(r.tag)}" ${r.canApprove ? '' : 'disabled title="Only an approver can post a disposal"'}>Approve and post</button>` : ''}
-            ${r.posted ? `<span style="font-size:11px;color:#2C6B58;white-space:nowrap;">✓ Posted ${esc(r.ref)}</span>` : ''}
+            ${r.posted ? `<span style="font-size:11px;color:var(--calm-ink);white-space:nowrap;">✓ Posted ${esc(r.ref)}</span>` : ''}
           </div>
         </div>`).join('')}`;
   }
@@ -263,7 +263,7 @@
         </div>`).join('')}
       <div class="as-tie-foot">
         ${t.tied
-          ? `<span style="color:#2C6B58;">✓ The register agrees to the control accounts. ${esc(t.note)}</span>`
+          ? `<span style="color:var(--calm-ink);">✓ The register agrees to the control accounts. ${esc(t.note)}</span>`
           : `<span style="color:#A5442F;">! The register does not agree to the control accounts — ${t.awaiting ? esc(t.awaiting) : 'a capitalisation or a disposal has not been posted.'}</span>`}
       </div>`;
   }
@@ -354,7 +354,7 @@
           </div>
           ${a.schedule.map(y => `
             <div class="as-sched as-sched-row ${y.current ? 'now' : ''}">
-              <div style="font-size:12px;color:#28352F;display:flex;align-items:center;gap:8px;">${esc(y.year)}${y.current ? '<span style="font-size:10px;color:#2C6B58;">current</span>' : ''}</div>
+              <div style="font-size:12px;color:#28352F;display:flex;align-items:center;gap:8px;">${esc(y.year)}${y.current ? '<span style="font-size:10px;color:var(--accent-ink);">current</span>' : ''}</div>
               <div class="as-mono" style="text-align:end;font-size:11.5px;color:#6E7873;">${esc(y.opening)}</div>
               <div class="as-mono" style="text-align:end;font-size:11.5px;color:#3E4A44;">${esc(y.charge)}</div>
               <div class="as-mono" style="text-align:end;font-size:11.5px;font-weight:600;color:#16211E;">${esc(y.closing)}</div>
@@ -505,7 +505,7 @@
           <div style="border:1px solid #EEEDE8;border-radius:7px;overflow:hidden;">
             ${lines.map(([side, account, amount]) => `
               <div class="as-jl">
-                <span style="font-size:10.5px;font-weight:600;color:${side === 'Dr' ? '#2C6B58' : '#A5442F'};">${side}</span>
+                <span style="font-size:10.5px;font-weight:600;color:${side === 'Dr' ? 'var(--accent-ink)' : '#A5442F'};">${side}</span>
                 <span style="color:#28352F;">${esc(account)}</span>
                 <span class="as-mono" style="text-align:end;font-size:11.5px;color:#16211E;">${fmt(amount)}</span>
               </div>`).join('')}
@@ -665,7 +665,7 @@
           <div><span>Monthly depreciation of each</span><span class="as-mono">${fmt(Math.round(each / (life * 12)))}</span></div>
           <div><span>Depreciation starts</span><span>${esc(monthAfter(line.iso))}</span></div>
         </div>
-        <div class="as-note warn" style="color:#2C6B58;background:#EDF5F1;border-color:#C6DED3;">Nothing new posts: ${esc(line.ref)} already charged the cost to ${esc(line.account)}. The asset takes its date, fund, programme and grant from the purchase.</div>
+        <div class="as-note warn" style="color:var(--calm-ink);background:var(--calm-tint);border-color:var(--calm-line);">Nothing new posts: ${esc(line.ref)} already charged the cost to ${esc(line.account)}. The asset takes its date, fund, programme and grant from the purchase.</div>
         ${why ? `<div class="as-note block">${esc(why)}</div>` : ''}
         <div style="display:flex;align-items:center;gap:8px;">
           <button type="button" class="btn" data-m-close>Cancel</button>
@@ -789,7 +789,7 @@
         <div style="display:flex;flex-direction:column;gap:6px;">
           <span style="font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#8B948F;">Journal on approval</span>
           <div style="border:1px solid #EEEDE8;border-radius:7px;overflow:hidden;">
-            <div class="as-jl"><span style="font-size:10.5px;font-weight:600;color:#2C6B58;">Dr</span><span>${c ? esc(c.account + ' · ' + c.accountName) : 'Class cost account'}</span><span class="as-mono" style="text-align:end;font-size:11.5px;">${fmt(amount)}</span></div>
+            <div class="as-jl"><span style="font-size:10.5px;font-weight:600;color:var(--accent-ink);">Dr</span><span>${c ? esc(c.account + ' · ' + c.accountName) : 'Class cost account'}</span><span class="as-mono" style="text-align:end;font-size:11.5px;">${fmt(amount)}</span></div>
             <div class="as-jl"><span style="font-size:10.5px;font-weight:600;color:#A5442F;">Cr</span><span>${esc(data.forms.credits[form.basis])}</span><span class="as-mono" style="text-align:end;font-size:11.5px;">${fmt(amount)}</span></div>
           </div>
         </div>

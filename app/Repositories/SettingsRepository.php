@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Libraries\Brand;
 use App\Libraries\Clock;
 use App\Libraries\Prototype;
 use App\Libraries\Theme;
@@ -41,6 +42,9 @@ final class SettingsRepository extends Repository
     /** Held on the setting row so the seeded database and the screen say the same thing. */
     public const THEME_NOTE = 'The colours the interface is drawn in. It changes what everyone reads on screen — never a figure, a code or a date.';
 
+    /** What an entity may be. One head office, any number of the other two. */
+    public const ENTITY_TYPES = ['Head office', 'Branch', 'Related trust'];
+
     private Lookups $lookups;
 
     public function __construct(?\CodeIgniter\Database\BaseConnection $db = null)
@@ -64,10 +68,23 @@ final class SettingsRepository extends Repository
         ];
     }
 
+    /**
+     * The entities that make up the organisation, the head office first.
+     *
+     * Each carries its posting count, because that is what decides whether its
+     * functional currency can still be changed, and the screen says so rather than
+     * letting someone find out by being refused.
+     */
     public function entities(): array
     {
+        $posted = array_column($this->rows(
+            "SELECT entity_id, COUNT(*) AS n FROM {journals} WHERE status IN ('posted', 'reversed') GROUP BY entity_id"
+        ), 'n', 'entity_id');
+
         return array_map(static fn ($e) => [
-            'name' => $e['name'], 'type' => $e['type'], 'currency' => $e['functional_currency'], 'status' => ucfirst($e['status']),
+            'code' => $e['code'], 'name' => $e['name'], 'type' => $e['type'], 'currency' => $e['functional_currency'],
+            'status' => ucfirst($e['status']), 'head' => $e['type'] === self::ENTITY_TYPES[0],
+            'postings' => (int) ($posted[$e['id']] ?? 0),
         ], $this->rows('SELECT * FROM {entities} ORDER BY id'));
     }
 
@@ -100,17 +117,34 @@ final class SettingsRepository extends Repository
         return array_map(static fn ($s) => ['key' => $s['key'], 'label' => $s['label'], 'note' => $s['note'] ?? '', 'on' => $s['value'] === '1'], $this->settingRows('toggle'));
     }
 
+    /**
+     * How the shell is branded and painted: the name it carries, the logo, the
+     * theme and the two colours the custom theme is built from.
+     *
+     * One read serves the page shell and the API alike, which is why the name and
+     * the theme are fetched together rather than a query each.
+     */
+    public function appearance(): array
+    {
+        return $this->cached('appearance', function () {
+            $held = array_column($this->settingRows('appearance'), 'value', 'key');
+            $custom = json_decode($held[Theme::CUSTOM_KEY] ?? '', true);
+            $colour = static fn (string $part) => Theme::colour((string) ($custom[$part] ?? '')) ?? Theme::CUSTOM_DEFAULT[$part];
+
+            return [
+                'theme'      => Theme::isKnown($held[Theme::KEY] ?? null) ? (string) $held[Theme::KEY] : Theme::DEFAULT,
+                'custom'     => ['accent' => $colour('accent'), 'rail' => $colour('rail')],
+                'appName'    => trim((string) ($held[Brand::NAME_KEY] ?? '')) ?: Brand::DEFAULT_NAME,
+                'appTagline' => (string) ($held[Brand::TAGLINE_KEY] ?? Brand::DEFAULT_TAGLINE),
+                'logo'       => (string) ($held[Brand::LOGO_KEY] ?? ''),
+            ];
+        });
+    }
+
     /** The interface theme the organisation reads the shell in. */
     public function theme(): string
     {
-        return $this->cached('theme', function () {
-            $held = $this->value(
-                'SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = ?',
-                [Lookups::SECRETARIAT, Theme::KEY]
-            );
-
-            return Theme::isKnown($held) ? (string) $held : Theme::DEFAULT;
-        });
+        return $this->appearance()['theme'];
     }
 
     public function formatsLocked(): bool
@@ -303,8 +337,11 @@ final class SettingsRepository extends Repository
         if (isset($draft['users'])) {
             $this->planUsers((array) $draft['users'], $plan);
         }
-        if (isset($draft['appearance']['theme'])) {
-            $this->planAppearance((string) $draft['appearance']['theme'], $plan);
+        if (isset($draft['entities'])) {
+            $this->planEntities((array) $draft['entities'], $plan);
+        }
+        if (isset($draft['appearance'])) {
+            $this->planAppearance((array) $draft['appearance'], $plan);
         }
         if (isset($draft['language']['formatsLocked'])) {
             $locked = (bool) $draft['language']['formatsLocked'];
@@ -469,18 +506,204 @@ final class SettingsRepository extends Repository
         }
     }
 
-    private function planAppearance(string $theme, callable $plan): void
+    private function planAppearance(array $in, callable $plan): void
     {
-        $current = $this->theme();
-        if ($theme === $current) {
-            return;
-        }
-        if (!Theme::isKnown($theme)) {
-            throw new RuleViolation($theme . ' is not one of the themes the interface is drawn in.');
+        $current = $this->appearance();
+
+        if (isset($in['appName'])) {
+            $name = trim((string) $in['appName']);
+            if ($name === '') {
+                throw new RuleViolation('The application needs a name — it is what the sidebar and the browser tab carry.');
+            }
+            if (mb_strlen($name) > Brand::MAX_NAME) {
+                throw new RuleViolation('The name is longer than ' . Brand::MAX_NAME . ' characters, and the sidebar has room for about half that.');
+            }
+            if ($name !== $current['appName']) {
+                $plan('Appearance', 'Application name changed from ' . $current['appName'] . ' to ' . $name,
+                    fn () => $this->setAppearance(Brand::NAME_KEY, $name, 'Application name'));
+            }
         }
 
-        $plan('Appearance', 'Interface theme changed from ' . Theme::name($current) . ' to ' . Theme::name($theme) . ' for everyone',
-            fn () => $this->setTheme($theme));
+        if (isset($in['appTagline'])) {
+            $tagline = trim((string) $in['appTagline']);
+            if (mb_strlen($tagline) > Brand::MAX_TAGLINE) {
+                throw new RuleViolation('The line under the name is longer than ' . Brand::MAX_TAGLINE . ' characters.');
+            }
+            if ($tagline !== $current['appTagline']) {
+                $plan('Appearance', $tagline === ''
+                    ? 'Line under the application name removed'
+                    : 'Line under the application name changed from ' . ($current['appTagline'] !== '' ? $current['appTagline'] : 'blank') . ' to ' . $tagline,
+                    fn () => $this->setAppearance(Brand::TAGLINE_KEY, $tagline, 'Line under the application name'));
+            }
+        }
+
+        if (isset($in['custom'])) {
+            $this->planCustomTheme((array) $in['custom'], $current['custom'], $plan);
+        }
+
+        if (isset($in['theme']) && $in['theme'] !== $current['theme']) {
+            $theme = (string) $in['theme'];
+            if (!Theme::isKnown($theme)) {
+                throw new RuleViolation($theme . ' is not one of the themes the interface is drawn in.');
+            }
+            $plan('Appearance', 'Interface theme changed from ' . Theme::name($current['theme']) . ' to ' . Theme::name($theme) . ' for everyone',
+                fn () => $this->setAppearance(Theme::KEY, $theme, 'Interface theme', self::THEME_NOTE));
+        }
+    }
+
+    /**
+     * The two colours the custom theme is built from.
+     *
+     * Both carry light text — white on the accent, the menu labels on the rail —
+     * so each is held to a contrast ratio rather than taken as given. A colour that
+     * fails is refused with the ratio it reached and the one it needed, because
+     * "too light" on its own tells nobody how much darker to go.
+     */
+    private function planCustomTheme(array $in, array $current, callable $plan): void
+    {
+        $labels = ['accent' => 'Custom accent colour', 'rail' => 'Custom menu colour'];
+
+        foreach ($labels as $part => $label) {
+            if (!isset($in[$part])) {
+                continue;
+            }
+            $colour = Theme::colour((string) $in[$part]);
+            if ($colour === null) {
+                throw new RuleViolation($in[$part] . ' is not a colour. Give it as a hex value, such as #0F5C4A.');
+            }
+            if ($colour === $current[$part]) {
+                continue;
+            }
+            $contrast = Theme::contrastWithWhite($colour);
+            $least = Theme::MIN_CONTRAST[$part];
+            if ($contrast < $least) {
+                throw new RuleViolation(
+                    $colour . ' is too light to carry white text — it reaches ' . $contrast . ':1 against white where '
+                    . $least . ':1 is needed. Choose a darker shade.'
+                );
+            }
+            $plan('Appearance', $label . ' changed from ' . $current[$part] . ' to ' . $colour,
+                fn () => $this->setCustomTheme([$part => $colour] + $current));
+            $current[$part] = $colour;
+        }
+    }
+
+    /**
+     * Adds and changes entities.
+     *
+     * An entity is never removed here. It is carried by every posting made against
+     * it, so the way one leaves service is to be made dormant — it then keeps its
+     * history and drops out of the lists that offer a choice.
+     */
+    private function planEntities(array $in, callable $plan): void
+    {
+        $held = array_column($this->entities(), null, 'code');
+        $currencies = array_column(array_filter($this->currencies(), static fn ($c) => $c['active']), 'code');
+        $names = [];
+        foreach ($held as $e) {
+            $names[mb_strtolower($e['name'])] = $e['code'];
+        }
+
+        foreach ($in as $row) {
+            $code = strtoupper(trim((string) ($row['code'] ?? '')));
+            $name = trim((string) ($row['name'] ?? ''));
+            $type = trim((string) ($row['type'] ?? ''));
+            $currency = strtoupper(trim((string) ($row['currency'] ?? '')));
+            $status = mb_strtolower(trim((string) ($row['status'] ?? 'live')));
+            $current = $held[$code] ?? null;
+
+            if ($name === '') {
+                throw new RuleViolation('Name the entity as it should read on a consolidated statement.');
+            }
+            if (mb_strlen($name) > 120) {
+                throw new RuleViolation('The entity name is longer than 120 characters.');
+            }
+            if (isset($names[mb_strtolower($name)]) && $names[mb_strtolower($name)] !== $code) {
+                throw new RuleViolation($name . ' is already the name of another entity.');
+            }
+            if (!in_array($type, self::ENTITY_TYPES, true)) {
+                throw new RuleViolation($type === '' ? 'Choose what kind of entity this is.' : $type . ' is not a kind of entity the consolidation understands.');
+            }
+            if (!in_array($currency, $currencies, true)) {
+                throw new RuleViolation($currency === '' ? 'Choose the currency ' . $name . ' keeps its books in.' : $currency . ' is not an active currency.');
+            }
+            if (!in_array($status, ['live', 'dormant'], true)) {
+                throw new RuleViolation($status . ' is not a status an entity can hold.');
+            }
+            $names[mb_strtolower($name)] = $code;
+
+            if ($current === null) {
+                $this->planNewEntity($code, $name, $type, $currency, $status, $plan);
+
+                continue;
+            }
+            $this->planEntityChange($current, $name, $type, $currency, $status, $plan);
+        }
+    }
+
+    private function planNewEntity(string $code, string $name, string $type, string $currency, string $status, callable $plan): void
+    {
+        if (preg_match('/^[A-Z0-9][A-Z0-9-]{1,19}$/', $code) !== 1) {
+            throw new RuleViolation($code === ''
+                ? 'Give ' . $name . ' a short code — it is what user access and imported files refer to it by.'
+                : $code . ' is not an entity code. Use 2 to 20 letters, digits and hyphens, such as ELOG-RV.');
+        }
+        if ($type === self::ENTITY_TYPES[0]) {
+            throw new RuleViolation('There is already a head office. A second one would leave the consolidation with two tops.');
+        }
+
+        $parentId = $this->headOffice()['id'];
+        $plan('Organisation', $name . ' (' . $code . ') added as a ' . mb_strtolower($type) . ' reporting in ' . $currency . ($status === 'dormant' ? ', dormant' : ''),
+            fn () => $this->insert('entities', [
+                'parent_id' => $parentId, 'code' => $code, 'name' => $name, 'type' => $type,
+                'functional_currency' => $currency, 'status' => $status, 'created_at' => Clock::timestamp(),
+            ]));
+    }
+
+    private function planEntityChange(array $current, string $name, string $type, string $currency, string $status, callable $plan): void
+    {
+        $code = $current['code'];
+        $write = fn (array $row) => $this->db->table('entities')->where('code', $code)->update($row + ['updated_at' => Clock::timestamp()]);
+
+        if ($name !== $current['name']) {
+            $plan('Organisation', $code . ' renamed from ' . $current['name'] . ' to ' . $name, fn () => $write(['name' => $name]));
+        }
+
+        if ($type !== $current['type']) {
+            if ($current['head']) {
+                throw new RuleViolation($current['name'] . ' is the head office. The consolidation is drawn from it, so it cannot become a ' . mb_strtolower($type) . '.');
+            }
+            if ($type === self::ENTITY_TYPES[0]) {
+                throw new RuleViolation('There is already a head office. A second one would leave the consolidation with two tops.');
+            }
+            $plan('Organisation', $code . ' changed from a ' . mb_strtolower($current['type']) . ' to a ' . mb_strtolower($type), fn () => $write(['type' => $type]));
+        }
+
+        if ($currency !== $current['currency']) {
+            if ($current['postings'] > 0) {
+                throw new RuleViolation(
+                    $current['name'] . ' cannot change its functional currency once it holds postings — '
+                    . number_format($current['postings']) . ' journals are posted in ' . $current['currency'] . '.'
+                );
+            }
+            $plan('Organisation', $code . ' functional currency changed from ' . $current['currency'] . ' to ' . $currency, fn () => $write(['functional_currency' => $currency]));
+        }
+
+        if ($status !== mb_strtolower($current['status'])) {
+            if ($current['head'] && $status === 'dormant') {
+                throw new RuleViolation($current['name'] . ' is the head office and cannot be made dormant — the organisation settings, the chart and the approval policy all hang off it.');
+            }
+            if ($status === 'dormant') {
+                $open = (int) $this->value(
+                    "SELECT COUNT(*) FROM {journals} j JOIN {entities} e ON e.id = j.entity_id WHERE e.code = ? AND j.status IN ('draft', 'submitted')",
+                    [$code]
+                );
+                if ($open > 0) {
+                    throw new RuleViolation($current['name'] . ' has ' . number_format($open) . ($open === 1 ? ' journal' : ' journals') . ' still to be posted or rejected. Clear those before it goes dormant.');
+                }
+            }
+            $plan('Organisation', $code . ($status === 'dormant' ? ' made dormant — no longer offered for new work' : ' made live'), fn () => $write(['status' => $status]));
+        }
     }
 
     private function planSegments(array $in, callable $plan): void
@@ -762,28 +985,113 @@ final class SettingsRepository extends Repository
     }
 
     /**
-     * Written rather than updated blind: a database seeded before the theme
-     * existed has no row to update, and a save that silently changed nothing
-     * would still have been logged as a change.
+     * Written rather than updated blind: a database seeded before a given
+     * appearance setting existed has no row to update, and a save that silently
+     * changed nothing would still have been logged as a change.
      */
-    private function setTheme(string $theme): void
+    private function setAppearance(string $key, string $value, string $label, string $note = ''): void
     {
         $entityId = $this->headOffice()['id'];
         // Through the builder rather than raw SQL: "key" is a reserved word, and the
         // builder quotes it for whichever database is behind this.
-        $held = $this->db->table('settings')->select('id')->where('entity_id', $entityId)->where('key', Theme::KEY)->get()->getRowArray();
+        $held = $this->db->table('settings')->select('id')->where('entity_id', $entityId)->where('key', $key)->get()->getRowArray();
         $now = Clock::timestamp();
 
         if ($held === null) {
             $this->insert('settings', [
-                'entity_id' => $entityId, 'key' => Theme::KEY, 'kind' => 'appearance', 'value' => $theme,
-                'label' => 'Interface theme', 'note' => self::THEME_NOTE, 'created_at' => $now,
+                'entity_id' => $entityId, 'key' => $key, 'kind' => 'appearance', 'value' => $value,
+                'label' => $label, 'note' => $note !== '' ? $note : null, 'created_at' => $now,
             ]);
 
             return;
         }
 
-        $this->db->table('settings')->where('id', $held['id'])->update(['value' => $theme, 'updated_at' => $now]);
+        $this->db->table('settings')->where('id', $held['id'])->update(['value' => $value, 'updated_at' => $now]);
+    }
+
+    private function setCustomTheme(array $custom): void
+    {
+        $this->setAppearance(Theme::CUSTOM_KEY, json_encode(['accent' => $custom['accent'], 'rail' => $custom['rail']]), 'Custom theme colours');
+    }
+
+    /**
+     * Stores an uploaded logo and hangs it on the brand, replacing whatever was
+     * there. Saved as it is chosen rather than drafted: a file cannot sit in a
+     * browser draft waiting for Save.
+     *
+     * @param array{path: string, name: string, size: int, mime: string} $file
+     */
+    public function setLogo(array $file, int $actorId): array
+    {
+        $extension = Brand::LOGO_TYPES[$file['mime']] ?? null;
+        if ($extension === null) {
+            throw new RuleViolation(
+                ($file['mime'] === 'image/svg+xml' ? 'An SVG can carry script as well as a picture, so it is not accepted. ' : '')
+                . 'A logo has to be a PNG, JPEG or WebP image.'
+            );
+        }
+        if ($file['size'] > Brand::MAX_LOGO_BYTES) {
+            throw new RuleViolation('The logo is ' . round($file['size'] / 1000) . ' KB. It is drawn at 30 pixels, so keep it under ' . round(Brand::MAX_LOGO_BYTES / 1000) . ' KB.');
+        }
+
+        $key = Brand::STORAGE_DIR . '/' . bin2hex(random_bytes(16)) . '.' . $extension;
+        $path = WRITEPATH . 'uploads/' . $key;
+        if (!is_dir(dirname($path)) && !mkdir(dirname($path), 0775, true) && !is_dir(dirname($path))) {
+            throw new RuleViolation('The logo cannot be stored right now.');
+        }
+        if (!(is_uploaded_file($file['path']) ? move_uploaded_file($file['path'], $path) : copy($file['path'], $path))) {
+            throw new RuleViolation($file['name'] . ' could not be stored.');
+        }
+
+        $previous = $this->appearance()['logo'];
+        $this->transaction(function () use ($key, $previous, $actorId) {
+            $this->setAppearance(Brand::LOGO_KEY, $key, 'Logo');
+            $this->logChange('Appearance', $previous === '' ? 'Logo added' : 'Logo replaced', $actorId);
+        });
+        $this->removeStoredLogo($previous);
+
+        return $this->appearance();
+    }
+
+    /** Puts the brand back to the initials mark drawn from the application name. */
+    public function clearLogo(int $actorId): array
+    {
+        $previous = $this->appearance()['logo'];
+        if ($previous === '') {
+            throw new RuleViolation('There is no logo to remove — the sidebar is already drawing the initials.');
+        }
+
+        $this->transaction(function () use ($actorId) {
+            $this->setAppearance(Brand::LOGO_KEY, '', 'Logo');
+            $this->logChange('Appearance', 'Logo removed — the sidebar draws the initials again', $actorId);
+        });
+        $this->removeStoredLogo($previous);
+
+        return $this->appearance();
+    }
+
+    /** Where a stored logo is on disk, or null when the brand carries none. */
+    public function logoPath(): ?string
+    {
+        $key = $this->appearance()['logo'];
+        if ($key === '' || !str_starts_with($key, Brand::STORAGE_DIR . '/')) {
+            return null;
+        }
+        $path = WRITEPATH . 'uploads/' . $key;
+
+        return is_file($path) ? $path : null;
+    }
+
+    /** A replaced logo is nobody's record: it is deleted rather than left to accumulate. */
+    private function removeStoredLogo(string $key): void
+    {
+        if ($key === '' || !str_starts_with($key, Brand::STORAGE_DIR . '/')) {
+            return;
+        }
+        $path = WRITEPATH . 'uploads/' . $key;
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
 
     private function setSetting(string $key, string $value): void

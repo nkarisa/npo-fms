@@ -87,7 +87,7 @@
 
   $('lang-btn')?.addEventListener('click', () => toggleMenu('lang-menu', async (menu) => {
     const data = await UI.fetchJSON('/api/i18n');
-    const covColour = (c) => (c >= 95 ? '#2C6B58' : c >= 80 ? '#8A6A2E' : '#A45B3E');
+    const covColour = (c) => (c >= 95 ? 'var(--calm-ink)' : c >= 80 ? '#8A6A2E' : '#A45B3E');
 
     menu.innerHTML = `
       <div class="tb-menu-head">
@@ -138,8 +138,8 @@
   async function renderNotifications(menu) {
     const data = await UI.fetchJSON('/api/notifications?unread=' + unreadOnly);
     paintBadge(data.unread);
-    const dot = (n) => (!n.unread ? '#E4E2DB' : n.tone === 'alert' ? '#A6412F' : n.tone === 'action' ? '#1FA37E' : '#8B948F');
-    const kindColour = (n) => (n.tone === 'alert' ? '#A6412F' : n.tone === 'action' ? '#2C6B58' : '#8B948F');
+    const dot = (n) => (!n.unread ? '#E4E2DB' : n.tone === 'alert' ? '#A6412F' : n.tone === 'action' ? 'var(--green)' : '#8B948F');
+    const kindColour = (n) => (n.tone === 'alert' ? '#A6412F' : n.tone === 'action' ? 'var(--accent-ink)' : '#8B948F');
 
     let lastDay = null;
     const items = data.rows.map((n) => {

@@ -3,6 +3,7 @@
 namespace App\Database\Seeds;
 
 use App\Database\Seeds\Support\SeedContext;
+use App\Libraries\Brand;
 use App\Libraries\Theme;
 use App\Repositories\SettingsRepository;
 use CodeIgniter\Database\Seeder;
@@ -173,6 +174,12 @@ class OrganisationSeeder extends Seeder
             'entity_id' => $secretariat, 'key' => Theme::KEY, 'kind' => 'appearance', 'value' => Theme::DEFAULT, 'created_at' => $now,
             'label' => 'Interface theme', 'note' => SettingsRepository::THEME_NOTE,
         ]);
+        foreach ([[Brand::NAME_KEY, 'Application name', Brand::DEFAULT_NAME], [Brand::TAGLINE_KEY, 'Line under the application name', Brand::DEFAULT_TAGLINE],
+            [Brand::LOGO_KEY, 'Logo', ''], [Theme::CUSTOM_KEY, 'Custom theme colours', json_encode(Theme::CUSTOM_DEFAULT)]] as [$key, $label, $value]) {
+            $ctx->insert('settings', [
+                'entity_id' => $secretariat, 'key' => $key, 'kind' => 'appearance', 'value' => $value, 'label' => $label, 'created_at' => $now,
+            ]);
+        }
         $ctx->insert('settings', [
             'entity_id' => $secretariat, 'key' => 'formatsLocked', 'kind' => 'language', 'value' => '1', 'created_at' => $now,
             'label' => "Hold numbers, dates and currency in the organisation's reporting locale (en-KE · KES)",

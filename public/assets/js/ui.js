@@ -732,7 +732,7 @@ const UI = (() => {
   /** A labelled bar, used for budget consumption and verification progress. */
   function bar(pct, tone) {
     const width = Math.max(0, Math.min(100, pct));
-    const colour = tone === 'urgent' ? '#A6412F' : tone === 'warn' ? '#B4703A' : '#2C6B58';
+    const colour = tone === 'urgent' ? '#A6412F' : tone === 'warn' ? '#B4703A' : 'var(--accent-ink)';
     return `<span class="bar-track" style="display:block;"><span class="bar-fill" style="width:${width}%;background:${colour};"></span></span>`;
   }
 
