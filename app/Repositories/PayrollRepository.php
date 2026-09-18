@@ -28,6 +28,10 @@ final class PayrollRepository extends Repository
     /** Net pay leaves the operating current account. */
     public const BANK = '1110';
 
+    /** The pay components a run's journal is written against; each needs an account. */
+    public const POSTING_COMPONENTS = ['basic_salary', 'nssf_employer', 'paye', 'nssf_employee', 'shif',
+        'housing_levy_employee', 'sacco', 'advance_recovery'];
+
     public const STATUSES = ['draft', 'pending_approval', 'approved', 'posted'];
 
     private Lookups $lookups;
@@ -429,7 +433,19 @@ final class PayrollRepository extends Repository
         $roster   = $this->rosterFor($period);
         $payslips = array_map($engine->payslip(...), $roster);
         $totals   = $engine->totals($payslips);
-        $codeOf   = fn (string $key) => $this->components()[$key]['code'] ?? throw new RuleViolation($key . ' has no account in the chart of accounts.');
+
+        // A newly installed instance has a payroll calculation but nowhere to post it:
+        // the chart is imported after the reference data, and the accounts each pay
+        // component posts to are set in Settings afterwards. The run is still worked
+        // out and shown — what is missing is reported rather than thrown, so the
+        // screen can say what to set instead of failing to draw.
+        $unmapped = $this->unmapped();
+        if ($unmapped !== []) {
+            return ['lines' => [], 'unmapped' => $unmapped, 'totals' => $totals, 'groups' => [],
+                'payslips' => $payslips, 'roster' => $roster];
+        }
+
+        $codeOf = fn (string $key) => $this->components()[$key]['code'];
 
         $groups = [];
         foreach ($roster as $i => $s) {
@@ -445,9 +461,9 @@ final class PayrollRepository extends Repository
         }
         usort($groups, static fn ($a, $b) => $b['gross'] <=> $a['gross']);
 
-        $shared = ['fund_id' => $this->coreFundId(), 'programme_id' => $this->lookups->programmeId('Shared services'), 'grant_id' => null];
+        $shared = ['fund_id' => $this->coreFundId(), 'programme_id' => $this->sharedProgrammeId(), 'grant_id' => null];
         $line   = static fn (array $at, string $code, string $desc, float $dr, float $cr) => [
-            'code' => $code, 'fund_id' => $at['fund_id'] ?? $at['fundId'], 'programme_id' => $at['programme_id'] ?? $at['programmeId'],
+            'code' => $code, 'fund_id' => $at['fund_id'] ?? $at['fundId'] ?? null, 'programme_id' => $at['programme_id'] ?? $at['programmeId'] ?? null,
             'grant_id' => $at['grant_id'] ?? $at['grantId'] ?? null, 'desc' => $desc, 'dr' => $dr, 'cr' => $cr,
         ];
         $against = static fn (array $g) => $g['grant'] === 'Unassigned' ? 'core funded' : $g['grant'];
@@ -467,7 +483,47 @@ final class PayrollRepository extends Repository
         );
 
         return ['lines' => array_values(array_filter($lines, static fn ($l) => $l['dr'] > 0 || $l['cr'] > 0)),
-            'totals' => $totals, 'groups' => $groups, 'payslips' => $payslips, 'roster' => $roster];
+            'unmapped' => [], 'totals' => $totals, 'groups' => $groups, 'payslips' => $payslips, 'roster' => $roster];
+    }
+
+    /**
+     * What payroll still needs before a run can be written, each in its own words.
+     * Empty once the chart carries everything a run posts to.
+     *
+     * @return list<string>
+     */
+    public function unmapped(): array
+    {
+        return $this->cached('unmapped', function () {
+            $components = $this->components();
+            $missing = [];
+
+            foreach (self::POSTING_COMPONENTS as $key) {
+                if (($components[$key]['code'] ?? null) === null) {
+                    $missing[] = ($components[$key]['name'] ?? $key) . ' has no account to post to';
+                }
+            }
+            if (($this->lookups->accounts()[self::BANK] ?? null) === null) {
+                $missing[] = 'Net pay is paid from account ' . self::BANK . ', which is not in the chart of accounts';
+            }
+            if ($this->coreFundId() === 0) {
+                $missing[] = 'There is no active general fund for the statutory liabilities to be held against';
+            }
+            if ($this->sharedProgrammeId() === null) {
+                $missing[] = 'There is no programme for the statutory liabilities to be charged to';
+            }
+
+            return $missing;
+        });
+    }
+
+    /** Refuses a write while payroll has nowhere to post, naming the first thing to set. */
+    private function assertPostable(): void
+    {
+        $missing = $this->unmapped();
+        if ($missing !== []) {
+            throw new RuleViolation('Payroll cannot post yet: ' . lcfirst($missing[0]) . '. Set the accounts each pay component posts to in Settings → Payroll.');
+        }
     }
 
     /** Sends the run to the approver. Nothing reaches the ledger until it comes back. */
@@ -477,6 +533,7 @@ final class PayrollRepository extends Repository
         if ($run !== null && $run['status'] !== 'draft') {
             throw new RuleViolation('The ' . $period['name'] . ' run is ' . self::label($run['status']) . ', not a draft.');
         }
+        $this->assertPostable();
         $draft = $this->draft($period);
         if ($draft['totals']['staff'] === 0) {
             throw new RuleViolation('There is no one on the register for ' . $period['name'] . ', so there is no run to approve.');
@@ -868,6 +925,26 @@ final class PayrollRepository extends Repository
         // `key` is reserved in MySQL, so the column is always qualified.
         return (int) $this->value('SELECT c.id FROM {pay_components} c WHERE c.key = ?', [$key])
             ?: throw new RuleViolation($key . ' is not a pay component.');
+    }
+
+    /**
+     * The programme the statutory liabilities are charged to.
+     *
+     * PAYE, NSSF and the rest are withheld across the whole payroll, so they belong
+     * to the programme that carries shared costs rather than to any one of them —
+     * "Shared services" where the organisation names one, and otherwise whichever
+     * programme carries the largest share of the shared-cost allocation.
+     */
+    private function sharedProgrammeId(): ?int
+    {
+        $named = $this->lookups->programmeId('Shared services');
+        if ($named !== null) {
+            return $named;
+        }
+
+        $id = $this->value("SELECT id FROM {programmes} WHERE status <> 'inactive' ORDER BY cost_share_pct DESC, code LIMIT 1");
+
+        return $id === null ? null : (int) $id;
     }
 
     private function coreFundId(): int

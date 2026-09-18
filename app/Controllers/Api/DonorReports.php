@@ -141,12 +141,17 @@ class DonorReports extends BaseApiController
      * The cover page as the funder sees it: translated wording around figures that
      * never move. Where a heading has no approved translation it stays in English
      * and is named to the reviewer, rather than being machine-translated into a
-     * document a funder will hold ELOG to.
+     * document a funder will hold the organisation to.
+     *
+     * Null while there is no funder on the reporting calendar to preview.
      */
-    private function coverPreview(string $funder): array
+    private function coverPreview(string $funder): ?array
     {
         $repo    = new DonorReportRepository();
         $funders = $repo->funderLanguages();
+        if ($funders === []) {
+            return null;
+        }
         $fd      = null;
         foreach ($funders as $d) {
             if ($d['funder'] === $funder) {

@@ -3803,6 +3803,31 @@ paths:
                   locale: { $ref: '#/components/schemas/Locale' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /settings/conversion/template:
+    get:
+      tags: [Settings]
+      summary: The trial balance to fill in
+      description: |
+        A CSV download carrying exactly the columns the reader looks for, so a file
+        built from it loads back with no mapping. Under the header sits the
+        organisation's own chart — every postable account with the fund and programme
+        code it defaults to, and the figures blank. Where `period` opens the fiscal
+        year, income and expenditure are left out: a year that has ended carries its
+        result in the accumulated fund. Before a chart is imported the template is
+        just its column headings.
+      parameters:
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, example: Jan 2026 }
+          description: The period the balances would be carried into; it decides the cut-off in the filename and whether income and expenditure are listed.
+      responses:
+        '200':
+          description: The template, as an attachment named for the organisation and the cut-off.
+          content:
+            text/csv:
+              schema: { type: string, format: binary }
+
   /settings/conversion/preview:
     post:
       tags: [Settings]

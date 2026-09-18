@@ -177,6 +177,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('settings/logo', 'Api\Settings::logo');
     $routes->post('settings/logo/remove', 'Api\Settings::removeLogo');
     $routes->get('settings/conversion', 'Api\Conversion::index');
+    $routes->get('settings/conversion/template', 'Api\Conversion::template');
     $routes->post('settings/conversion/preview', 'Api\Conversion::preview');
     $routes->post('settings/conversion/load', 'Api\Conversion::load');
     $routes->post('settings/conversion/discard', 'Api\Conversion::discard');

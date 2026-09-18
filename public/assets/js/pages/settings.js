@@ -61,6 +61,7 @@
         benefits: d.benefits.map(b => ({ key: b.key, name: b.name, basis: b.basis, taxable: b.taxable, active: b.active })),
         grades: d.grades.map(g => ({ grade: g.grade, band: g.band, ben: { ...g.ben }, active: g.active })),
       },
+      payAccounts: Object.fromEntries(d.payAccounts.map(c => [c.key, c.code])),
       users: Object.fromEntries(d.users.map(u => [u.email, u.role])),
       appearance: {
         theme: d.appearance.theme, appName: d.appearance.appName, appTagline: d.appearance.appTagline,
@@ -480,6 +481,35 @@
     Mpesa.mount(main.querySelector('#st-mpesa'));
   }
 
+  /**
+   * Where each pay component posts. The chart of accounts is imported after the
+   * reference data, so a newly installed instance has the components and nothing
+   * mapped — until this is set, a run is worked out but has nowhere to go.
+   */
+  function payAccounts() {
+    const rows = data.payAccounts;
+    const options = data.payAccountOptions;
+    const short = (c) => c.length > 46 ? c.slice(0, 45) + '…' : c;
+    const missing = rows.filter(c => c.required && !draft.payAccounts[c.key]);
+
+    return `
+      ${head('Posting accounts', 'The account in the chart each pay component is charged or credited to when a run posts. Payroll is the subsidiary record behind these accounts, so a run cannot be approved until every component its journal carries has one.')}
+      ${options.length ? '' : warn('The chart of accounts is empty, so there is nothing to map to yet. Import it on the Chart of accounts screen first.')}
+      ${missing.length ? warn(`${plural(missing.length, 'component has', 'components have')} no account: ${missing.map(c => c.name).join(', ')}. A run is calculated but cannot be approved or posted until each one is set.`) : ''}
+      <div class="st-table"><div style="min-width:560px;">
+        <div class="st-tr st-th" style="grid-template-columns:minmax(170px,1fr) 118px minmax(180px,1fr);"><div>Pay component</div><div>On the run</div><div>Posts to</div></div>
+        ${rows.map(c => `
+          <div class="st-tr" style="grid-template-columns:minmax(170px,1fr) 118px minmax(180px,1fr);">
+            <div class="st-stack"><span>${esc(c.name)}</span><span class="st-sub">${c.required ? 'Every run posts this' : 'Only when it is paid'}</span></div>
+            <div class="st-muted">${esc(c.kind)}</div>
+            <div><select class="st-cell" data-bind="payAccounts.${esc(c.key)}" aria-label="Account for ${esc(c.name)}">
+              <option value="">${c.required ? '— not set —' : 'No account'}</option>
+              ${options.map(o => `<option value="${esc(o.code)}" ${o.code === draft.payAccounts[c.key] ? 'selected' : ''}>${esc(short(o.code + ' · ' + o.name))}</option>`).join('')}
+            </select></div>
+          </div>`).join('')}
+      </div></div>`;
+  }
+
   function payroll(main) {
     const benefits = draft.payroll.benefits;
     const live = benefits.filter(b => b.active);
@@ -492,6 +522,8 @@
 
     main.innerHTML = `
       <div class="st-body wide">
+        ${payAccounts()}
+        ${rule}
         ${head('Benefits', 'What the organisation pays on top of basic. Each benefit becomes a column on the grade scale below, a line on every payslip, and part of gross pay — mark one non-taxable and it is excluded from taxable pay but still paid.')}
         <div class="st-table"><div style="min-width:620px;">
           <div class="st-tr st-th" style="grid-template-columns:minmax(160px,1fr) 150px 118px 96px 104px;"><div>Benefit</div><div>Basis</div><div>Taxable</div><div class="end">Paid to</div><div class="end">Status</div></div>
@@ -1874,6 +1906,7 @@ const Conversion = (() => {
     return `
       <div class="sf-section">Load a trial balance</div>
       <p class="bu-intro">Export the trial balance from the old system as CSV. It needs a column naming the account and either debit and credit columns or one signed balance column; fund, programme, award and county are taken from the file where it has them and from the account's defaults where it does not. Figures are read as ${esc(data.currency)}.</p>
+      <p class="bu-intro"><a class="cv-template" href="/api/settings/conversion/template?period=${encodeURIComponent(state.period)}" download>↓ Download the trial balance to fill in</a> — the columns this reader expects, with every postable account already in it and coded the way the chart defaults. Enter the figures against the accounts that carry a balance and delete the rest.</p>
       <div class="coa-card" style="padding:14px 16px;">
         <div class="bu-grid">
           <label class="bu-field"><span>Balances carried into</span>

@@ -279,6 +279,34 @@ final class SettingsRepository extends Repository
         ], $this->rows('SELECT * FROM {pay_components} WHERE is_benefit = 1 ORDER BY id'));
     }
 
+    /**
+     * Where each pay component posts, and what a run is still missing.
+     *
+     * A newly installed instance has the components but no chart, so nothing is
+     * mapped and payroll has nowhere to post. This is where that is set.
+     */
+    public function payAccounts(): array
+    {
+        $needed = PayrollRepository::POSTING_COMPONENTS;
+
+        return array_map(static fn ($c) => [
+            'key' => $c['key'], 'name' => $c['name'], 'kind' => ucfirst($c['kind']),
+            'code' => $c['code'] ?? '', 'required' => in_array($c['key'], $needed, true),
+        ], $this->rows(
+            'SELECT c.key, c.name, c.kind, a.code FROM {pay_components} c LEFT JOIN {accounts} a ON a.id = c.account_id
+             WHERE c.is_active = 1 ORDER BY c.id'
+        ));
+    }
+
+    /** Postable accounts a pay component can be charged or credited to. */
+    public function payAccountOptions(): array
+    {
+        return array_map(static fn ($a) => ['code' => $a['code'], 'name' => $a['name']], $this->rows(
+            "SELECT code, name FROM {accounts} WHERE is_leaf = 1 AND status = 'active'
+             AND type IN ('expense', 'liability', 'asset') ORDER BY code"
+        ));
+    }
+
     /** The grade scale, with each benefit's value and how many staff hold the grade. */
     public function grades(): array
     {
@@ -367,6 +395,9 @@ final class SettingsRepository extends Repository
         }
         if (isset($draft['payroll'])) {
             $this->planPayroll((array) $draft['payroll'], $plan);
+        }
+        if (isset($draft['payAccounts'])) {
+            $this->planPayAccounts((array) $draft['payAccounts'], $plan);
         }
         if (isset($draft['users'])) {
             $this->planUsers((array) $draft['users'], $plan);
@@ -844,6 +875,41 @@ final class SettingsRepository extends Repository
                 $plan('Approvals', $a['label'] . ' approver changed from ' . $a['approver'] . ' to ' . $change['approver'],
                     fn () => $this->db->table('approval_rules')->where('document_type', $type)->update(['approver_role_id' => $roleId, 'updated_at' => Clock::timestamp()]));
             }
+        }
+    }
+
+    /**
+     * Where each pay component posts. An account has to be one a journal could carry
+     * — a postable leaf — or the run would be refused by the ledger at the moment it
+     * mattered rather than here.
+     */
+    private function planPayAccounts(array $in, callable $plan): void
+    {
+        $held = array_column($this->payAccounts(), null, 'key');
+        $accounts = array_column($this->payAccountOptions(), null, 'code');
+
+        foreach ($in as $key => $code) {
+            $key = (string) $key;
+            $code = trim((string) $code);
+            $current = $held[$key] ?? null;
+            if ($current === null || $code === $current['code']) {
+                continue;
+            }
+            if ($code !== '' && !isset($accounts[$code])) {
+                throw new RuleViolation($code . ' is not a postable account. ' . $current['name']
+                    . ' posts to an active leaf account in the expenditure, liability or asset range.');
+            }
+            if ($code === '' && $current['required']) {
+                throw new RuleViolation($current['name'] . ' is part of every run\'s journal, so it needs an account to post to.');
+            }
+
+            $was = $current['code'] === '' ? 'nothing' : $current['code'];
+            $now = $code === '' ? 'nothing' : $code . ' ' . $accounts[$code]['name'];
+            $plan('Payroll', $current['name'] . ' now posts to ' . $now . ' (was ' . $was . ')',
+                fn () => $this->db->table('pay_components')->where('key', $key)->update([
+                    'account_id' => $code === '' ? null : $this->value('SELECT id FROM {accounts} WHERE code = ?', [$code]),
+                    'updated_at' => Clock::timestamp(),
+                ]));
         }
     }
 

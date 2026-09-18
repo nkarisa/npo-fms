@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Brand;
 use App\Repositories\ConversionRepository;
 use App\Repositories\RuleViolation;
 
@@ -29,6 +30,24 @@ class Conversion extends BaseApiController
     {
         return ['canManage' => in_array('settings.manage', $this->actor()['permissions'] ?? [], true),
             'role' => $this->actor()['role']] + (new ConversionRepository())->options();
+    }
+
+    /**
+     * The trial balance to fill in, as a CSV download.
+     *
+     * Served rather than described: the columns are the ones the reader looks for, so
+     * a file built from this loads back with no mapping, and the organisation's own
+     * accounts are already in it with the coding they default to.
+     */
+    public function template()
+    {
+        $template = (new ConversionRepository())->template((string) $this->request->getGet('period'));
+        $name = trim(Brand::current()['name'] . ' ' . $template['filename']);
+
+        return $this->response
+            ->setHeader('Content-Type', 'text/csv; charset=utf-8')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . str_replace('"', '', $name) . '"')
+            ->setBody($template['csv']);
     }
 
     /** Multipart, with the trial balance in `file`; body: period, source, decimal. */

@@ -32,7 +32,7 @@ $style = $theme === Theme::CUSTOM ? Theme::customStyle(Theme::currentCustom()) :
 $entities = Navigation::entities();
 ?>
 <!DOCTYPE html>
-<html lang="<?= esc($locale->code()) ?>" dir="<?= esc($locale->dir()) ?>" data-theme="<?= esc($theme) ?>"<?= $style !== '' ? ' style="' . esc($style, 'attr') . '"' : '' ?>>
+<html lang="<?= esc($locale->code()) ?>" dir="<?= esc($locale->dir()) ?>" data-theme="<?= esc($theme) ?>" data-brand="<?= esc($brand['name'], 'attr') ?>"<?= $style !== '' ? ' style="' . esc($style, 'attr') . '"' : '' ?>>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

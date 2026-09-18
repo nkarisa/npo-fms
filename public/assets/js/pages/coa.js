@@ -60,7 +60,7 @@
       <div class="page-head">
         <div>
           <h1 class="page-title" style="margin-top:0;">Chart of accounts</h1>
-          <p class="page-blurb" style="max-width:620px;">Master account structure shared across all ELOG entities. Segment values for fund, programme, grant and funder are validated at posting.</p>
+          <p class="page-blurb" style="max-width:620px;">Master account structure shared across every entity. Segment values for fund, programme, grant and funder are validated at posting.</p>
         </div>
         <div class="page-actions" style="margin-left:0;margin-inline-start:auto;">
           <button type="button" class="btn" id="coa-import">Import CSV</button>
@@ -192,20 +192,11 @@
       const res = await fetch('/api/coa/export?' + p.toString());
       if (!res.ok) throw new Error('Export failed');
       const count = res.headers.get('X-Row-Count');
-      download('ELOG chart of accounts.csv', await res.blob());
+      UI.download(await res.blob(), `${UI.brand()} chart of accounts.csv`, res.headers.get('Content-Disposition'));
       UI.toast(`${count} accounts exported to CSV${filtered ? ' — the current filter and search were applied.' : '.'}`);
     } catch (err) {
       UI.toast('The chart could not be exported.');
     }
-  }
-
-  function download(name, blob) {
-    const url = URL.createObjectURL(blob);
-    const a = Object.assign(document.createElement('a'), { href: url, download: name });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // ---- Drawers ----
@@ -539,7 +530,7 @@
     const rejectsBtn = panel.querySelector('#ci-rejects');
     if (rejectsBtn) rejectsBtn.addEventListener('click', () => {
       const csv = toCsv([['Line', 'Code', 'Name', 'Type', 'Reason']].concat(rows.filter(r => r.state === 'Rejected').map(r => [r.line, r.code, r.name, r.type, r.reason])));
-      download('ELOG import rejects.csv', new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+      UI.download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), `${UI.brand()} import rejects.csv`);
     });
     panel.querySelector('#ci-commit').addEventListener('click', async () => {
       if (!importable) { UI.toast('Nothing in this file can be imported — every row was rejected.'); return; }

@@ -7,9 +7,11 @@ use App\Repositories\ConversionRepository;
 use App\Repositories\FundRepository;
 use App\Repositories\JournalRepository;
 use App\Repositories\Lookups;
+use App\Repositories\PayrollRepository;
 use App\Repositories\ProgrammeRepository;
 use App\Repositories\Repository;
 use App\Repositories\RuleViolation;
+use App\Repositories\SettingsRepository;
 use App\Repositories\StatementFormatRepository;
 use App\Repositories\UserRepository;
 use CodeIgniter\Test\CIUnitTestCase;
@@ -313,6 +315,119 @@ final class InstallTest extends CIUnitTestCase
         $this->assertNull($options['batch']);
     }
 
+    public function testTheTrialBalanceTemplateIsJustItsColumnsUntilThereIsAChart(): void
+    {
+        (new Installer())->install(self::ANSWERS);
+        Repository::forget();
+
+        $template = (new ConversionRepository())->template('Jan 2026');
+        $rows = array_map('str_getcsv', array_filter(explode("\n", trim(substr($template['csv'], 3)))));
+
+        $this->assertCount(1, $rows, 'With no chart there is nothing to list — only the columns to fill in.');
+        $this->assertSame(['Account code', 'Account name', 'Fund code', 'Programme code', 'Award ref', 'County code', 'Debit', 'Credit'], $rows[0]);
+        $this->assertSame('opening-balances-2025-12-31.csv', $template['filename']);
+    }
+
+    public function testPayrollDrawsOnAFreshInstanceAndSaysWhereItCannotPostYet(): void
+    {
+        (new Installer())->install(self::ANSWERS);
+        Repository::forget();
+
+        // The chart is imported after the reference data, so nothing is mapped yet.
+        $payroll = $this->api('api/payroll');
+        $this->assertSame('Sep 2026', $payroll['period']);
+        $this->assertSame([], $payroll['journal']['lines'], 'There is nowhere to post, so no journal is drawn.');
+        $this->assertStringContainsString('nowhere to post yet', $payroll['journal']['check']);
+        $this->assertContains('PAYE has no account to post to', $payroll['journal']['unmapped']);
+        $this->assertContains('Net pay is paid from account 1110, which is not in the chart of accounts', $payroll['journal']['unmapped']);
+        $this->assertContains('There is no active general fund for the statutory liabilities to be held against', $payroll['journal']['unmapped']);
+
+        // The page itself renders; it is the fetch behind it that used to fail.
+        $this->assertStringContainsString('payroll.js', $this->page('/payroll'));
+
+        // Settings → Payroll is where it is set, and says what is still missing.
+        $settings = $this->api('api/settings');
+        $this->assertSame([], $settings['payAccountOptions'], 'Nothing to map to until the chart is imported.');
+        $mapping = array_column($settings['payAccounts'], null, 'key');
+        $this->assertSame('', $mapping['paye']['code']);
+        $this->assertTrue($mapping['paye']['required']);
+        $this->assertFalse($mapping['acting_allowance']['required']);
+    }
+
+    public function testOnceTheChartIsImportedPayrollIsMappedAndPosts(): void
+    {
+        (new Installer())->install(self::ANSWERS);
+        Repository::forget();
+        $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
+
+        $chart = new ChartRepository();
+        foreach ([['1000', 'Assets', 'Asset', null], ['1100', 'Cash', 'Asset', '1000'], ['1110', 'Bank', 'Asset', '1100'],
+            ['2000', 'Liabilities', 'Liability', null], ['2200', 'Statutory', 'Liability', '2000'], ['2210', 'PAYE payable', 'Liability', '2200'],
+            ['5000', 'Expenditure', 'Expense', null], ['5200', 'Staff costs', 'Expense', '5000'], ['5210', 'Salaries', 'Expense', '5200']] as [$code, $name, $type, $parent]) {
+            $chart->create(['code' => $code, 'name' => $name, 'type' => $type, 'parent' => $parent], $amina);
+        }
+        $this->fundAndProgramme($amina);
+
+        $options = array_column((new SettingsRepository())->payAccountOptions(), 'code');
+        $this->assertSame(['1110', '2210', '5210'], $options, 'Only postable accounts in the right ranges are offered.');
+
+        // Mapping the components saves with the rest of the settings draft.
+        (new SettingsRepository())->save(['payAccounts' => [
+            'basic_salary' => '5210', 'nssf_employer' => '5210', 'paye' => '2210', 'nssf_employee' => '2210',
+            'shif' => '2210', 'housing_levy_employee' => '2210', 'sacco' => '2210', 'advance_recovery' => '2210',
+        ]], $amina);
+        Repository::forget();
+
+        $this->assertSame([], (new PayrollRepository())->unmapped(), 'Nothing is left unmapped.');
+        $payroll = $this->api('api/payroll');
+        $this->assertSame([], $payroll['journal']['unmapped']);
+        // No staff yet, so the run is nil — but it is a run, and the panel draws it.
+        $this->assertStringContainsString('Balanced', $payroll['journal']['check']);
+        $this->seeInDatabase('audit_events', ['action' => 'settings.changed', 'object_type' => 'settings:payroll']);
+    }
+
+    /**
+     * Nothing in the application may fail to draw just because the instance is new.
+     *
+     * A screen with nothing behind it yet either serves its empty state or refuses
+     * with a sentence saying what to do — never a 500, which is what a blank page is.
+     */
+    public function testEveryReadEitherWorksOrRefusesWithAReasonOnAFreshInstance(): void
+    {
+        (new Installer())->install(self::ANSWERS);
+        Repository::forget();
+
+        $broken = [];
+        $refused = [];
+        foreach ($this->reads() as $url) {
+            Repository::forget();
+            try {
+                $response = $this->get($url);
+                $status = $response->response()->getStatusCode();
+                if ($status === 404) {
+                    // A controlled refusal. Anything the browser reads as JSON has to say
+                    // why, so the screen can print it; the logo is an image, and its
+                    // absence is the sidebar drawing the organisation's initials instead.
+                    $error = json_decode($response->getJSON() ?: '{}', true)['error'] ?? '';
+                    $refused[$url] = $error;
+                    if ($url !== 'api/settings/logo' && strlen($error) < 20) {
+                        $broken[] = $url . ' refuses without explaining why';
+                    }
+                } elseif ($status >= 400) {
+                    $broken[] = $url . ' → HTTP ' . $status;
+                }
+            } catch (\Throwable $e) {
+                $broken[] = $url . ' → ' . get_class($e) . ': ' . $e->getMessage();
+            }
+        }
+
+        $this->assertSame([], $broken, 'Reads that fail on a freshly installed instance');
+
+        // The ones that do refuse are the screens with nothing behind them yet.
+        $this->assertSame(['api/gl', 'api/gl/export', 'api/bank-rec', 'api/settings/logo'], array_keys($refused));
+        $this->assertStringContainsString('Import the chart of accounts first', $refused['api/gl']);
+    }
+
     public function testAnInstanceIsInstalledOnceAndTheAnswersAreChecked(): void
     {
         (new Installer())->install(self::ANSWERS);
@@ -366,6 +481,19 @@ final class InstallTest extends CIUnitTestCase
     }
 
     // ------------------------------------------------------------------
+
+    /** Every GET the application serves, from the routes themselves. */
+    private function reads(): array
+    {
+        $urls = [];
+        foreach (file(ROOTPATH . 'app/Config/Routes.php') as $line) {
+            if (preg_match("/\\\$routes->get\('([^'(]+)',/", $line, $m) === 1 && !str_contains($m[1], '(')) {
+                $urls[] = str_starts_with($line, '    ') ? 'api/' . $m[1] : $m[1];
+            }
+        }
+
+        return array_values(array_unique($urls));
+    }
 
     private function api(string $url): array
     {

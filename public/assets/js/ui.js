@@ -8,9 +8,30 @@ const UI = (() => {
     return n < 0 ? `(${s})` : s;
   };
 
+  /**
+   * What this installation calls itself, for a file it names on the way out. The
+   * shell puts it on the document; a file the server names carries it already.
+   */
+  const brand = () => document.documentElement.dataset.brand || 'Finance';
+
+  /** Saves a blob, named by the server's Content-Disposition where it gave one. */
+  function download(blob, fallback, disposition) {
+    const named = /filename="?([^";]+)"?/.exec(disposition || '');
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: named ? named[1] : fallback });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function fetchJSON(url) {
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    if (!res.ok) {
+      // A refusal explains itself; only fall back to the status code when it does not.
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed: ${res.status}`);
+    }
     return res.json();
   }
 
@@ -736,5 +757,5 @@ const UI = (() => {
     return `<span class="bar-track" style="display:block;"><span class="bar-fill" style="width:${width}%;background:${colour};"></span></span>`;
   }
 
-  return { fmtMoney, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill };
+  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill };
 })();

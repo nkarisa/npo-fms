@@ -196,12 +196,7 @@
     try {
       const res = await fetch('/api/gl/export?' + query().toString());
       if (!res.ok) throw new Error();
-      const url = URL.createObjectURL(await res.blob());
-      const a = Object.assign(document.createElement('a'), { href: url, download: `ELOG general ledger ${data.account.code}.csv` });
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      UI.download(await res.blob(), `${UI.brand()} general ledger ${data.account.code}.csv`, res.headers.get('Content-Disposition'));
       UI.toast(`${data.rows.length} postings on ${data.account.code} exported to CSV.`);
     } catch (err) {
       UI.toast('The ledger could not be exported.');

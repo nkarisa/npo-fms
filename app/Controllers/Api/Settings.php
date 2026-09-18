@@ -193,6 +193,8 @@ class Settings extends BaseApiController
             'organisation' => $settings->organisation(),
             'entities'     => $settings->entities(),
             'funds'        => $settings->funds(),
+            'payAccounts'  => $settings->payAccounts(),
+            'payAccountOptions' => $settings->payAccountOptions(),
             'fundOptions'  => $settings->fundOptions(),
             'ledger'       => $settings->ledger(),
             'ledgerOptions' => [

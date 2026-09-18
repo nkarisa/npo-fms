@@ -597,6 +597,16 @@ warning appears if you try to leave with unsaved changes.
     taken from the file where it carries them and from the account's own defaults
     where it does not. A report title above the header, a totals footer, nil
     balances and blank rows are all passed over.
+  - *The template*: **Download the trial balance to fill in** issues a CSV with
+    exactly the columns this reader expects, so a file built from it loads back
+    with no mapping at all. Under the header sits the organisation's own chart —
+    every postable account, already carrying the fund and programme code it
+    defaults to — leaving the figures as the only thing to enter. Where the chosen
+    period opens the fiscal year, income and expenditure accounts are left out of
+    it, since a year that has ended carries its result in the accumulated fund.
+    Enter the figures against the accounts that hold a balance and delete the rest;
+    a nil balance brings nothing forward either way. Before the chart is imported
+    the template is just its column headings.
   - *Checked before anything is written*: **Check the file** answers every rule
     and changes nothing. Every row the chart cannot place is named with its line
     number and the reason — an account that is not in the chart, a heading rather

@@ -344,8 +344,8 @@
     const title = document.title;
     root.classList.add('pc-printing');
     if (asPdf) {
-      document.title = `ELOG close pack — ${pack.period}`;
-      UI.toast(`Choose “Save as PDF” as the destination — the file is named ELOG close pack — ${pack.period}.`);
+      document.title = `${UI.brand()} close pack — ${pack.period}`;
+      UI.toast(`Choose “Save as PDF” as the destination — the file is named ${UI.brand()} close pack — ${pack.period}.`);
     }
     const restore = () => { root.classList.remove('pc-printing'); document.title = title; window.removeEventListener('afterprint', restore); };
     window.addEventListener('afterprint', restore);

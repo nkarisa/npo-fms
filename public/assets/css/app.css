@@ -1101,6 +1101,8 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .sf-new[open] > summary::before { content: '−'; }
 
 /* Settings → Opening balances: the trial balance as it will be carried. */
+.cv-template { color: var(--accent-ink); font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--accent-line); }
+.cv-template:hover { border-bottom-color: var(--accent-ink); }
 .cv-carried { border-color: var(--accent-line); background: var(--accent-wash); }
 .cv-rows { margin-top: 12px; border-top: 1px solid #F2F1EC; max-height: 340px; overflow: auto; }
 .cv-row { display: grid; grid-template-columns: 44px minmax(0,1.6fr) minmax(0,1.2fr) 96px 96px; gap: 8px; align-items: start; padding: 6px 2px; border-bottom: 1px solid #F6F5F1; font-size: 11.5px; color: #28352F; }
@@ -1407,6 +1409,11 @@ select.st-cell { cursor: pointer; }
 .pr-jl .pr-jl-account { font-size: 11.5px; color: #28352F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pr-jl .pr-jl-memo { font-size: 10px; color: #9AA39E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pr-jl > span { padding: 0 12px; text-align: end; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.pr-unmapped { padding: 12px 16px 14px; font-size: 12px; color: #5C665F; line-height: 1.55; }
+.pr-unmapped p { margin: 0 0 8px; }
+.pr-unmapped a { color: var(--accent-ink); font-weight: 600; }
+.pr-unmapped ul { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 3px; }
+.pr-unmapped li { color: #A5442F; }
 .pr-note { padding: 10px 16px; background: #FAF9F6; font-size: 11.5px; }
 .pr-note.open { color: #8A5B2E; }
 .pr-note.done { color: var(--calm-ink); }

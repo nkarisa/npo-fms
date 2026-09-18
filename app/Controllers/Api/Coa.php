@@ -6,6 +6,7 @@ use App\Libraries\Prototype;
 use App\Repositories\ChartRepository;
 use App\Repositories\Lookups;
 use App\Repositories\RuleViolation;
+use App\Libraries\Brand;
 use App\Repositories\SettingsRepository;
 
 /** The shared chart of accounts: listing, export, import, and adding, editing and archiving accounts. */
@@ -108,7 +109,7 @@ class Coa extends BaseApiController
 
         return $this->response
             ->setHeader('Content-Type', 'text/csv; charset=utf-8')
-            ->setHeader('Content-Disposition', 'attachment; filename="ELOG chart of accounts.csv"')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . Brand::current()['name'] . ' chart of accounts.csv"')
             ->setHeader('X-Row-Count', (string) count($rows))
             ->setBody($csv);
     }

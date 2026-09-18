@@ -2,10 +2,12 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Brand;
 use App\Libraries\Prototype;
 use App\Repositories\ChartRepository;
 use App\Repositories\JournalRepository;
 use App\Repositories\PeriodRepository;
+use App\Repositories\RuleViolation;
 
 /**
  * General ledger — the posted lines on one account for a period, filtered by fund,
@@ -15,13 +17,21 @@ class Gl extends BaseApiController
 {
     public function index()
     {
-        return $this->json($this->ledger());
+        try {
+            return $this->json($this->ledger());
+        } catch (RuleViolation $e) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage()]);
+        }
     }
 
     /** The ledger as on screen, filters applied, as CSV. */
     public function export()
     {
-        $ledger = $this->ledger();
+        try {
+            $ledger = $this->ledger();
+        } catch (RuleViolation $e) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage()]);
+        }
         $out = fopen('php://temp', 'w+');
         fputcsv($out, ['Account', $ledger['account']['code'] . ' · ' . $ledger['account']['name']]);
         fputcsv($out, ['Period', $ledger['filters']['period']]);
@@ -38,7 +48,7 @@ class Gl extends BaseApiController
 
         return $this->response
             ->setHeader('Content-Type', 'text/csv; charset=utf-8')
-            ->setHeader('Content-Disposition', 'attachment; filename="ELOG general ledger ' . $ledger['account']['code'] . '.csv"')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . Brand::current()['name'] . ' general ledger ' . $ledger['account']['code'] . '.csv"')
             ->setBody($csv);
     }
 
@@ -58,6 +68,9 @@ class Gl extends BaseApiController
     {
         $chart  = (new ChartRepository())->accounts();
         $leaves = array_values(array_filter($chart, static fn ($a) => $a['postable'] && $a['status'] === 'Active' && $a['code'] !== ChartRepository::DERIVED_SURPLUS));
+        if ($leaves === []) {
+            throw new RuleViolation('There are no postable accounts yet, so there is no ledger to show. Import the chart of accounts first — imported accounts open at zero.');
+        }
         $code   = $this->request->getGet('account') ?: '5110';
         $acct   = current(array_filter($leaves, static fn ($a) => $a['code'] === $code)) ?: $leaves[0];
 

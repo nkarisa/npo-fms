@@ -308,6 +308,81 @@ final class ConversionTest extends CIUnitTestCase
         $this->assertStringContainsString('Only the Finance Manager can', json_decode($refused->getJSON(), true)['error']);
     }
 
+    public function testTheTemplateIsTheOrganisationsOwnChartReadyForFigures(): void
+    {
+        $this->open(self::PERIOD);
+
+        // The endpoint serves it as a download. Its body is read from the repository
+        // below: the test harness wraps a plain-text body in HTML and escapes it.
+        $response = $this->get('api/settings/conversion/template?period=' . rawurlencode(self::PERIOD));
+        $response->assertStatus(200);
+        $this->assertSame('text/csv; charset=utf-8', $response->response()->getHeaderLine('Content-Type'));
+        $this->assertSame('attachment; filename="ELOG opening-balances-2024-12-31.csv"',
+            $response->response()->getHeaderLine('Content-Disposition'));
+
+        $template = (new ConversionRepository())->template(self::PERIOD);
+        $this->assertSame('opening-balances-2024-12-31.csv', $template['filename']);
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $template['csv'], 'A BOM, so a spreadsheet reads the account names correctly.');
+
+        $rows = $this->parse($template['csv']);
+        $this->assertSame(['Account code', 'Account name', 'Fund code', 'Programme code', 'Award ref', 'County code', 'Debit', 'Credit'], $rows[0]);
+
+        $codes = array_column(array_slice($rows, 1), 0);
+        $this->assertContains('1110', $codes);
+        $this->assertNotContains('1000', $codes, 'A heading is not postable, so it is not in the template.');
+        $this->assertNotContains('1395', $codes, 'An archived account is not in the template.');
+        // Jan 2025 opens the fiscal year, so a year has ended and its result is in the fund.
+        $this->assertNotContains('4110', $codes, 'Income does not carry into a year-start conversion.');
+        $this->assertNotContains('5110', $codes);
+
+        // The coding the chart defaults to is already filled in, and the figures are blank.
+        $bank = current(array_filter($rows, static fn ($r) => $r[0] === '1110'));
+        $this->assertSame(['FND-100', 'PRG-90', '', '', '', ''], array_slice($bank, 2));
+
+        // Mid-year the template carries income and expenditure too.
+        $this->open('Feb 2025');
+        $this->assertContains('4110', array_column($this->parse((new ConversionRepository())->template('Feb 2025')['csv']), 0));
+    }
+
+    public function testTheTemplateLoadsBackWithNoMappingOnceItsFiguresAreEntered(): void
+    {
+        $this->open(self::PERIOD);
+
+        $rows = $this->parse((new ConversionRepository())->template(self::PERIOD)['csv']);
+
+        // Fill in two accounts and delete the rest, as the panel says to.
+        $filled = [$rows[0]];
+        foreach ($rows as $r) {
+            if ($r[0] === '1110') {
+                $filled[] = array_replace($r, [6 => '750000']);
+            }
+            if ($r[0] === '3100') {
+                $filled[] = array_replace($r, [7 => '750000']);
+            }
+        }
+        $this->assertCount(3, $filled, 'The two accounts filled in, under the header.');
+
+        $path = tempnam(sys_get_temp_dir(), 'tb') . '.csv';
+        $out = fopen($path, 'w');
+        foreach ($filled as $r) {
+            fputcsv($out, $r);
+        }
+        fclose($out);
+
+        $preview = (new ConversionRepository())->run(
+            self::PERIOD,
+            ['path' => $path, 'name' => 'opening-balances-2024-12-31.csv', 'size' => filesize($path), 'mime' => 'text/csv'],
+            ['source' => 'Sage 50'],
+            $this->kamau(),
+            false
+        );
+
+        $this->assertTrue($preview['ok'], 'The template the application issued loads back with nothing to fix.');
+        $this->assertSame([], array_values(array_filter(array_column($preview['rows'], 'problem'))));
+        $this->assertSame(750000, $preview['summary']['debit']);
+        $this->assertSame(750000, $preview['summary']['credit']);
+    }
+
     public function testTheReaderTakesTheColumnsTheOldSystemHappensToUse(): void
     {
         // Separate debit and credit columns, semicolons, a report title above the header,
@@ -348,6 +423,12 @@ final class ConversionTest extends CIUnitTestCase
     {
         $_COOKIE['elog_actor'] = $email;
         service('superglobals')->setCookie('elog_actor', $email);
+    }
+
+    /** A served CSV as rows, past its byte-order mark. */
+    private function parse(string $csv): array
+    {
+        return array_map('str_getcsv', array_filter(explode("\n", trim(substr($csv, 3)))));
     }
 
     private function kamau(): int

@@ -377,11 +377,19 @@ class Payroll extends BaseApiController
         $debits   = array_sum(array_column($view['lines'], 'dr'));
         $credits  = array_sum(array_column($view['lines'], 'cr'));
 
+        // Payroll is worked out before the chart of accounts is imported, so a newly
+        // installed instance has a run to show and nowhere to post it. The screen
+        // says what to set rather than drawing an empty journal.
+        $unmapped = $view['unmapped'] ?? [];
+
         return [
             'title' => $posted ? 'Posted journal' : 'Journal on posting',
-            'check' => round($debits, 2) === round($credits, 2)
+            'unmapped' => $unmapped,
+            'check' => $unmapped !== []
+                ? 'Payroll has nowhere to post yet — ' . count($unmapped) . ($unmapped === [] || count($unmapped) === 1 ? ' thing to set' : ' things to set') . ' in Settings → Payroll'
+                : (round($debits, 2) === round($credits, 2)
                 ? 'Balanced · ' . Prototype::fmt($debits) . ' each side'
-                : 'Out of balance by ' . Prototype::fmt(abs($debits - $credits)) . ' · debits ' . Prototype::fmt($debits) . ', credits ' . Prototype::fmt($credits),
+                : 'Out of balance by ' . Prototype::fmt(abs($debits - $credits)) . ' · debits ' . Prototype::fmt($debits) . ', credits ' . Prototype::fmt($credits)),
             'lines' => array_map(static fn ($l) => [
                 'side' => $l['dr'] > 0 ? 'Dr' : 'Cr',
                 'account' => $l['code'] . ' · ' . ($accounts[$l['code']]['name'] ?? ''),

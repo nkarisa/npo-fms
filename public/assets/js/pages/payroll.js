@@ -237,7 +237,12 @@
         <span class="card-title">${UI.esc(j.title)}</span>
         <span class="muted" style="margin-inline-start:auto;font-size:11px;">${UI.esc(j.check)}</span>
       </div>
-      ${j.lines.map((l) => `
+      ${(j.unmapped || []).length ? `
+        <div class="pr-unmapped">
+          <p>The run above is worked out in full, but there is nowhere in the ledger to post it yet. Payroll posts to the chart of accounts, which is imported after the reference data — set the account each pay component posts to in <a href="/settings?section=Payroll">Settings → Payroll</a>.</p>
+          <ul>${j.unmapped.map((m) => `<li>${UI.esc(m)}</li>`).join('')}</ul>
+        </div>`
+      : j.lines.map((l) => `
         <div class="pr-jl">
           <b class="${l.side === 'Dr' ? 'dr' : 'cr'}">${l.side}</b>
           <div><span class="pr-jl-account">${UI.esc(l.account)}</span><span class="pr-jl-memo">${UI.esc(l.memo)}</span></div>

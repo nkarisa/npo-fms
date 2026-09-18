@@ -117,6 +117,57 @@ final class ConversionRepository extends Repository
         ));
     }
 
+    /**
+     * The trial balance to fill in, as a CSV the reader will accept back unchanged.
+     *
+     * The columns are the ones TrialBalanceCsv looks for first, so a file built from
+     * this needs no mapping. Under them sits the organisation's own chart — every
+     * postable account, already coded with the fund and programme it defaults to —
+     * so the work is entering figures rather than matching codes. Where the period
+     * opens the fiscal year, income and expenditure are left out: a year that has
+     * ended carries its result in the accumulated fund, and a row for them would
+     * only be rejected on the way back in.
+     *
+     * Accounts with nothing against them are deleted or left blank; a nil balance
+     * brings nothing forward either way.
+     *
+     * @return array{filename: string, csv: string}
+     */
+    public function template(?string $period = null): array
+    {
+        $p = $period === null || $period === '' ? null : $this->lookups->periodByName($period);
+        $yearStart = $p !== null && $this->opensYear($p);
+        $funds = $this->lookups->funds();
+        $programmes = $this->lookups->programmes();
+
+        $out = fopen('php://temp', 'w+');
+        fputcsv($out, ['Account code', 'Account name', 'Fund code', 'Programme code', 'Award ref', 'County code', 'Debit', 'Credit']);
+
+        foreach ($this->lookups->accounts() as $a) {
+            if ((int) $a['is_leaf'] === 0 || $a['status'] !== 'active') {
+                continue;
+            }
+            if ($yearStart && in_array($a['type'], ['income', 'expense'], true)) {
+                continue;
+            }
+            fputcsv($out, [
+                $a['code'], $a['name'],
+                $a['default_fund_id'] === null ? '' : ($funds[(int) $a['default_fund_id']]['code'] ?? ''),
+                $a['default_programme_id'] === null ? '' : ($programmes[(int) $a['default_programme_id']]['code'] ?? ''),
+                '', '', '', '',
+            ]);
+        }
+
+        rewind($out);
+        // UTF-8 BOM so a spreadsheet reads an account name's dashes and accents correctly.
+        $csv = "\xEF\xBB\xBF" . stream_get_contents($out);
+        fclose($out);
+
+        $at = $p === null ? Clock::date() : $this->cutOff($p);
+
+        return ['filename' => 'opening-balances-' . $at . '.csv', 'csv' => $csv];
+    }
+
     // ------------------------------------------------------------------
     // Loading
     // ------------------------------------------------------------------
