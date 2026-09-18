@@ -4,6 +4,8 @@ namespace App\Controllers\Api;
 
 use App\Libraries\Prototype;
 use App\Repositories\FundRepository;
+use App\Repositories\RuleViolation;
+use App\Repositories\SettingsRepository;
 
 class Funds extends BaseApiController
 {
@@ -62,6 +64,34 @@ class Funds extends BaseApiController
                 ['label' => 'Endowment', 'value' => Prototype::fmt($byCls('Endowment')), 'note' => 'permanently maintained'],
                 ['label' => 'Closing within 90 days', 'value' => Prototype::fmt(array_sum(array_map(fn ($f) => self::available($f) - $f['spend'], $expiring))), 'note' => count($expiring) . ' funds at risk'],
             ],
+        ]);
+    }
+
+    /**
+     * Opens a fund. Body: {code, name, restriction, ledgerGroup, funder, purpose,
+     * deedRef, startsOn, spendBy, conditions}. Finance Manager only — a fund is the
+     * first coding every posting carries.
+     */
+    public function create()
+    {
+        $actor = $this->actor();
+        if (!in_array('settings.manage', $actor['permissions'] ?? [], true)) {
+            return $this->response->setStatusCode(403)->setJSON([
+                'error' => $actor['role'] . ' cannot open a fund. Only the Finance Manager can — every posting is coded to one.',
+            ]);
+        }
+
+        try {
+            $fund = (new FundRepository())->create($this->request->getJSON(true) ?? [], $this->actorId());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        // The register as Settings lists it, so the screen has no second call to make.
+        return $this->json([
+            'message' => $fund['code'] . ' ' . $fund['name'] . ' is open. Postings can be coded to it now.',
+            'fund'    => $fund,
+            'funds'   => (new SettingsRepository())->funds(),
         ]);
     }
 

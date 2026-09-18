@@ -8,11 +8,30 @@ namespace App\Repositories;
  */
 final class Lookups extends Repository
 {
+    /** The demonstration organisation's head office, and the fallback before one exists. */
     public const SECRETARIAT = 'ELOG-NS';
 
-    public function entityId(string $code = self::SECRETARIAT): int
+    /** The entity everything is read against unless another is named: the head office. */
+    public function entityId(?string $code = null): int
     {
+        $code ??= $this->headOfficeCode();
+
         return (int) $this->cached("entity:{$code}", fn () => $this->value('SELECT id FROM {entities} WHERE code = ?', [$code]));
+    }
+
+    /**
+     * The head office's code: the entity with no parent.
+     *
+     * The schema has exactly one — Settings refuses to change the head office's type
+     * or add a second — so this is the reporting entity the group consolidates into,
+     * whatever the organisation happens to call it. It is only a constant for the
+     * demonstration database, and for an instance that has not been installed yet.
+     */
+    public function headOfficeCode(): string
+    {
+        return $this->cached('head-office-code', fn () => (string) ($this->value(
+            'SELECT code FROM {entities} WHERE parent_id IS NULL ORDER BY id LIMIT 1'
+        ) ?? self::SECRETARIAT));
     }
 
     // ---- People ----
@@ -45,14 +64,32 @@ final class Lookups extends Repository
         return null;
     }
 
-    /** A user's role at the secretariat (or their first role elsewhere). */
+    /** A user's role at the head office (or their first role elsewhere). */
     public function roleOf(int $userId): string
     {
         return $this->cached("role:{$userId}", fn () => (string) $this->value(
             'SELECT r.name FROM {user_entity_roles} ur JOIN {roles} r ON r.id = ur.role_id JOIN {entities} e ON e.id = ur.entity_id
              WHERE ur.user_id = ? ORDER BY e.code = ? DESC, ur.id LIMIT 1',
-            [$userId, self::SECRETARIAT]
+            [$userId, $this->headOfficeCode()]
         ));
+    }
+
+    /**
+     * The first active user who can change settings. Until there is a sign-in, this
+     * is who the application acts as when nobody has chosen otherwise; on a freshly
+     * installed instance it is the only person there is.
+     */
+    public function settingsManagerId(): ?int
+    {
+        return $this->cached('settings-manager', function () {
+            $id = $this->value(
+                "SELECT u.id FROM {users} u JOIN {user_entity_roles} ur ON ur.user_id = u.id
+                 JOIN {role_permissions} rp ON rp.role_id = ur.role_id JOIN {permissions} p ON p.id = rp.permission_id
+                 WHERE u.status = 'active' AND p.key = 'settings.manage' ORDER BY u.id LIMIT 1"
+            );
+
+            return $id === null ? null : (int) $id;
+        });
     }
 
     /** The first active user holding a role, e.g. who a journal is submitted to. */

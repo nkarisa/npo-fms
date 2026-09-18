@@ -19,6 +19,90 @@ final class FundRepository extends Repository
         $this->lookups = new Lookups();
     }
 
+    /** What a fund may be, and the column of the ledger each rolls up to. */
+    public const RESTRICTIONS = ['unrestricted', 'restricted', 'designated', 'endowment'];
+
+    public const LEDGER_GROUPS = ['general', 'grant', 'capital', 'endowment'];
+
+    /**
+     * Opens a fund.
+     *
+     * A fund is the first coding every posting carries, so an instance cannot post
+     * anything until it has at least one. What it may be charged with follows from
+     * its restriction and the ledger column it rolls up to, and the two have to
+     * agree: an endowment is reported as one and rolls up as one, and money held for
+     * a donor belongs in the grant or capital column where awards are reported.
+     *
+     * @param array{code: string, name: string, restriction: string, ledgerGroup: string,
+     *              funder?: string, purpose?: string, deedRef?: string, startsOn?: string,
+     *              spendBy?: string, conditions?: string} $input
+     */
+    public function create(array $input, int $actorId): array
+    {
+        $code = mb_strtoupper(trim((string) ($input['code'] ?? '')));
+        $name = trim((string) ($input['name'] ?? ''));
+        $restriction = mb_strtolower(trim((string) ($input['restriction'] ?? '')));
+        $group = mb_strtolower(trim((string) ($input['ledgerGroup'] ?? '')));
+
+        if (preg_match('/^[A-Z0-9][A-Z0-9-]{1,19}$/', $code) !== 1) {
+            throw new RuleViolation('A fund code is 2 to 20 letters, digits and hyphens, e.g. FND-100.');
+        }
+        if ($name === '') {
+            throw new RuleViolation('Give the fund a name. It is what the statements and every donor report call it.');
+        }
+        if (!in_array($restriction, self::RESTRICTIONS, true)) {
+            throw new RuleViolation('A fund is ' . self::list(self::RESTRICTIONS) . ', not "' . $restriction . '".');
+        }
+        if (!in_array($group, self::LEDGER_GROUPS, true)) {
+            throw new RuleViolation('A fund rolls up to the ' . self::list(self::LEDGER_GROUPS) . ' column, not "' . $group . '".');
+        }
+        if (($restriction === 'endowment') !== ($group === 'endowment')) {
+            throw new RuleViolation('An endowment is reported as one and rolls up to the endowment column. Set both, or neither.');
+        }
+        if ($restriction === 'unrestricted' && in_array($group, ['grant', 'capital'], true)) {
+            throw new RuleViolation('The grant and capital columns report money held for a donor, so a fund in them cannot be unrestricted.');
+        }
+        foreach (['code' => $code, 'name' => $name] as $column => $value) {
+            if ($this->value('SELECT id FROM {funds} WHERE LOWER(' . $column . ') = LOWER(?)', [$value]) !== null) {
+                throw new RuleViolation('A fund with that ' . $column . ' already exists. Every fund is named once.');
+            }
+        }
+
+        $funderId = null;
+        if (trim((string) ($input['funder'] ?? '')) !== '') {
+            $funderId = $this->lookups->funderId(trim((string) $input['funder']))
+                ?? throw new RuleViolation(trim((string) $input['funder']) . ' is not on the funder register.');
+        }
+
+        $this->transaction(function () use ($code, $name, $restriction, $group, $funderId, $input, $actorId) {
+            $id = $this->insert('funds', [
+                'code' => $code, 'name' => $name, 'restriction' => $restriction, 'ledger_group' => $group,
+                'funder_id' => $funderId, 'purpose' => trim((string) ($input['purpose'] ?? '')) ?: null,
+                'deed_ref' => trim((string) ($input['deedRef'] ?? '')) ?: null,
+                'starts_on' => self::dateOrNull($input['startsOn'] ?? null),
+                'spend_by' => self::dateOrNull($input['spendBy'] ?? null),
+                'conditions' => trim((string) ($input['conditions'] ?? '')) ?: null,
+                'status' => 'active', 'created_at' => Clock::timestamp(),
+            ]);
+            $this->audit('settings:segments', $id, $code, $code . ' ' . $name . ' opened as a ' . $restriction
+                . ' fund in the ' . $group . ' column', $actorId, 'settings.changed', $this->lookups->entityId());
+        });
+
+        return $this->find($code) ?? ['code' => $code, 'name' => $name];
+    }
+
+    private static function dateOrNull(mixed $value): ?string
+    {
+        $text = trim((string) $value);
+
+        return $text === '' ? null : date('Y-m-d', strtotime($text) ?: time());
+    }
+
+    private static function list(array $items): string
+    {
+        return implode(', ', array_slice($items, 0, -1)) . ' or ' . end($items);
+    }
+
     public function all(): array
     {
         return $this->cached('all', function () {

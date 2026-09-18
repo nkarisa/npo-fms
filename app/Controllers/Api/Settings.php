@@ -192,6 +192,8 @@ class Settings extends BaseApiController
             'canManage'    => in_array('settings.manage', $this->actor()['permissions'] ?? [], true),
             'organisation' => $settings->organisation(),
             'entities'     => $settings->entities(),
+            'funds'        => $settings->funds(),
+            'fundOptions'  => $settings->fundOptions(),
             'ledger'       => $settings->ledger(),
             'ledgerOptions' => [
                 'frameworks'  => SettingsRepository::FRAMEWORKS,

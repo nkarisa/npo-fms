@@ -3557,6 +3557,27 @@ paths:
                         properties:
                           accent: { type: string, example: '#0f5c4a' }
                           rail: { type: string, example: '#0d1b18' }
+                  funds:
+                    type: array
+                    description: The funds every posting is coded to, listed on Settings → Segments.
+                    items:
+                      type: object
+                      properties:
+                        code: { type: string, example: FND-100 }
+                        name: { type: string, example: General Fund }
+                        restriction: { type: string, example: Unrestricted }
+                        group: { type: string, example: General Fund, description: The ledger column the fund rolls up to. }
+                        funder: { type: string, description: The funder the fund is held for, where it holds one donor's money. }
+                        status: { type: string, example: Active }
+                        purpose: { type: string }
+                        postings: { type: integer, description: Posted journal lines coded to this fund. }
+                  fundOptions:
+                    type: object
+                    description: What a new fund may be.
+                    properties:
+                      restrictions: { type: array, items: { type: string }, example: [Unrestricted, Restricted, Designated, Endowment] }
+                      groups: { type: array, items: { type: string }, example: [General Fund, Grant Fund, Capital Fund, Endowment Fund] }
+                      funders: { type: array, items: { type: string } }
                   entityTypes:
                     type: array
                     description: What an entity may be. There is exactly one head office.
@@ -3647,6 +3668,78 @@ paths:
       responses:
         '200':
           description: The refreshed settings with a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /funds:
+    post:
+      tags: [Funds]
+      summary: Open a fund
+      description: |
+        Finance Manager only. A fund is the first coding every posting carries, so an
+        instance cannot post anything until it has one. The restriction and the ledger
+        column have to agree: an endowment is reported as one and rolls up as one, and
+        the grant and capital columns report money held for a donor, so a fund in them
+        cannot be unrestricted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, restriction, ledgerGroup]
+              properties:
+                code: { type: string, example: FND-100, description: 2 to 20 letters, digits and hyphens. }
+                name: { type: string, example: General Fund }
+                restriction: { type: string, enum: [unrestricted, restricted, designated, endowment] }
+                ledgerGroup: { type: string, enum: [general, grant, capital, endowment] }
+                funder: { type: string, description: A funder already on the register, where the fund holds one donor's money. }
+                purpose: { type: string }
+                deedRef: { type: string }
+                startsOn: { type: string, format: date }
+                spendBy: { type: string, format: date }
+                conditions: { type: string }
+      responses:
+        '200':
+          description: The fund and the register as it now stands, so the panel redraws without a second call.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /statement-formats/account:
+    post:
+      tags: [Settings]
+      summary: Open a cash account
+      description: |
+        Finance Manager only. A reconciliation is between a cash account and the
+        statement of the account behind it, so the ledger account comes first: it must
+        be a postable asset account, and no two cash accounts may sit on the same one.
+        Assign a statement format afterwards before loading a statement.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: { type: string, example: '1110', description: The leaf asset account the cash is held on. }
+                name: { type: string, example: KCB Current Account }
+                shortName: { type: string, example: KCB Current, description: What the reconciliation and cash book show; the name truncated if left out. }
+                kind: { type: string, enum: [bank, mobile_money, petty_cash], default: bank }
+                bankName: { type: string, example: KCB }
+                accountNumber: { type: string, example: '1104578921' }
+                currency: { type: string, example: KES }
+      responses:
+        '200':
+          description: |
+            The account, with the formats, the cash accounts and the ledger accounts still
+            free to carry one — `candidates` — as they now stand.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Message' }

@@ -75,12 +75,14 @@ class PeriodCloseSeeder extends Seeder
         $ctx = SeedContext::get();
         $now = $ctx->now();
 
-        $order = 0;
-        foreach (self::CHECKS as $key => [$label, $kind, $owner, $title, $permission, $settled]) {
-            $ctx->remember('period_close_checks', $key, $ctx->insert('period_close_checks', [
-                'key' => $key, 'sort_order' => ++$order, 'label' => $label, 'kind' => $kind, 'owner_user_id' => $ctx->userId($owner),
-                'owner_title' => $title, 'permission' => $permission, 'settled_note' => $settled, 'created_at' => $now,
-            ]));
+        // The checklist itself is BaselineSeeder's; the prototype names who owns each
+        // item and what it says about ELOG's own accounts once the month is locked.
+        $ctx->adopt('period_close_checks', 'period_close_checks', 'key');
+        foreach (self::CHECKS as $key => [$label, , $owner, $title, , $settled]) {
+            $ctx->db()->table('period_close_checks')->where('key', $key)->update([
+                'label' => $label, 'owner_user_id' => $ctx->userId($owner), 'owner_title' => $title,
+                'settled_note' => $settled, 'updated_at' => $now,
+            ]);
         }
 
         $approver = $ctx->userId(self::APPROVER);

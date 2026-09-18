@@ -35,16 +35,26 @@ abstract class BaseApiController extends BaseController
     /**
      * The acting user. There is no authentication yet; "Act as" in the user menu
      * sets this cookie so one person can play preparer and approver in turn.
+     *
+     * With no cookie the instance falls back to whoever can change settings — on a
+     * freshly installed instance that is the only person there is.
      */
     protected function actor(): array
     {
         $users = new UserRepository();
-        $email = $this->request->getCookie('elog_actor') ?: self::DEFAULT_ACTOR;
+        $email = $this->request->getCookie('elog_actor');
 
-        return $users->actor($email) ?? $users->actor(self::DEFAULT_ACTOR) ?? $users->actors()[0];
+        return ($email ? $users->actor($email) : null) ?? $users->actor($this->defaultActor()) ?? $users->actors()[0];
     }
 
-    protected const DEFAULT_ACTOR = 'w.kamau@elog.or.ke';
+    /** The first active user who can change settings, whatever this organisation calls them. */
+    private function defaultActor(): string
+    {
+        $lookups = new Lookups();
+        $manager = $lookups->settingsManagerId();
+
+        return $manager === null ? '' : (string) ($lookups->users()[$manager]['email'] ?? '');
+    }
 
     /** The acting user's id, for recording who did what. */
     protected function actorId(): int

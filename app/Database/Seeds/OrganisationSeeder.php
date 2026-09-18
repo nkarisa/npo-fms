@@ -11,9 +11,13 @@ use CodeIgniter\Database\Seeder;
 /**
  * Locales, entities, roles and permissions, users and the approval policy.
  *
- * Sources: LOCALES, ST_ENTITIES, ROLES, ACTORS, ST_USERS, ST_APPROVALS, ST_TOGGLES,
- * ST_SEGMENTS, and the prototype's settings state (cfg, currencies,
- * i18nFormatsLocked), which it holds inline rather than as data.
+ * Sources: LOCALES, ST_ENTITIES, ACTORS, ST_USERS, ST_APPROVALS, ST_TOGGLES,
+ * ST_SEGMENTS, and the prototype's settings state (cfg, i18nFormatsLocked), which it
+ * holds inline rather than as data.
+ *
+ * The access model itself — roles, permissions, ceilings — and the currencies and
+ * segments come from BaselineSeeder, which runs first; this seeder takes those rows
+ * as they stand and adds ELOG's entities, people and approval policy around them.
  */
 class OrganisationSeeder extends Seeder
 {
@@ -25,32 +29,6 @@ class OrganisationSeeder extends Seeder
         'ELOG Trust (Endowment)'       => ['code' => 'ELOG-TRUST', 'word' => 'Trust'],
         'ELOG Rift Valley Office'      => ['code' => 'ELOG-RV', 'word' => 'Rift Valley'],
     ];
-
-    /** Permissions each role holds, from the rights described in ACTORS. */
-    private const PERMISSIONS = [
-        'ledger.view'       => 'View the ledger, reports and supporting records',
-        'journal.prepare'   => 'Prepare and submit journals and documents',
-        'journal.approve'   => 'Approve documents within the role\'s ceiling',
-        'journal.post'      => 'Post approved journals to the ledger',
-        'requisition.raise' => 'Raise purchase requisitions',
-        'payroll.view'      => 'View payroll records (personal data; every read is logged)',
-        'settings.manage'   => 'Change organisation, ledger and approval settings',
-        'period.close'      => 'Confirm the management review and close a period',
-        'period.authorise'  => 'Authorise a period close and reopen a closed period',
-        'chart.manage'      => 'Add, change, import and archive accounts in the chart',
-    ];
-
-    private const ROLE_PERMISSIONS = [
-        'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view', 'settings.manage', 'period.close', 'chart.manage'],
-        'Executive Director'  => ['ledger.view', 'journal.approve', 'journal.post', 'payroll.view', 'period.authorise'],
-        'Senior Accountant'   => ['ledger.view', 'journal.prepare', 'requisition.raise'],
-        'Accountant'          => ['ledger.view', 'journal.prepare', 'requisition.raise'],
-        'Programme Officer'   => ['requisition.raise'],
-        'Auditor (read only)' => ['ledger.view'],
-    ];
-
-    /** Approval ceilings for the roles that can approve (ACTORS "limit"). Null is no ceiling. */
-    private const CEILINGS = ['Finance Manager' => 5000000, 'Executive Director' => null];
 
     /**
      * Approvals the prototype states in prose rather than in ST_APPROVALS:
@@ -74,15 +52,6 @@ class OrganisationSeeder extends Seeder
         ['codeLength', 'Account code length', '4 digits'],
     ];
 
-    /** [code, name, indicative rate to KES, active]. */
-    private const CURRENCIES = [
-        ['KES', 'Kenya Shilling', 1, true],
-        ['USD', 'US Dollar', 129.40, true],
-        ['EUR', 'Euro', 139.80, true],
-        ['DKK', 'Danish Krone', 18.75, true],
-        ['GBP', 'Pound Sterling', 163.20, false],
-    ];
-
     private const DOCUMENT_TYPES = ['journal' => 'journal', 'bill' => 'bill', 'payment' => 'payment_run',
         'subgrant' => 'subgrant', 'transfer' => 'transfer', 'revision' => 'budget_revision'];
 
@@ -91,7 +60,18 @@ class OrganisationSeeder extends Seeder
         $ctx = SeedContext::get();
         $now = $ctx->now();
 
+        // BaselineSeeder has already written the source language, the roles, the
+        // permissions each holds, the approval ceilings, the currencies and the
+        // segments. Those rows are taken as they stand; the prototype adds the
+        // languages and the demonstration organisation around them.
+        foreach (['locales' => 'code', 'roles' => 'name', 'permissions' => 'key'] as $table => $column) {
+            $ctx->adopt($table, $table, $column);
+        }
+
         foreach ($ctx->data('LOCALES') as $l) {
+            if ($ctx->lookup('locales', $l['code']) !== null) {
+                continue;
+            }
             $ctx->remember('locales', $l['code'], $ctx->insert('locales', [
                 'code' => $l['code'], 'label' => $l['label'], 'native_name' => $l['native'], 'direction' => $l['dir'],
                 'is_source' => (int) ($l['source'] ?? false), 'status' => str_replace(' ', '_', strtolower($l['status'])),
@@ -113,23 +93,6 @@ class OrganisationSeeder extends Seeder
             $ctx->remember('entities', $meta['code'], $id);
             $ctx->remember('entity_words', $meta['word'], $id);
             $ctx->remember('entity_names', $e['name'], $id);
-        }
-
-        // Roles named only as the unlock authority for locked terminology.
-        $roles = array_merge($ctx->data('ROLES'), ['Finance Director', 'Grants Lead']);
-        foreach ($roles as $role) {
-            $ctx->remember('roles', $role, $ctx->insert('roles', [
-                'name' => $role, 'is_read_only' => (int) str_contains($role, 'read only'), 'created_at' => $now,
-            ]));
-        }
-
-        foreach (self::PERMISSIONS as $key => $description) {
-            $ctx->remember('permissions', $key, $ctx->insert('permissions', ['key' => $key, 'description' => $description]));
-        }
-        foreach (self::ROLE_PERMISSIONS as $role => $keys) {
-            foreach ($keys as $key) {
-                $ctx->db()->table('role_permissions')->insert(['role_id' => $ctx->require('roles', $role), 'permission_id' => $ctx->require('permissions', $key)]);
-            }
         }
 
         $this->seedUsers($ctx, $now);
@@ -157,10 +120,6 @@ class OrganisationSeeder extends Seeder
             ]);
         }
 
-        foreach (self::CEILINGS as $role => $ceiling) {
-            $ctx->insert('approval_limits', ['role_id' => $ctx->require('roles', $role), 'document_type' => null, 'ceiling' => $ceiling, 'created_at' => $now]);
-        }
-
         foreach ($ctx->data('ST_TOGGLES') as $t) {
             $ctx->insert('settings', [
                 'entity_id' => $secretariat, 'key' => $t['key'], 'label' => $t['label'], 'note' => $t['note'],
@@ -186,14 +145,11 @@ class OrganisationSeeder extends Seeder
             'note' => 'Recommended. Finance staff, auditors and funders read the same figure the same way in every language, so a report cannot be misread as a different amount.',
         ]);
 
-        foreach (self::CURRENCIES as [$code, $name, $rate, $active]) {
-            $ctx->insert('currencies', ['code' => $code, 'name' => $name, 'indicative_rate' => $rate, 'is_active' => (int) $active, 'created_at' => $now]);
-        }
-
+        // The prototype's own wording for the segments, over the baseline's.
         foreach ($ctx->data('ST_SEGMENTS') as $s) {
-            $ctx->insert('segments', [
-                'key' => $s['key'], 'name' => $s['name'], 'example' => $s['example'], 'is_required' => (int) $s['required'],
-                'is_reported' => (int) $s['reported'], 'applies_to' => $s['applies'], 'created_at' => $now,
+            $ctx->db()->table('segments')->where('key', $s['key'])->update([
+                'name' => $s['name'], 'example' => $s['example'], 'is_required' => (int) $s['required'],
+                'is_reported' => (int) $s['reported'], 'applies_to' => $s['applies'], 'updated_at' => $now,
             ]);
         }
     }

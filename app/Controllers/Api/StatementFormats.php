@@ -19,6 +19,8 @@ class StatementFormats extends BaseApiController
         return $this->json([
             'formats'  => $repo->formats(),
             'accounts' => $repo->accounts(),
+            'candidates' => $repo->cashCandidates(),
+            'kinds'    => StatementFormatRepository::KINDS,
             'options'  => StatementFormatRepository::options(),
             'canManage' => $this->actor()['canApprove'],
         ]);
@@ -48,6 +50,16 @@ class StatementFormats extends BaseApiController
 
             return ['message' => 'Statement format ' . $name . ' deleted.'];
         });
+    }
+
+    /** Body: {code, name, shortName, kind, bankName, accountNumber, currency}. */
+    public function createAccount()
+    {
+        return $this->write(fn (StatementFormatRepository $repo, array $body) => [
+            'message' => ($a = $repo->createAccount($body, $this->actorId()))['name'] . ' opened on ' . $a['code']
+                . '. Assign it a statement format before loading a statement.',
+            'account' => $a,
+        ]);
     }
 
     /** Body: {account, format: id|null}. */
@@ -93,7 +105,7 @@ class StatementFormats extends BaseApiController
             $out = $action($repo, $this->request->getJSON(true) ?? []);
             $repo = new StatementFormatRepository();
 
-            return $this->json($out + ['formats' => $repo->formats(), 'accounts' => $repo->accounts()]);
+            return $this->json($out + ['formats' => $repo->formats(), 'accounts' => $repo->accounts(), 'candidates' => $repo->cashCandidates()]);
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }

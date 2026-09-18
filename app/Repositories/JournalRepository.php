@@ -681,7 +681,7 @@ final class JournalRepository extends Repository
     {
         return $this->value(
             "SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = 'closedPeriods'",
-            [Lookups::SECRETARIAT]
+            [$this->lookups->headOfficeCode()]
         ) === '1';
     }
 

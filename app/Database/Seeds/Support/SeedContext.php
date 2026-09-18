@@ -101,6 +101,19 @@ final class SeedContext
         return $this->maps[$map][$key] ?? throw new RuntimeException("Unknown {$map} '{$key}' in the prototype data.");
     }
 
+    /**
+     * Remembers the rows BaselineSeeder already wrote, so the demonstration seeders
+     * refer to the same reference data rather than seeding a second copy of it.
+     *
+     * adopt('roles', 'roles', 'name') maps each role's name to its id.
+     */
+    public function adopt(string $table, string $map, string $column): void
+    {
+        foreach ($this->db->table($table)->select('id, ' . $column)->get()->getResultArray() as $row) {
+            $this->remember($map, (string) $row[$column], (int) $row['id']);
+        }
+    }
+
     public function all(string $map): array
     {
         return $this->maps[$map] ?? [];

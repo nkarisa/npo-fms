@@ -115,6 +115,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('statement-formats', 'Api\StatementFormats::create');
     $routes->post('statement-formats/sample', 'Api\StatementFormats::sample');
     $routes->post('statement-formats/assign', 'Api\StatementFormats::assign');
+    $routes->post('statement-formats/account', 'Api\StatementFormats::createAccount');
     $routes->post('statement-formats/(:num)', 'Api\StatementFormats::update/$1');
     $routes->post('statement-formats/(:num)/delete', 'Api\StatementFormats::delete/$1');
     $routes->get('assets', 'Api\Assets::index');
@@ -159,6 +160,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('programmes/(:segment)/reactivate', 'Api\Programmes::reactivate/$1');
     $routes->get('cashflow', 'Api\Cashflow::index');
     $routes->get('funds', 'Api\Funds::index');
+    $routes->post('funds', 'Api\Funds::create');
     $routes->get('funds/(:segment)', 'Api\Funds::show/$1');
     $routes->get('grants', 'Api\Grants::index');
     $routes->get('grants/(:segment)', 'Api\Grants::show/$1');

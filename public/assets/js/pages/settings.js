@@ -19,6 +19,7 @@
     userQuery: '', userPage: 0, auditQuery: '', auditPage: 0,
     curForm: { code: '', name: '', rate: '' },
     entForm: { code: '', name: '', type: 'Branch', currency: '' },
+    fundForm: { code: '', name: '', restriction: 'Unrestricted', group: 'General Fund', funder: '' },
     benForm: { name: '', basis: 'flat', taxable: true },
     gradeForm: { grade: '', band: '', ben: {} },
     newBenefits: 0,
@@ -108,6 +109,7 @@
       paintTheme(draft.appearance);
       view.curForm = { code: '', name: '', rate: '' };
       view.entForm = { code: '', name: '', type: 'Branch', currency: '' };
+      view.fundForm = { code: '', name: '', restriction: 'Unrestricted', group: 'General Fund', funder: '' };
       view.benForm = { name: '', basis: 'flat', taxable: true };
       view.gradeForm = { grade: '', band: '', ben: {} };
       render();
@@ -356,6 +358,46 @@
             </div>`).join('')}
         </div></div>
         ${warn(open.length ? `The ${open.map(s => s.name.toLowerCase()).join(' and ')} segment is optional. Postings without it cannot be traced to a donor, and donor reports will not reconcile to the ledger.` : '')}
+        ${rule}
+        ${funds()}
+      </div>`;
+  }
+
+  /**
+   * The funds every posting is coded to. A fund is opened as it is entered rather
+   * than drafted with the rest of the screen: nothing can be coded to it until it
+   * exists, and a fund is never deleted — it is closed, which keeps its history.
+   */
+  function funds() {
+    const f = view.fundForm;
+    const o = data.fundOptions;
+    const restricted = ['Restricted', 'Designated', 'Endowment'].includes(f.restriction);
+
+    return `
+      ${head('Funds', 'What the money is held for. Every posting carries one, and the fund decides which column of the ledger and which statement it is reported in. Funds are opened as they are entered, not saved with the rest of the screen.')}
+      <div class="st-table"><div style="min-width:660px;">
+        <div class="st-tr st-th" style="grid-template-columns:110px minmax(150px,1fr) 118px 132px 92px;"><div>Code</div><div>Fund</div><div>Class</div><div>Ledger column</div><div class="end">Postings</div></div>
+        ${data.funds.length ? data.funds.map(x => `
+          <div class="st-tr" style="grid-template-columns:110px minmax(150px,1fr) 118px 132px 92px;">
+            <div class="mono st-strong">${esc(x.code)}</div>
+            <div class="st-stack"><span>${esc(x.name)}</span><span class="st-sub st-ellipsis">${esc(x.funder || x.purpose || (x.status === 'Active' ? 'Open for posting' : 'Closed'))}</span></div>
+            <div class="st-muted">${esc(x.restriction)}</div>
+            <div class="st-muted st-ellipsis">${esc(x.group)}</div>
+            <div class="end mono st-muted">${x.postings ? fmt(x.postings) : '—'}</div>
+          </div>`).join('')
+          : '<div class="st-tr"><div class="st-sub">No funds yet. Nothing can be posted until there is one — every journal line carries a fund.</div></div>'}
+      </div></div>
+      <div class="st-addbox">
+        <span class="st-addtitle">Open a fund</span>
+        <div class="st-addrow">
+          <label class="st-field" style="flex:0 0 130px;">Code<input data-bind="form.fundForm.code" value="${esc(f.code)}" placeholder="FND-100" class="mono upper" maxlength="20"></label>
+          <label class="st-field" style="flex:1 1 200px;min-width:160px;">Fund name<input data-bind="form.fundForm.name" value="${esc(f.name)}" placeholder="General Fund"></label>
+          <label class="st-field" style="flex:0 0 140px;">Class<select data-bind="form.fundForm.restriction">${o.restrictions.map(r => `<option ${r === f.restriction ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+          <label class="st-field" style="flex:0 0 156px;">Ledger column<select data-bind="form.fundForm.group">${o.groups.map(g => `<option ${g === f.group ? 'selected' : ''}>${esc(g)}</option>`).join('')}</select></label>
+          ${restricted && o.funders.length ? `<label class="st-field" style="flex:0 0 180px;">Held for<select data-bind="form.fundForm.funder"><option value="">No single funder</option>${o.funders.map(x => `<option ${x === f.funder ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>` : ''}
+          <button type="button" class="btn btn-primary" data-act="fund-add" data-manage>Open fund</button>
+        </div>
+        <span class="st-sub">An endowment is reported as one and rolls up to the endowment column — set both or neither. The grant and capital columns report money held for a donor, so a fund in them cannot be unrestricted.</span>
       </div>`;
   }
 
@@ -984,6 +1026,27 @@
       view.entForm = { code: '', name: '', type: 'Branch', currency: '' };
       UI.toast(`${name} added — save to open it for posting.`);
     }
+    // A fund is opened as it is entered: the ledger refers to it, so it cannot wait
+    // in a draft in the browser while something is coded to it.
+    if (act === 'fund-add') {
+      const f = view.fundForm;
+      const code = f.code.trim().toUpperCase();
+      if (!/^[A-Z0-9][A-Z0-9-]{1,19}$/.test(code)) return UI.toast('Use 2 to 20 letters, digits and hyphens for the code — FND-100.');
+      if (!f.name.trim()) return UI.toast('Name the fund. It is what the statements and every donor report call it.');
+      const group = { 'General Fund': 'general', 'Grant Fund': 'grant', 'Capital Fund': 'capital', 'Endowment Fund': 'endowment' }[f.group];
+      try {
+        const res = await UI.postJSON('/api/funds', {
+          code, name: f.name.trim(), restriction: f.restriction.toLowerCase(), ledgerGroup: group, funder: f.funder || '',
+        });
+        view.fundForm = { code: '', name: '', restriction: 'Unrestricted', group: 'General Fund', funder: '' };
+        data.funds = res.funds;
+        render();
+        UI.toast(res.message);
+      } catch (err) {
+        UI.toast(err.message);
+      }
+      return;
+    }
     if (act === 'cur-toggle') {
       const c = draft.currencies[Number(id)];
       const h = data.currencies.find(x => x.code === c.code);
@@ -1107,6 +1170,7 @@ const StatementFormats = (() => {
   let root = null;
   let data = null;
   const ed = { format: null, file: null, sample: null, timer: null, seq: 0 };
+  const form = { open: false, account: { code: '', name: '', shortName: '', kind: 'bank', bankName: '', accountNumber: '', currency: 'KES' } };
 
   const BLANK = {
     id: null, name: '', builtin: false, delimiter: 'comma', dateColumn: '', dateFormat: 'dd/mm/yyyy', referenceColumn: '',
@@ -1126,6 +1190,61 @@ const StatementFormats = (() => {
     render();
   }
 
+  async function openAccount() {
+    const a = { ...form.account, code: form.account.code || (data.candidates[0] || {}).code || '' };
+    if (!a.name.trim()) return UI.toast('Name the account — it is what the reconciliation and the cash book show.');
+
+    try {
+      const res = await UI.postJSON('/api/statement-formats/account', a);
+      Object.assign(data, { formats: res.formats, accounts: res.accounts, candidates: res.candidates });
+      form.open = false;
+      form.account = { code: '', name: '', shortName: '', kind: 'bank', bankName: '', accountNumber: '', currency: 'KES' };
+      render();
+      UI.toast(res.message);
+    } catch (err) {
+      UI.toast(err.message);
+    }
+  }
+
+  /**
+   * Opening a cash account. The ledger account comes first: a reconciliation agrees
+   * the statement of the account behind it, so only a postable asset account that
+   * does not already carry one is offered.
+   */
+  function newAccount() {
+    if (!data.canManage) return '';
+    if (!data.candidates.length) {
+      return `<p class="bu-intro">Every postable asset account already carries a cash account. Add one to the chart of accounts to open another.</p>`;
+    }
+    const a = form.account;
+
+    return `
+      <details class="sf-new" ${form.open ? 'open' : ''}>
+        <summary>Open a cash account</summary>
+        <div class="bu-grid" style="margin-top:12px;">
+          <label class="bu-field"><span>Ledger account</span>
+            <select data-a="code">${data.candidates.map(c => `<option value="${esc(c.code)}" ${c.code === a.code ? 'selected' : ''}>${esc(c.code)} · ${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="bu-field"><span>Account name</span>
+            <input data-a="name" value="${esc(a.name)}" placeholder="KCB Current Account" maxlength="120"></label>
+          <label class="bu-field"><span>Short name <em>on the reconciliation</em></span>
+            <input data-a="shortName" value="${esc(a.shortName)}" placeholder="KCB Current" maxlength="40"></label>
+          <label class="bu-field"><span>Kind</span>
+            <select data-a="kind">${Object.entries(data.kinds).map(([k, label]) => `<option value="${esc(k)}" ${k === a.kind ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
+          ${a.kind === 'petty_cash' ? '' : `
+            <label class="bu-field"><span>Bank <em>or provider</em></span>
+              <input data-a="bankName" value="${esc(a.bankName)}" placeholder="KCB" maxlength="60"></label>
+            <label class="bu-field"><span>Account number</span>
+              <input data-a="accountNumber" value="${esc(a.accountNumber)}" placeholder="1104578921" class="mono" maxlength="40"></label>`}
+          <label class="bu-field"><span>Currency</span>
+            <input data-a="currency" value="${esc(a.currency)}" class="mono upper" maxlength="3"></label>
+        </div>
+        <div class="bu-intro" style="margin-top:8px;">${a.kind === 'petty_cash'
+          ? 'Petty cash takes no statement, so it takes no format — it is counted and agreed by hand.'
+          : 'Assign it a statement format below once it is open; a statement cannot be loaded without one.'}</div>
+        <div class="bu-actions" style="margin-top:10px;"><button type="button" class="btn btn-primary" data-open-account>Open account</button></div>
+      </details>`;
+  }
+
   function render() {
     if (!root || !root.isConnected) return;
     const opts = (selected) => `<option value="">No format — statements cannot be uploaded</option>`
@@ -1140,8 +1259,9 @@ const StatementFormats = (() => {
             <div class="sf-row sf-account">
               <div><div class="sf-name">${esc(a.code)} · ${esc(a.name)}</div><div class="sf-sub">${a.kind === 'mobile_money' ? 'Mobile money' : 'Bank'} · ${esc(a.currency)}</div></div>
               <select data-assign="${esc(a.code)}" ${data.canManage ? '' : 'disabled'} aria-label="Statement format for ${esc(a.short)}">${opts(a.formatId)}</select>
-            </div>`).join('')}
+            </div>`).join('') || '<div class="coa-empty">No cash accounts yet. A reconciliation agrees one of these to its bank statement.</div>'}
         </div>
+        ${newAccount()}
         <div class="sf-section" style="display:flex;align-items:center;gap:8px;">Formats
           ${data.canManage ? '<button type="button" class="btn btn-primary" data-new style="margin-inline-start:auto;text-transform:none;letter-spacing:0;">+ New format</button>' : ''}
         </div>
@@ -1162,7 +1282,24 @@ const StatementFormats = (() => {
         </div>
       </div>`;
 
+    root.ontoggle = (e) => {
+      if (e.target.classList && e.target.classList.contains('sf-new')) form.open = e.target.open;
+    };
+    root.oninput = (e) => {
+      const field = e.target.closest('[data-a]');
+      if (field) form.account[field.dataset.a] = field.value;
+    };
     root.onchange = async (e) => {
+      // The kind decides which fields the panel shows, so it redraws; the rest do not.
+      const field = e.target.closest('[data-a]');
+      if (field) {
+        form.account[field.dataset.a] = field.value;
+        if (field.dataset.a === 'kind') {
+          form.open = true;
+          render();
+        }
+        return;
+      }
       const pick = e.target.closest('select[data-assign]');
       if (!pick) return;
       try {
@@ -1177,6 +1314,7 @@ const StatementFormats = (() => {
     root.onclick = async (e) => {
       const btn = e.target.closest('button');
       if (!btn) return;
+      if (btn.dataset.openAccount !== undefined) return openAccount();
       const find = (id) => data.formats.find(f => f.id === Number(id));
       if (btn.dataset.new !== undefined) openEditor({ ...BLANK, descriptionColumns: [''], rules: [] });
       if (btn.dataset.edit) openEditor(structuredClone(find(btn.dataset.edit)));

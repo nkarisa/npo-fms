@@ -243,8 +243,14 @@ final class ProgrammeRepository extends Repository
         if ($purpose === '') {
             throw new RuleViolation('State what the programme covers — it is what makes coding decisions consistent between people.');
         }
-        if ($share < 0 || $share >= 100) {
-            throw new RuleViolation('The share of shared costs must be between 0 and 99%.');
+        // The first programme an instance opens carries the whole allocation: there is
+        // nothing else for support costs to be recovered against. Once others exist,
+        // one taking everything would leave them nothing, so 100% is refused.
+        $existing = $this->allocable();
+        if ($share < 0 || $share > 100 || ($share >= 100 && $existing !== [])) {
+            throw new RuleViolation($existing === []
+                ? 'The share of shared costs is between 0 and 100%.'
+                : 'The share of shared costs must be between 0 and 99% — the programmes already open keep a share between them.');
         }
 
         // Defer means the programme carries none of the shared costs, so its own

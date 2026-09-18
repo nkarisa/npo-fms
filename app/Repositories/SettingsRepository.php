@@ -88,6 +88,40 @@ final class SettingsRepository extends Repository
         ], $this->rows('SELECT * FROM {entities} ORDER BY id'));
     }
 
+    /**
+     * The funds every posting is coded to, with how many each carries.
+     *
+     * A fund is opened here rather than drafted with the rest of the screen: it is a
+     * coding dimension the ledger refers to, not a setting, and nothing can be coded
+     * to it until it exists.
+     */
+    public function funds(): array
+    {
+        return $this->cached('funds', function () {
+            $postings = array_column($this->rows(
+                "SELECT l.fund_id, COUNT(*) AS n FROM {journal_lines} l JOIN {journals} j ON j.id = l.journal_id
+                 WHERE j.status IN ('posted', 'reversed') GROUP BY l.fund_id"
+            ), 'n', 'fund_id');
+
+            return array_map(static fn ($f) => [
+                'code' => $f['code'], 'name' => $f['name'], 'restriction' => ucfirst($f['restriction']),
+                'group' => self::FUND_GROUPS[$f['ledger_group']], 'funder' => $f['funder'] ?? '',
+                'status' => ucfirst($f['status']), 'purpose' => $f['purpose'] ?? '',
+                'postings' => (int) ($postings[$f['id']] ?? 0),
+            ], $this->rows('SELECT f.*, fu.name AS funder FROM {funds} f LEFT JOIN {funders} fu ON fu.id = f.funder_id ORDER BY f.code'));
+        });
+    }
+
+    /** What a new fund may be, and the funders one can be held for. */
+    public function fundOptions(): array
+    {
+        return [
+            'restrictions' => array_map('ucfirst', FundRepository::RESTRICTIONS),
+            'groups'       => array_values(self::FUND_GROUPS),
+            'funders'      => array_column($this->rows('SELECT name FROM {funders} ORDER BY name'), 'name'),
+        ];
+    }
+
     /** @return list<array{code: string, name: string}> entities a user can be given access to */
     public function entityOptions(): array
     {
@@ -151,7 +185,7 @@ final class SettingsRepository extends Repository
     {
         return $this->cached('formats-locked', fn () => ($this->value(
             "SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = 'formatsLocked'",
-            [Lookups::SECRETARIAT]
+            [$this->lookups->headOfficeCode()]
         ) ?? '1') === '1');
     }
 
@@ -1119,14 +1153,20 @@ final class SettingsRepository extends Repository
         $this->audit('settings:' . strtolower($area), null, null, $what, $actorId, 'settings.changed', $this->headOffice()['id']);
     }
 
+    /**
+     * The entity the organisation's own details and settings are held on: the one
+     * with no parent. An instance that has not been installed has none, and says so
+     * rather than serving a screen with nothing behind it.
+     */
     private function headOffice(): array
     {
-        return $this->cached('head-office', fn () => $this->row('SELECT * FROM {entities} WHERE code = ?', [Lookups::SECRETARIAT]));
+        return $this->cached('head-office', fn () => $this->row('SELECT * FROM {entities} WHERE parent_id IS NULL ORDER BY id LIMIT 1')
+            ?? throw new \RuntimeException('This instance has no organisation yet. Run `php spark db:seed BaselineSeeder` and then `php spark install`.'));
     }
 
     private function settingRows(string $kind): array
     {
-        return $this->rows('SELECT s.* FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.kind = ? ORDER BY s.id', [Lookups::SECRETARIAT, $kind]);
+        return $this->rows('SELECT s.* FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.kind = ? ORDER BY s.id', [$this->lookups->headOfficeCode(), $kind]);
     }
 
     /** Users with their entity names joined by "|" (entity names contain commas). */

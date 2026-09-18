@@ -72,6 +72,27 @@ final class StatementFormatRepository extends Repository
     }
 
     /**
+     * The ledger accounts a cash account could be opened on: postable asset accounts
+     * that do not already carry one.
+     *
+     * @return list<array{code: string, name: string}>
+     */
+    public function cashCandidates(): array
+    {
+        // Read from the rows, not the keys: bankAccounts() is keyed by account code,
+        // and PHP turns a numeric code like "1110" into an integer key.
+        $taken = array_column($this->lookups->bankAccounts(), 'code');
+
+        return array_values(array_map(
+            static fn ($a) => ['code' => $a['code'], 'name' => $a['name']],
+            array_filter(
+                $this->lookups->accounts(),
+                static fn ($a) => $a['type'] === 'asset' && (int) $a['is_leaf'] === 1 && $a['status'] === 'active' && !in_array($a['code'], $taken, true)
+            )
+        ));
+    }
+
+    /**
      * Creates a format (no id) or changes one.
      *
      * @return array the saved format
@@ -129,6 +150,63 @@ final class StatementFormatRepository extends Repository
     }
 
     /** Sets the format an account's statements are read with (null clears it). */
+    /** What a cash account may be. Petty cash takes no statement, so it takes no format. */
+    public const KINDS = ['bank' => 'Bank account', 'mobile_money' => 'Mobile money', 'petty_cash' => 'Petty cash'];
+
+    /**
+     * Opens a cash account against a ledger account.
+     *
+     * A bank reconciliation is between a cash account and the statement of the
+     * account behind it, so the ledger account comes first: it must be a postable
+     * asset account, and no two cash accounts can sit on the same one or the
+     * reconciliation would not know which balance it was agreeing.
+     *
+     * @param array{code: string, name: string, shortName?: string, kind?: string,
+     *              bankName?: string, accountNumber?: string, currency?: string} $input
+     */
+    public function createAccount(array $input, int $actorId): array
+    {
+        $code = trim((string) ($input['code'] ?? ''));
+        $name = trim((string) ($input['name'] ?? ''));
+        $kind = trim((string) ($input['kind'] ?? 'bank'));
+
+        $account = $this->lookups->accounts()[$code] ?? null;
+        $refusal = match (true) {
+            $account === null                    => 'Account ' . $code . ' is not in the chart of accounts.',
+            $account['type'] !== 'asset'         => $code . ' ' . $account['name'] . ' is ' . $account['type'] . '. Cash is held on an asset account.',
+            (int) $account['is_leaf'] === 0      => $code . ' ' . $account['name'] . ' is a heading, not a postable account.',
+            $account['status'] !== 'active'      => $code . ' ' . $account['name'] . ' is archived.',
+            isset($this->lookups->bankAccounts()[$code]) => $code . ' already carries ' . $this->lookups->bankAccounts()[$code]['name']
+                . '. One ledger account holds one cash account, or a reconciliation cannot say which balance it agreed.',
+            $name === ''                         => 'Give the account the name it is known by — it is what the reconciliation and the cash book show.',
+            !isset(self::KINDS[$kind])           => 'A cash account is a ' . implode(', a ', array_map('lcfirst', self::KINDS)) . '.',
+            default                              => null,
+        };
+        if ($refusal !== null) {
+            throw new RuleViolation($refusal);
+        }
+
+        $short = trim((string) ($input['shortName'] ?? '')) ?: mb_substr($name, 0, 40);
+        $currency = mb_strtoupper(trim((string) ($input['currency'] ?? ''))) ?: 'KES';
+        if ($this->value('SELECT code FROM {currencies} WHERE code = ?', [$currency]) === null) {
+            throw new RuleViolation($currency . ' is not a currency this instance holds. Add it in Settings → Currencies first.');
+        }
+
+        $this->transaction(function () use ($account, $code, $name, $short, $kind, $currency, $input, $actorId) {
+            $this->insert('bank_accounts', [
+                'entity_id' => $this->lookups->entityId(), 'account_id' => $account['id'], 'name' => $name,
+                'short_name' => $short, 'kind' => $kind, 'currency' => $currency,
+                'bank_name' => trim((string) ($input['bankName'] ?? '')) ?: null,
+                'account_number' => trim((string) ($input['accountNumber'] ?? '')) ?: null,
+                'status' => 'active', 'created_at' => Clock::timestamp(),
+            ]);
+            $this->logChange($name . ' opened on ' . $code . ' ' . $account['name'] . ' as ' . lcfirst(self::KINDS[$kind])
+                . ($currency === 'KES' ? '' : ' in ' . $currency), $actorId);
+        });
+
+        return ['code' => $code, 'name' => $name, 'short' => $short, 'kind' => $kind, 'currency' => $currency];
+    }
+
     public function assign(string $code, ?int $formatId, int $actorId): void
     {
         $account = current(array_filter($this->accounts(), static fn ($a) => $a['code'] === $code))

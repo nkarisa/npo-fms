@@ -7,7 +7,11 @@ use CodeIgniter\Database\Seeder;
 use RuntimeException;
 
 /**
- * Loads the prototype data (app/Data/*.json) into an empty database.
+ * Loads the baseline reference data and then the prototype data (app/Data/OLD/*.json)
+ * into an empty database — the demonstration organisation, ELOG.
+ *
+ * A real instance is stood up with BaselineSeeder and `spark install` instead; see
+ * BaselineSeeder for what the two paths share.
  *
  *     php spark migrate
  *     php spark db:seed DatabaseSeeder
@@ -21,6 +25,9 @@ class DatabaseSeeder extends Seeder
 {
     /** In dependency order. */
     private const SEEDERS = [
+        // The reference data any instance needs, demonstration or not. Seeding it here
+        // rather than inside the prototype seeders keeps one definition of it.
+        BaselineSeeder::class,
         OrganisationSeeder::class,
         ReferenceDataSeeder::class,
         ChartAndDimensionsSeeder::class,

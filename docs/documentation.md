@@ -21,6 +21,50 @@ Two principles run through the whole interface:
   the payroll run, the advances register, donor claims) are reconciled back to
   their control accounts, and the interface shows whether they agree.
 
+### Standing up a new instance
+
+This document describes an instance already in use. A new one — for a different
+organisation, in its own database — is stood up in four commands and then four
+screens:
+
+```
+php spark migrate                      # the schema
+php spark db:seed BaselineSeeder       # the reference data any instance needs
+php spark install                      # the organisation, its head office, its
+                                       # first financial year and its first user
+```
+
+`BaselineSeeder` writes what is the same everywhere: the roles and the permissions
+each holds, the approval ceilings, the coding segments, the document series, the
+currencies, Kenya's counties, the payroll components, grade scale and statutory
+rates, and the month-end checklist. It names no organisation — there is no entity,
+no user, no chart of accounts and no financial year — and running it again changes
+nothing.
+
+`php spark install` asks for the organisation's registered and short names, its tax
+PIN and registration number, the head office's code, name and functional currency,
+the reporting framework, year end and account code length, the first financial year
+to keep, and the first user's name and email. It writes them in one transaction, so
+an answer it cannot accept leaves the instance exactly as it was, and it refuses to
+run twice: a second head office is not something the consolidation can carry. For an
+unattended install, `php spark install --show-config --no-header > install.json`
+writes the answers file and `php spark install --config=install.json` reads it back.
+
+The first user holds the **Finance Manager** role, the only one that can change
+settings. From there:
+
+1. **Settings** → Ledger, Segments, Currencies and Approvals: check the defaults
+   against how the organisation actually works.
+2. **Chart of accounts**: add the top-level headings, then **Import** the rest.
+   Imported accounts open at zero — only journals move a balance.
+3. **Settings → Segments** and **Settings → Bank statements**: open the funds every
+   posting is coded to, and the cash accounts the reconciliation agrees. Then
+   **Programmes** → add the first one, which carries the whole shared-cost
+   allocation, since there is nothing else to recover support costs against yet.
+4. **Settings → Opening balances**: carry the trial balance from the old system.
+5. **Settings → Users**: invite a second person — the conversion cannot be approved
+   by whoever loaded it.
+
 ### How the interface is built
 
 Every page shares a common shell (sidebar + top bar). The page body is rendered
@@ -517,14 +561,27 @@ warning appears if you try to leave with unsaved changes.
 - **Ledger** — reporting framework, functional currency, year end, code length;
   posting-control toggles; open-period chips.
 - **Segments** — which coding segments are required and shown on reports, with a
-  warning if grant/fund segments are left optional.
+  warning if grant/fund segments are left optional; and, below them, the **funds**
+  every posting is coded to. A fund is opened as it is entered rather than saved
+  with the rest of the screen: the ledger refers to it, so it cannot wait in a
+  draft while something is coded to it. Each fund has a class (unrestricted,
+  restricted, designated or endowment) and the ledger column it rolls up to, and
+  the two have to agree — an endowment is reported as one and rolls up as one, and
+  the grant and capital columns report money held for a donor, so a fund in them
+  cannot be unrestricted. A restricted fund can name the funder it is held for.
+  Funds are never deleted; the table shows how many postings each carries.
 - **Currencies** — indicative rates and enable/disable; add a currency. The base
   and in-use currencies cannot be disabled.
 - **Approvals** — thresholds and approvers per transaction type, with a
   segregation-of-duties note.
-- **Bank statements** — assign a CSV statement format to each cash account and
-  define formats (column mapping, separators, date and decimal formats). This
-  section saves as you go.
+- **Bank statements** — the cash accounts and the CSV statement format each uses.
+  **Open a cash account** puts one on a ledger account: only postable asset
+  accounts that do not already carry a cash account are offered, because a
+  reconciliation agrees the statement of the account behind it and would not know
+  which balance it had agreed if two sat on one. An account is a bank account,
+  mobile money or petty cash; petty cash takes no statement, so it takes no
+  format. Formats are defined below (column mapping, separators, date and decimal
+  formats) and assigned to an account from the list. This section saves as you go.
 - **Opening balances** — carrying an entity's permanent balances from a legacy
   system onto this ledger, when the system is first stood up. Balances are not
   stored as figures against accounts: everything this application reports is
@@ -612,8 +669,9 @@ warning appears if you try to leave with unsaved changes.
 **What you can do:** edit any section into the draft and **Save changes** or
 **Discard**; manage currencies, approvals, payroll scales, segments and posting
 controls; assign and define bank-statement formats; set up the M-Pesa integration
-and check its connection; carry opening balances from a legacy system and discard
-a conversion that has not yet been approved; add and amend entities; name the
+and check its connection; open funds and cash accounts; carry opening balances from
+a legacy system and discard a conversion that has not yet been approved; add and
+amend entities; name the
 application, upload a logo and choose the interface theme; manage users and
 languages. Saving is restricted to the Finance Manager.
 
