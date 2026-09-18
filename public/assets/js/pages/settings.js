@@ -165,11 +165,12 @@
     const main = app.querySelector('#st-main');
     const renderers = {
       Organisation: organisation, Ledger: ledger, Segments: segments, Currencies: currencies, Approvals: approvals,
-      'Bank statements': bankStatements, Integrations: integrations, Payroll: payroll, Appearance: appearance,
+      'Bank statements': bankStatements, 'Opening balances': openingBalances, Integrations: integrations,
+      Payroll: payroll, Appearance: appearance,
       'Language and translation': language, Users: users, 'Audit log': audit,
     };
     (renderers[view.section] || organisation)(main);
-    if (!data.canManage && !['Bank statements', 'Integrations', 'Language and translation'].includes(view.section)) {
+    if (!data.canManage && !['Bank statements', 'Opening balances', 'Integrations', 'Language and translation'].includes(view.section)) {
       main.querySelectorAll('input:not([data-free]), select:not([data-free]), textarea').forEach(el => { el.disabled = true; });
       main.querySelectorAll('[data-manage]').forEach(el => { el.disabled = true; });
     }
@@ -425,6 +426,11 @@
   function bankStatements(main) {
     main.innerHTML = `<div class="st-body wide">${head('Bank statements', 'How each bank\'s CSV statement maps onto the reconciliation, and which format each account uses. Changes in this section are saved as you make them.')}<div id="st-formats"></div></div>`;
     StatementFormats.mount(main.querySelector('#st-formats'));
+  }
+
+  function openingBalances(main) {
+    main.innerHTML = `<div class="st-body wide">${head('Opening balances', 'Carrying an entity\'s permanent balances from a legacy system onto this ledger. The file is checked before anything is written, and what is written is a draft for someone else to approve.')}<div id="st-conversion"></div></div>`;
+    Conversion.mount(main.querySelector('#st-conversion'));
   }
 
   function integrations(main) {
@@ -1648,6 +1654,200 @@ const Mpesa = (() => {
     } finally {
       button.disabled = false;
       button.textContent = was;
+    }
+  }
+
+  return { mount };
+})();
+
+/**
+ * Settings → Opening balances: carrying an entity's permanent balances from a
+ * legacy system onto this ledger.
+ *
+ * The panel checks before it writes. "Check the file" answers every rule and
+ * changes nothing; "Carry the balances" does the same and, if every check passed,
+ * writes them as a DRAFT journal — which is then submitted and approved on the
+ * Journals screen like any other entry, so the person who loads the conversion
+ * cannot also approve it. Until it is approved the whole load can be thrown away.
+ */
+const Conversion = (() => {
+  const esc = UI.esc;
+  const fmt = (n) => Number(n).toLocaleString('en-US');
+
+  let root = null;
+  let data = null;
+  const state = { period: '', source: '', decimal: '.', preview: null, busy: false };
+
+  async function mount(container) {
+    root = container;
+    root.innerHTML = '<div class="coa-empty">Loading…</div>';
+    try {
+      data = await UI.fetchJSON('/api/settings/conversion');
+    } catch (err) {
+      root.innerHTML = `<div class="coa-empty">${esc(err.message)}</div>`;
+      return;
+    }
+    const open = data.periods.filter(p => p.available);
+    if (!state.period || !open.some(p => p.name === state.period)) state.period = (open[0] || {}).name || '';
+    render();
+  }
+
+  function render() {
+    if (!root || !root.isConnected) return;
+    root.innerHTML = `<div class="sf-cards">${data.batch ? carried() : ''}${data.batch && data.batch.settled ? '' : loader()}${preview()}</div>`;
+    bind();
+  }
+
+  // ---- What has already been carried ----
+
+  function carried() {
+    const b = data.batch;
+    return `
+      <div class="coa-card cv-carried">
+        <div class="sf-row">
+          <div>
+            <div class="sf-name">${esc(b.reference || 'Loaded')} · ${esc(b.status)}</div>
+            <div class="sf-sub">${esc(fmt(b.total))} ${esc(data.currency)} on ${esc(String(b.rows))} balances, brought forward from ${esc(b.source)} at the close of ${esc(b.cutOff)} · loaded from ${esc(b.file)} by ${esc(b.loadedBy)} on ${esc(b.loadedAt)}</div>
+          </div>
+          <div class="sf-btns">
+            ${b.settled
+              ? '<span class="sf-sub">Posted — correct it with a journal</span>'
+              : `<button type="button" class="btn" data-cv="discard" ${data.canManage ? '' : 'disabled'}>Discard</button>`}
+          </div>
+        </div>
+      </div>
+      ${b.settled ? '' : `<div class="bu-status">${esc(b.reference)} is a draft. Submit it on the Journals screen so a second person approves it — the balances reach the ledger when it posts.</div>`}`;
+  }
+
+  // ---- Loading a trial balance ----
+
+  function loader() {
+    const open = data.periods.filter(p => p.available);
+    const shut = data.periods.filter(p => !p.available);
+    const chosen = open.find(p => p.name === state.period);
+
+    if (open.length === 0) {
+      return `
+        <div class="bu-status bu-warn">Opening balances go onto an empty ledger. ${shut.length === 0
+          ? 'No period is open to carry them into.'
+          : `Every open month already has postings behind it${shut[0].postedBefore ? ` — ${esc(fmt(shut[0].postedBefore))} entries before ${esc(shut[0].name)}` : ''}. Balances are carried when the system is stood up, before anything is posted.`}</div>`;
+    }
+
+    return `
+      <div class="sf-section">Load a trial balance</div>
+      <p class="bu-intro">Export the trial balance from the old system as CSV. It needs a column naming the account and either debit and credit columns or one signed balance column; fund, programme, award and county are taken from the file where it has them and from the account's defaults where it does not. Figures are read as ${esc(data.currency)}.</p>
+      <div class="coa-card" style="padding:14px 16px;">
+        <div class="bu-grid">
+          <label class="bu-field"><span>Balances carried into</span>
+            <select data-cv-k="period">${open.map(p => `<option value="${esc(p.name)}" ${p.name === state.period ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
+          <label class="bu-field"><span>Exported from <em>the old system</em></span>
+            <input data-cv-k="source" value="${esc(state.source)}" maxlength="80" placeholder="Sage 50, QuickBooks, spreadsheets"></label>
+          <label class="bu-field"><span>Figures written as</span>
+            <select data-cv-k="decimal">
+              <option value="." ${state.decimal === '.' ? 'selected' : ''}>1,234.50</option>
+              <option value="," ${state.decimal === ',' ? 'selected' : ''}>1.234,50</option>
+            </select></label>
+          <label class="bu-field"><span>Trial balance <em>CSV</em></span><input type="file" id="cv-file" accept=".csv,.txt"></label>
+        </div>
+        ${chosen ? `<div class="bu-status" style="margin-top:12px;">Balances at the close of <strong>${esc(chosen.cutOff)}</strong> become one entry dated ${esc(chosen.starts)}.${chosen.yearStart
+          ? ' A full year ended on that date, so only balance-sheet accounts carry — the year\'s result belongs in the accumulated fund.'
+          : ' The year is already running, so income and expenditure carry too, as the year to date.'}</div>` : ''}
+        <div class="bu-actions" style="margin-top:12px;">
+          <button type="button" class="btn" data-cv="check" ${data.canManage ? '' : 'disabled'}>Check the file</button>
+          <button type="button" class="btn btn-primary" data-cv="load" ${data.canManage && state.preview && state.preview.ok ? '' : 'disabled'}>Carry the balances</button>
+        </div>
+        ${data.canManage ? '' : `<div class="bu-intro" style="margin-top:8px;">${esc(data.role)} can look but not load. Only the Finance Manager carries opening balances.</div>`}
+      </div>`;
+  }
+
+  // ---- What the file says ----
+
+  function preview() {
+    const p = state.preview;
+    if (!p) return '';
+    const s = p.summary;
+    return `
+      <div class="sf-section">${esc(p.file)}</div>
+      <div class="coa-card" style="padding:14px 16px;">
+        <ul class="bu-checks">${p.checks.map(c => `<li class="${c.ok ? 'ok' : 'bad'}">${c.ok ? '✓' : '!'} ${esc(c.label)}</li>`).join('')}</ul>
+        <div class="bu-summary" style="margin-top:10px;">
+          <span>${esc(fmt(s.read))} rows read</span><span>·</span>
+          <span>${esc(fmt(s.loaded))} to carry</span>
+          ${s.problems ? `<span>·</span><span class="bu-warn">${esc(fmt(s.problems))} to fix</span>` : ''}
+          <span>·</span><span>debits ${esc(fmt(s.debit))}</span><span>·</span><span>credits ${esc(fmt(s.credit))}</span>
+        </div>
+        <div class="cv-rows">
+          <div class="cv-row cv-head"><span>Line</span><span>Account</span><span>Fund · programme</span><span class="end">Debit</span><span class="end">Credit</span></div>
+          ${p.rows.map(r => `
+            <div class="cv-row ${r.problem ? 'bad' : ''}">
+              <span class="mono">${esc(String(r.line))}</span>
+              <span><span class="mono">${esc(r.account)}</span> ${esc(r.name || r.description)}${r.problem ? `<div class="cv-problem">${esc(r.problem)}</div>` : ''}</span>
+              <span>${esc(r.fund)}${r.programme ? ' · ' + esc(r.programme) : ''}${r.grant ? ' · ' + esc(r.grant) : ''}</span>
+              <span class="mono end">${r.dr ? esc(fmt(r.dr)) : ''}</span>
+              <span class="mono end">${r.cr ? esc(fmt(r.cr)) : ''}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
+
+  // ---- Events ----
+
+  function bind() {
+    root.querySelectorAll('[data-cv-k]').forEach(el => el.addEventListener('change', () => {
+      state[el.dataset.cvK] = el.value;
+      state.preview = null;
+      render();
+    }));
+    const file = root.querySelector('#cv-file');
+    if (file) file.addEventListener('change', () => { state.preview = null; render(); });
+    root.querySelectorAll('[data-cv]').forEach(el => el.addEventListener('click', () => {
+      if (el.dataset.cv === 'discard') return discard();
+      send(el.dataset.cv === 'load');
+    }));
+  }
+
+  async function send(commit) {
+    const chosen = root.querySelector('#cv-file');
+    const file = chosen && chosen.files[0];
+    if (!file) {
+      UI.toast('Choose the trial balance exported from the old system.');
+      return;
+    }
+    if (state.busy) return;
+    state.busy = true;
+
+    const form = new FormData();
+    form.append('file', file);
+    form.append('period', state.period);
+    form.append('source', state.source);
+    form.append('decimal', state.decimal);
+
+    try {
+      const res = await fetch('/api/settings/conversion/' + (commit ? 'load' : 'preview'), {
+        method: 'POST', headers: { Accept: 'application/json' }, body: form,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || `Request failed: ${res.status}`);
+      data = body;
+      state.preview = commit ? null : body;
+      render();
+      if (commit) UI.toast(body.committed.message);
+    } catch (err) {
+      UI.toast(err.message);
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  async function discard() {
+    if (!window.confirm('Discard the conversion? The draft entry and everything it carried are deleted.')) return;
+    try {
+      data = await UI.postJSON('/api/settings/conversion/discard', {});
+      state.preview = null;
+      render();
+      UI.toast(data.message);
+    } catch (err) {
+      UI.toast(err.message);
     }
   }
 

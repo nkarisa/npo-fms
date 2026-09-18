@@ -172,6 +172,61 @@ components:
         message: { type: string }
       additionalProperties: true
 
+    Conversion:
+      type: object
+      description: |
+        A legacy trial balance as this ledger would carry it. The same shape answers a
+        preview and a load, so what was checked is what was written.
+      additionalProperties: true
+      properties:
+        period: { type: string, example: Jan 2025 }
+        date: { type: string, example: 01 Jan 2025, description: The date the opening entry carries. }
+        cutOff: { type: string, example: 31 Dec 2024 }
+        yearStart: { type: boolean, description: True when only balance-sheet accounts may carry. }
+        file: { type: string, example: trial-balance.csv }
+        headers: { type: array, items: { type: string }, description: The header row as the file wrote it. }
+        mapped:
+          type: object
+          description: Which of the file's columns was read as which field.
+          additionalProperties: { type: string }
+        ok: { type: boolean, description: Whether every check passed. A load is refused unless this is true. }
+        summary:
+          type: object
+          properties:
+            read: { type: integer }
+            loaded: { type: integer }
+            problems: { type: integer }
+            debit: { type: number }
+            credit: { type: number }
+        checks:
+          type: array
+          description: Every rule the load is held to, each in its own words.
+          items:
+            type: object
+            properties:
+              ok: { type: boolean }
+              label: { type: string, example: The trial balance balances }
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              line: { type: integer, description: The line of the file this balance was on. }
+              account: { type: string, example: '1110' }
+              name: { type: string, example: Bank — KCB Current (KES) }
+              description: { type: string }
+              fund: { type: string, example: General Fund }
+              programme: { type: string, example: Shared services }
+              grant: { type: string, example: USAID/URAIA/2026 }
+              county: { type: string }
+              dr: { type: number }
+              cr: { type: number }
+              problem:
+                type: string
+                nullable: true
+                description: Why this row cannot become a posting line, or null.
+                example: Account 9999 is not in the chart of accounts
+
     AssetRegister:
       type: object
       description: The asset register as the page draws it, returned by the register read and every successful write.
@@ -3592,6 +3647,149 @@ paths:
       responses:
         '200':
           description: The refreshed settings with a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /settings/conversion:
+    get:
+      tags: [Settings]
+      summary: What a conversion can be loaded into
+      description: |
+        Carrying an entity's permanent balances from a legacy system. Answers which
+        open periods could take opening balances (only those the ledger holds nothing
+        before), the conversion already loaded, and the column headers the reader
+        looks for.
+      responses:
+        '200':
+          description: The panel's options.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  canManage: { type: boolean, description: Whether this user may load or discard a conversion. }
+                  role: { type: string, example: Senior Accountant }
+                  currency: { type: string, example: KES, description: Figures are read in the entity's own currency; there is no rate table to translate against. }
+                  maxBytes: { type: integer, example: 2097152 }
+                  columns:
+                    type: object
+                    description: The header this reader looks for per field, and the synonyms it also accepts.
+                    additionalProperties: { type: string }
+                    example: { account: account code, debit: debit, credit: credit, balance: balance }
+                  periods:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string, example: Jan 2025 }
+                        starts: { type: string, example: 01 Jan 2025 }
+                        cutOff: { type: string, example: 31 Dec 2024, description: The last day the old system is authoritative for. }
+                        yearStart: { type: boolean, description: True when a full year ended on the cut-off, so only balance-sheet accounts may carry. }
+                        postedBefore: { type: integer, description: Entries already posted on or before the cut-off. Anything but nil blocks a conversion. }
+                        carried: { type: string, nullable: true, description: The reference of an opening journal the period already holds. }
+                        available: { type: boolean }
+                  batch:
+                    type: object
+                    nullable: true
+                    description: The conversion loaded for this entity, if any.
+                    properties:
+                      period: { type: string, example: Jan 2025 }
+                      cutOff: { type: string, example: 31 Dec 2024 }
+                      source: { type: string, example: Sage 50 }
+                      file: { type: string, example: trial-balance.csv }
+                      rows: { type: integer, example: 31 }
+                      total: { type: number, example: 12891000 }
+                      reference: { type: string, example: OB-25-0001 }
+                      status: { type: string, example: Draft }
+                      settled: { type: boolean, description: True once the journal has posted, after which the conversion cannot be discarded. }
+                      loadedBy: { type: string, example: W. Kamau }
+                      loadedAt: { type: string, example: 18 Sep 2026 }
+                  locale: { $ref: '#/components/schemas/Locale' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /settings/conversion/preview:
+    post:
+      tags: [Settings]
+      summary: Check a trial balance
+      description: |
+        Finance Manager only. Reads the file, places every row on the chart and answers
+        every rule — and writes nothing at all. The same body serves
+        `/settings/conversion/load`, which does this and then writes.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary, description: The trial balance as CSV, under 2 MB. }
+                period: { type: string, example: Jan 2025, description: The open period the balances are carried into. }
+                source: { type: string, example: Sage 50, description: Where the figures came from; recorded on the entry and in the audit log. }
+                decimal: { type: string, enum: ['.', ','], description: How the old system wrote its figures. }
+      responses:
+        '200':
+          description: The file as it would be carried, with every check answered.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Conversion' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /settings/conversion/load:
+    post:
+      tags: [Settings]
+      summary: Carry the balances
+      description: |
+        Finance Manager only. Checks the file as `preview` does and, only if every check
+        passed, writes the balances as a **draft** journal — never a posting. The draft is
+        then submitted and approved on the Journals screen, so the person who loaded the
+        conversion cannot also approve it and the approval limits apply. Refused with the
+        first failing check where anything does not pass.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                period: { type: string }
+                source: { type: string }
+                decimal: { type: string, enum: ['.', ','] }
+      responses:
+        '200':
+          description: The file as carried, with the draft entry it became.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Conversion'
+                  - type: object
+                    properties:
+                      committed:
+                        type: object
+                        properties:
+                          reference: { type: string, example: OB-25-0001 }
+                          lines: { type: integer, example: 31 }
+                          message: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /settings/conversion/discard:
+    post:
+      tags: [Settings]
+      summary: Discard a conversion
+      description: |
+        Finance Manager only. Throws the load away and deletes the draft entry with it.
+        Refused once the entry has been approved: it is then a posted journal like any
+        other, and a mistake is corrected by a further entry. What was attempted stays on
+        the record, marked discarded.
+      responses:
+        '200':
+          description: The refreshed panel with a message.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Message' }

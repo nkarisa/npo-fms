@@ -699,6 +699,26 @@ final class JournalRepository extends Repository
     }
 
     /**
+     * Why these lines break the award rules, or null when they do not.
+     *
+     * Public so that lines built outside the journal screen — a legacy system's
+     * opening balances — are held to exactly the same rules, in the same words,
+     * before anything is written.
+     *
+     * @param list<array{code: string, fund: string, program: string, grantRef: string}> $lines
+     */
+    public function awardProblem(array $lines, bool $submitting): ?string
+    {
+        try {
+            $this->checkAwards($lines, $submitting);
+        } catch (RuleViolation $e) {
+            return $e->getMessage();
+        }
+
+        return null;
+    }
+
+    /**
      * A named award must cover the line's fund and programme. On submission, a line
      * in a fund that awards are held in must name its award: restricted funds report
      * by award, and an uncoded cost cannot be claimed on a donor report.

@@ -494,7 +494,7 @@ and section totals, followed by notes.
 ### Settings
 
 **Purpose:** configure the organisation and its entities, the ledger, controls,
-currencies, approvals, bank-statement formats, integrations, payroll scales,
+currencies, approvals, bank-statement formats, opening balances, integrations, payroll scales,
 appearance, language/translation, users and the audit log. Changes are edited into one draft and saved together.
 
 **On screen:** a left navigation of sections and a content pane on the right. The
@@ -525,6 +525,43 @@ warning appears if you try to leave with unsaved changes.
 - **Bank statements** — assign a CSV statement format to each cash account and
   define formats (column mapping, separators, date and decimal formats). This
   section saves as you go.
+- **Opening balances** — carrying an entity's permanent balances from a legacy
+  system onto this ledger, when the system is first stood up. Balances are not
+  stored as figures against accounts: everything this application reports is
+  derived from posted journal lines, so an opening balance held anywhere else
+  would be a second answer the trial balance could not see. What is carried
+  becomes one journal, dated the first day of the first period kept here and
+  marked as brought-forward figures the way the chart, the general ledger and the
+  journal register already recognise.
+  - *The file*: the trial balance exported from the old system as CSV. Columns are
+    recognised by their headers and the usual synonyms — an account column is
+    required, and either debit and credit columns or one signed balance column
+    where a credit is written negative. Fund, programme, award and county are
+    taken from the file where it carries them and from the account's own defaults
+    where it does not. A report title above the header, a totals footer, nil
+    balances and blank rows are all passed over.
+  - *Checked before anything is written*: **Check the file** answers every rule
+    and changes nothing. Every row the chart cannot place is named with its line
+    number and the reason — an account that is not in the chart, a heading rather
+    than a postable account, a fund or programme the ledger does not hold, an
+    award that does not cover the line. The trial balance must balance, no
+    restricted or endowment fund may open below zero, and every line in a fund
+    that awards are held in must name its award, exactly as a journal must.
+  - *Onto an empty ledger*: opening balances are refused where anything is already
+    posted on or before the cut-off date, because the figures would count twice
+    with no way to tell which entry was which. Where the period opens the fiscal
+    year, only balance-sheet accounts carry — a year that has ended carries its
+    result in the accumulated fund, not line by line. Converting mid-year, income
+    and expenditure carry too, as the year to date. Figures are read in the
+    entity's own currency; there is no rate table to translate against.
+  - *Approved like any other entry*: **Carry the balances** writes a draft
+    journal, not a posting. It is then submitted and approved on the Journals
+    screen, so the person who loaded the conversion cannot also approve it and the
+    approval limits apply — a conversion is usually worth more than a Finance
+    Manager may approve, so it escalates. Until it is approved the whole load can
+    be discarded and the draft disappears with it; once it has posted it is
+    immutable like every other entry and a mistake is corrected by a further
+    journal. The load is in the audit log either way.
 - **Integrations** — the M-Pesa (Safaricom Daraja) connection: environment
   (sandbox or production), the paybill or till and the account number payers
   quote, the mobile-money account it settles to, the callback address and the
@@ -575,9 +612,10 @@ warning appears if you try to leave with unsaved changes.
 **What you can do:** edit any section into the draft and **Save changes** or
 **Discard**; manage currencies, approvals, payroll scales, segments and posting
 controls; assign and define bank-statement formats; set up the M-Pesa integration
-and check its connection; add and amend entities; name the application, upload a
-logo and choose the interface theme; manage users and languages.
-Saving is restricted to the Finance Manager.
+and check its connection; carry opening balances from a legacy system and discard
+a conversion that has not yet been approved; add and amend entities; name the
+application, upload a logo and choose the interface theme; manage users and
+languages. Saving is restricted to the Finance Manager.
 
 ---
 

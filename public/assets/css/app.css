@@ -1094,6 +1094,20 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .sf-rule button { border: 1px solid #DDDAD2; background: #FFF; border-radius: 6px; height: 30px; cursor: pointer; color: #7A857F; }
 .sf-headers { display: flex; flex-wrap: wrap; gap: 5px; }
 .sf-headers code { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; background: #F2F1EC; border-radius: 4px; padding: 2px 6px; color: #28352F; }
+
+/* Settings → Opening balances: the trial balance as it will be carried. */
+.cv-carried { border-color: var(--accent-line); background: var(--accent-wash); }
+.cv-rows { margin-top: 12px; border-top: 1px solid #F2F1EC; max-height: 340px; overflow: auto; }
+.cv-row { display: grid; grid-template-columns: 44px minmax(0,1.6fr) minmax(0,1.2fr) 96px 96px; gap: 8px; align-items: start; padding: 6px 2px; border-bottom: 1px solid #F6F5F1; font-size: 11.5px; color: #28352F; }
+.cv-row:last-child { border-bottom: none; }
+.cv-row.cv-head { position: sticky; top: 0; background: #FFF; font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: #8B948F; }
+.cv-row.bad { background: #FCF4F2; }
+.cv-row .end { text-align: right; }
+.cv-problem { margin-top: 2px; font-size: 10.5px; color: #A5442F; line-height: 1.4; }
+@media (max-width: 720px) {
+  .cv-row { grid-template-columns: 38px minmax(0,1fr) 84px; }
+  .cv-row > :nth-child(3) { display: none; }
+}
 @media (max-width: 480px) {
   .sf-row { grid-template-columns: minmax(0,1fr); }
   .sf-btns { justify-content: flex-start; }

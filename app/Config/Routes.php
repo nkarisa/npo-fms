@@ -174,6 +174,10 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('settings/logo', 'Api\Settings::logoFile');
     $routes->post('settings/logo', 'Api\Settings::logo');
     $routes->post('settings/logo/remove', 'Api\Settings::removeLogo');
+    $routes->get('settings/conversion', 'Api\Conversion::index');
+    $routes->post('settings/conversion/preview', 'Api\Conversion::preview');
+    $routes->post('settings/conversion/load', 'Api\Conversion::load');
+    $routes->post('settings/conversion/discard', 'Api\Conversion::discard');
     $routes->get('mpesa', 'Api\Mpesa::index');
     $routes->post('mpesa', 'Api\Mpesa::save');
     $routes->post('mpesa/check', 'Api\Mpesa::check');
