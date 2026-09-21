@@ -430,6 +430,10 @@ A single test class:
 vendor/bin/phpunit --filter InstallTest
 ```
 
+To see a change working in the running application rather than in the tests —
+on a throwaway copy, acting as any user, with screenshots — see
+[run-fms.md](run-fms.md).
+
 ---
 
 ## Troubleshooting
@@ -493,3 +497,5 @@ The MySQL client is often not on the PATH. With Homebrew it is under
 | `writable/uploads/` | Uploaded files |
 | `docs/documentation.md` | What each screen does |
 | `docs/openapi.yaml` | The API |
+| `docs/run-fms.md` | Running a throwaway copy of the application and driving it in a headless browser |
+| `.claude/skills/run-fms/` | The scripts that do it, and the Claude Code skill that uses them |
