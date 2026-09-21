@@ -123,6 +123,9 @@ dev data.
   cross-origin call there and logs a CORS error. The driver filters it out.
   Page links and `/api` calls are root-relative, so nothing else leaks to 8090.
 - `.env`'s `app.asOf = 2026-08-31` applies to both instances ("today" is Aug 2026).
+- Pages scroll inside `div.content`, not the window, so Playwright's own
+  `fullPage` captures one screen only. `ssfull:` grows the viewport by what
+  `.content` hides; use it, not a custom `page.screenshot({fullPage:true})`.
 - The journal "detail" route (`/journals/<ref>`) opens as a drawer over the
   register. The register rows are `div.jr-row`, not `<tr>`.
 - As the preparer, the Approve button is **absent** (a footer note replaces it),

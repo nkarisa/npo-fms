@@ -31,6 +31,7 @@ fi
 DIR="$PWD/writable/run-skill"
 DB="$DIR/$DATA.sqlite"
 PIDFILE="$DIR/server-$DATA.pid"
+PORTFILE="$DIR/server-$DATA.port" # the port it was started on, whatever PORT says now
 LOG="$DIR/server-$DATA.log"
 mkdir -p "$DIR"
 [ -f "$DIR/.gitignore" ] || echo "*" >"$DIR/.gitignore" # DBs, logs, screenshots stay out of git
@@ -64,25 +65,27 @@ build_db() {
 }
 
 running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+url() { echo "http://localhost:$(cat "$PORTFILE" 2>/dev/null || echo "$PORT")"; }
 
 up() {
   if [ "${1:-}" = "--fresh" ] || [ ! -s "$DB" ]; then
     running && down
     build_db
   fi
-  if running; then echo "Already up: http://localhost:$PORT (pid $(cat "$PIDFILE"))"; return; fi
+  if running; then echo "Already up: $(url) (pid $(cat "$PIDFILE"))"; return; fi
   if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "Port $PORT is taken by something else. Use PORT=<n> $0 up" >&2; exit 1
   fi
   PHP_CLI_SERVER_WORKERS=4 nohup "$PHP_BIN" -S "localhost:$PORT" -t public/ \
     vendor/codeigniter4/framework/system/rewrite.php >"$LOG" 2>&1 &
   echo $! >"$PIDFILE"
+  echo "$PORT" >"$PORTFILE"
   for _ in $(seq 1 50); do
     curl -sf -o /dev/null "http://localhost:$PORT/api/me" && break
     sleep 0.2
   done
   curl -sf -o /dev/null "http://localhost:$PORT/api/me" || { echo "Server did not come up; see $LOG" >&2; exit 1; }
-  echo "Up: http://localhost:$PORT (pid $(cat "$PIDFILE"), db $DB)"
+  echo "Up: $(url) (pid $(cat "$PIDFILE"), db $DB)"
 }
 
 down() {
@@ -94,14 +97,14 @@ down() {
   else
     echo "Not running"
   fi
-  rm -f "$PIDFILE"
+  rm -f "$PIDFILE" "$PORTFILE"
 }
 
 case "${1:-}" in
   up) shift; up "$@" ;;
   down) down ;;
   reset) down; rm -f "$DB"; up ;;
-  status) if running; then echo "Up: http://localhost:$PORT (pid $(cat "$PIDFILE"), db $DB)"; else echo "Down (db $DB $( [ -s "$DB" ] && echo exists || echo missing))"; fi ;;
+  status) if running; then echo "Up: $(url) (pid $(cat "$PIDFILE"), db $DB)"; else echo "Down (db $DB $( [ -s "$DB" ] && echo exists || echo missing))"; fi ;;
   spark) shift; spark "$@" ;;
   *) sed -n '3,17p' "$0"; exit 1 ;;
 esac

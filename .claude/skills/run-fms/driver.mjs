@@ -78,7 +78,21 @@ try {
       case 'eval': console.log(JSON.stringify(await page.evaluate(arg), null, 2)); break;
       case 'ss': case 'ssfull': {
         const path = `${shots}/${arg || 'shot'}.png`;
-        await page.screenshot({ path, fullPage: cmd === 'ssfull' });
+        if (cmd === 'ssfull') {
+          // Pages scroll inside div.content, not the window, so Playwright's fullPage
+          // sees only one screen. Grow the viewport by what .content hides instead.
+          const size = page.viewportSize();
+          const hidden = await page.evaluate(() => {
+            const c = document.querySelector('.content');
+            return c ? c.scrollHeight - c.clientHeight : 0;
+          });
+          await page.setViewportSize({ width: size.width, height: size.height + hidden });
+          await page.waitForTimeout(200);
+          await page.screenshot({ path });
+          await page.setViewportSize(size);
+        } else {
+          await page.screenshot({ path });
+        }
         console.log(`  saved ${path}`);
         break;
       }
