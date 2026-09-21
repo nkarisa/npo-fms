@@ -422,6 +422,7 @@
       el.querySelector('#apd-body').innerHTML = `
         ${b.overdue ? `<div class="ap-late">Overdue by ${esc(b.overdueBy)}. Supplier payment terms are ${esc(b.terms)}.</div>` : ''}
         ${b.status === 'Rejected' && b.rejectedReason ? `<div class="ap-reject-note">Rejected — ${esc(b.rejectedReason)}</div>` : ''}
+        ${b.supplierReason ? `<div class="ap-over"><span>Captured without a current supplier pre-qualification — ${esc(b.supplierReason)}. ${esc(b.supplier)} is now ${esc(b.supplierStanding.toLowerCase())} on the register.</span></div>` : ''}
         <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;">
           ${field('Invoice date', b.invFull)}${field('Due date', b.dueFull)}${field('Terms', b.terms)}
         </div>
@@ -550,7 +551,7 @@
     const blank = () => ({
       supplier: '', pin: '', category: 'Professional fees', invoiceNo: '', invoiceDate: form.today, terms: '30',
       budgetLine: String((form.budgetLines.find(l => l.code === '5150') || form.budgetLines[0] || {}).id || ''),
-      method: form.methods[0] || '', wht: 'auto', whtReason: '', overReason: '',
+      method: form.methods[0] || '', wht: 'auto', whtReason: '', overReason: '', supplierReason: '',
     });
     const amountOf = (v) => parseFloat(String(v || '').replace(/[^0-9.]/g, '')) || 0;
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -641,6 +642,11 @@
       const due = f.invoiceDate ? new Date(f.invoiceDate + 'T00:00:00') : null;
       if (due) due.setDate(due.getDate() + (+f.terms || 30));
       const supplier = f.supplier.trim().toLowerCase();
+      // A supplier not on the register is added as not pre-qualified.
+      const registered = form.suppliers.find(s => s.name.toLowerCase() === supplier);
+      const standing = registered ? registered.status : 'Not pre-qualified';
+      const unqualified = !!supplier && !['Pre-qualified', 'Expiring'].includes(standing);
+      const overPrequal = unqualified && taxable > form.prequalThreshold;
       const dupe = form.bills.find(b => b.supplier.toLowerCase() === supplier && (b.invoiceNo === f.invoiceNo.trim() || (taxable > 0 && b.taxable === taxable)));
 
       const err = !f.supplier.trim() ? 'Name the supplier as it appears on the invoice.'
@@ -651,11 +657,14 @@
         : coded.some(l => !l.desc) ? 'Every coded line needs a description of what was supplied.'
         : whtOverridden && !f.whtReason.trim() ? 'Overriding the withholding rate needs a reason — the tax file has to explain it.'
         : overBudget && !f.overReason.trim() ? 'This bill takes the line over budget. Say why before it goes for approval, or split the coding.'
+        : overPrequal ? `${f.supplier.trim()} is ${standing.toLowerCase()}. A bill above KES ${fmt(form.prequalThreshold)} is paid only to a pre-qualified supplier: pre-qualify them in Procurement first, or buy through a requisition and purchase order.`
+        : unqualified && !f.supplierReason.trim() ? `${f.supplier.trim()} is ${standing.toLowerCase()}. Say why this bill is paid without a current pre-qualification.`
         : form.requireInvoice && docs && !docs.ids().length ? "Attach the supplier's invoice. A bill goes for approval only with the document it pays."
         : '';
 
       return {
         cat, whtDefault, whtRate, whtOverridden, line, taxable, vat, wht, gross: taxable + vat, net: taxable + vat - wht, overBudget, err,
+        registered, standing, unqualified, overPrequal,
         dueText: due && !isNaN(due) ? `${shortDate(due)} (${f.terms} days)` : '—',
         dupeText: dupe ? (dupe.invoiceNo === f.invoiceNo.trim()
           ? `${dupe.no} already carries invoice ${dupe.invoiceNo} from ${dupe.supplier}. The same invoice cannot be captured twice.`
@@ -673,6 +682,7 @@
             <select data-nb-pick><option value="">Existing supplier…</option>${form.suppliers.map(s => `<option>${esc(s.name)}</option>`).join('')}</select>
           </label>
         </div>
+        <div id="nb-prequal"></div>
         <div class="ap-cols" style="display:grid;grid-template-columns:200px minmax(0,1fr) minmax(0,1fr);gap:14px;">
           <label class="ap-f"><span>KRA PIN</span><input class="mono" data-nb="pin" value="${esc(f.pin)}" placeholder="P051182934C"></label>
           <label class="ap-f"><span>Spend category</span>
@@ -743,6 +753,17 @@
       }
       if (d.overBudget) {
         $('nb-over-text').textContent = `Coding ${fmt(d.taxable)} to ${d.line.code} exceeds the ${fmt(d.line.remaining)} left on that line after ${fmt(d.line.actual)} spent and ${fmt(d.line.onBills)} already sitting on unpaid bills.`;
+      }
+      const prequal = $('nb-prequal');
+      if (d.unqualified && !d.overPrequal && !prequal.querySelector('input')) {
+        prequal.innerHTML = `<div class="ap-over"><span id="nb-prequal-text"></span><input data-nb="supplierReason" value="${esc(f.supplierReason)}" placeholder="e.g. Sole local provider; one-off purchase below the quotation threshold"></div>`;
+      } else if (!d.unqualified || d.overPrequal) {
+        prequal.innerHTML = d.overPrequal
+          ? `<div class="ap-over"><span>${esc(f.supplier.trim())} is ${esc(d.standing.toLowerCase())}. Above KES ${fmt(form.prequalThreshold)} a bill is paid only to a pre-qualified supplier — pre-qualify them in Procurement, or buy through a requisition and purchase order.</span></div>`
+          : '';
+      }
+      if (d.unqualified && !d.overPrequal) {
+        $('nb-prequal-text').textContent = `${f.supplier.trim()} is ${d.standing.toLowerCase()}${d.registered ? ' on the supplier register' : ' — not on the supplier register, so it will be added as not pre-qualified'}. Up to KES ${fmt(form.prequalThreshold)} it can be billed with a reason, which the approver sees.`;
       }
       $('nb-wht-label').textContent = `${d.whtRate}% withheld on ${d.taxable ? fmt(d.taxable) : '0'} — held back from the supplier and remitted to KRA by the 20th of the following month.`;
       $('nb-sum').innerHTML = `

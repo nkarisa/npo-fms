@@ -664,7 +664,10 @@ warning appears if you try to leave with unsaved changes.
 - **Currencies** — indicative rates and enable/disable; add a currency. The base
   and in-use currencies cannot be disabled.
 - **Approvals** — thresholds and approvers per transaction type, with a
-  segregation-of-duties note.
+  segregation-of-duties note, and the **procurement threshold** (KES 500,000 to
+  start): above it a purchase needs three quotations before its purchase order,
+  and a bill captured straight into Payables is paid only to a pre-qualified
+  supplier.
 - **Bank statements** — the cash accounts and the CSV statement format each uses.
   **Open a cash account** puts one on a ledger account: only postable asset
   accounts that do not already carry a cash account are offered, because a

@@ -245,6 +245,9 @@ final class Installer
             $row($key, 'toggle', $on ? '1' : '0', $label, $note);
         }
 
+        $settings = \App\Repositories\SettingsRepository::class;
+        $row($settings::QUOTE_THRESHOLD_KEY, 'approvals', (string) $settings::QUOTE_THRESHOLD_DEFAULT, $settings::QUOTE_THRESHOLD_LABEL);
+
         $row(Theme::KEY, 'appearance', Theme::DEFAULT, 'Interface theme', \App\Repositories\SettingsRepository::THEME_NOTE);
         $row(Theme::CUSTOM_KEY, 'appearance', (string) json_encode(Theme::CUSTOM_DEFAULT), 'Custom theme colours');
         $row(Brand::NAME_KEY, 'appearance', mb_substr($in['shortName'], 0, Brand::MAX_NAME), 'Application name');

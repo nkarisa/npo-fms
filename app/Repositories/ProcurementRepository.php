@@ -23,8 +23,6 @@ final class ProcurementRepository extends Repository
 {
     public const STATUS_LABELS = ['pending_approval' => 'Awaiting approval', 'rfq_issued' => 'RFQ issued', 'po_raised' => 'PO raised'];
 
-    /** Above this value three quotations are required before a purchase order can be raised. */
-    public const QUOTE_THRESHOLD = 500000;
 
     public const OPEN = ['Draft', 'Awaiting approval', 'Approved', 'RFQ issued', 'PO raised'];
 
@@ -170,9 +168,18 @@ final class ProcurementRepository extends Repository
         return $p['amount'] > self::available($p);
     }
 
+    /**
+     * Above this value three quotations are required before a purchase order can be
+     * raised. Set in Settings → Approvals.
+     */
+    public static function quoteThreshold(): float
+    {
+        return (new SettingsRepository())->quoteThreshold();
+    }
+
     public static function needsQuotes(array $p): bool
     {
-        return $p['amount'] > self::QUOTE_THRESHOLD && self::quotesOnFile($p) < 3;
+        return $p['amount'] > self::quoteThreshold() && self::quotesOnFile($p) < 3;
     }
 
     /**
@@ -326,7 +333,7 @@ final class ProcurementRepository extends Repository
         $people = array_map(static fn ($u) => ['email' => $u['email'], 'label' => $u['short'] . ' · ' . $u['role']],
             array_values(array_filter((new UserRepository())->actors(), static fn ($u) => in_array('requisition.raise', $u['permissions'], true))));
 
-        return ['budgetLines' => $lines, 'people' => $people, 'suppliers' => array_column($this->suppliers(), 'name'), 'threshold' => self::QUOTE_THRESHOLD];
+        return ['budgetLines' => $lines, 'people' => $people, 'suppliers' => array_column($this->suppliers(), 'name'), 'threshold' => self::quoteThreshold()];
     }
 
     /** A quotation document, for download. */
@@ -548,7 +555,7 @@ final class ProcurementRepository extends Repository
             throw new RuleViolation('Select the quotation the order is placed against, or name the supplier.');
         }
         if (self::needsQuotes($current) && $waiver === '') {
-            throw new RuleViolation($no . ' is ' . Prototype::fmt($current['amount']) . ', above the ' . Prototype::fmt(self::QUOTE_THRESHOLD)
+            throw new RuleViolation($no . ' is ' . Prototype::fmt($current['amount']) . ', above the ' . Prototype::fmt(self::quoteThreshold())
                 . ' threshold, and has ' . self::quotesOnFile($current) . ' of the 3 quotations required'
                 . (count($current['quotes']) > self::quotesOnFile($current) ? ' with their documents attached — a quotation counts only with the supplier\'s document' : '')
                 . '. Record the missing quotations or give a single-source justification.');

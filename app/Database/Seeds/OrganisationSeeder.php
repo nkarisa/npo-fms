@@ -136,6 +136,10 @@ class OrganisationSeeder extends Seeder
                 'value' => $t['on'] ? '1' : '0', 'kind' => 'toggle', 'created_at' => $now,
             ]);
         }
+        $ctx->insert('settings', [
+            'entity_id' => $secretariat, 'key' => SettingsRepository::QUOTE_THRESHOLD_KEY, 'kind' => 'approvals', 'created_at' => $now,
+            'value' => (string) SettingsRepository::QUOTE_THRESHOLD_DEFAULT, 'label' => SettingsRepository::QUOTE_THRESHOLD_LABEL,
+        ]);
         foreach (self::CHOICES as [$key, $label, $value]) {
             $ctx->insert('settings', ['entity_id' => $secretariat, 'key' => $key, 'label' => $label, 'value' => $value, 'kind' => 'choice', 'created_at' => $now]);
         }

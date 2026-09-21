@@ -31,6 +31,18 @@ final class SettingsRepository extends Repository
 
     public const BASES = ['pct', 'flat'];
 
+    /**
+     * The procurement threshold, held on the head office's settings: above it a
+     * purchase needs three quotations, and a bill captured straight into payables is
+     * paid only to a pre-qualified supplier. A database set up before it was a
+     * setting has no row, and reads the default.
+     */
+    public const QUOTE_THRESHOLD_KEY = 'quoteThreshold';
+
+    public const QUOTE_THRESHOLD_DEFAULT = 500000;
+
+    public const QUOTE_THRESHOLD_LABEL = 'Three quotations and a pre-qualified supplier required above';
+
     /** The rule every approval band carries, and the separations the ledger enforces. */
     public const SOD_RULES = [
         'A journal preparer can never approve their own entry, whatever its value.',
@@ -248,6 +260,20 @@ final class SettingsRepository extends Repository
         ));
     }
 
+    /** The procurement controls shown with the approval bands. */
+    public function procurement(): array
+    {
+        return ['quoteThreshold' => self::num($this->quoteThreshold()), 'label' => self::QUOTE_THRESHOLD_LABEL];
+    }
+
+    public function quoteThreshold(): float
+    {
+        return $this->cached('quote-threshold', fn () => (float) ($this->value(
+            'SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = ?',
+            [$this->lookups->headOfficeCode(), self::QUOTE_THRESHOLD_KEY]
+        ) ?? self::QUOTE_THRESHOLD_DEFAULT));
+    }
+
     /** Roles a user can hold — every role, in the order they were set up. Settings → Roles defines them. */
     public function roles(): array
     {
@@ -401,6 +427,9 @@ final class SettingsRepository extends Repository
         }
         if (isset($draft['approvals'])) {
             $this->planApprovals((array) $draft['approvals'], $plan);
+        }
+        if (isset($draft['procurement'])) {
+            $this->planProcurement((array) $draft['procurement'], $plan);
         }
         if (isset($draft['payroll'])) {
             $this->planPayroll((array) $draft['payroll'], $plan);
@@ -888,6 +917,28 @@ final class SettingsRepository extends Repository
         }
     }
 
+    private function planProcurement(array $in, callable $plan): void
+    {
+        if (!array_key_exists('quoteThreshold', $in)) {
+            return;
+        }
+        $text = preg_replace('/[^0-9.\-]/', '', (string) $in['quoteThreshold']);
+        if ($text === '' || !is_numeric($text)) {
+            throw new RuleViolation('Give the procurement threshold as an amount in KES.');
+        }
+        $threshold = round((float) $text, 2);
+        if ($threshold <= 0) {
+            throw new RuleViolation('The procurement threshold has to be above nil. At nil every purchase would need three quotations and every bill a pre-qualified supplier.');
+        }
+        $current = $this->quoteThreshold();
+        if ($threshold == round($current, 2)) {
+            return;
+        }
+        $plan('Approvals', 'Procurement threshold ' . ($threshold > $current ? 'raised' : 'lowered') . ' from ' . Prototype::fmt($current) . ' to ' . Prototype::fmt($threshold)
+            . ' — three quotations and a pre-qualified supplier above it',
+            fn () => $this->hold(self::QUOTE_THRESHOLD_KEY, 'approvals', (string) self::num($threshold), self::QUOTE_THRESHOLD_LABEL));
+    }
+
     /**
      * Where each pay component posts. An account has to be one a journal could carry
      * — a postable leaf — or the run would be refused by the ledger at the moment it
@@ -1108,12 +1159,17 @@ final class SettingsRepository extends Repository
         }
     }
 
-    /**
-     * Written rather than updated blind: a database seeded before a given
-     * appearance setting existed has no row to update, and a save that silently
-     * changed nothing would still have been logged as a change.
-     */
     private function setAppearance(string $key, string $value, string $label, string $note = ''): void
+    {
+        $this->hold($key, 'appearance', $value, $label, $note);
+    }
+
+    /**
+     * Writes a head-office setting. Written rather than updated blind: a database
+     * seeded before a given setting existed has no row to update, and a save that
+     * silently changed nothing would still have been logged as a change.
+     */
+    private function hold(string $key, string $kind, string $value, string $label, string $note = ''): void
     {
         $entityId = $this->headOffice()['id'];
         // Through the builder rather than raw SQL: "key" is a reserved word, and the
@@ -1123,7 +1179,7 @@ final class SettingsRepository extends Repository
 
         if ($held === null) {
             $this->insert('settings', [
-                'entity_id' => $entityId, 'key' => $key, 'kind' => 'appearance', 'value' => $value,
+                'entity_id' => $entityId, 'key' => $key, 'kind' => $kind, 'value' => $value,
                 'label' => $label, 'note' => $note !== '' ? $note : null, 'created_at' => $now,
             ]);
 

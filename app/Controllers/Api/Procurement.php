@@ -67,7 +67,7 @@ class Procurement extends BaseApiController
         $data = [
             'view'  => $view,
             'views' => self::VIEWS,
-            'threshold' => Repo::QUOTE_THRESHOLD,
+            'threshold' => Repo::quoteThreshold(),
             'stats' => [
                 ['label' => 'Open requisitions', 'value' => (string) count($open), 'note' => 'Across ' . count(array_unique(array_column($open, 'program'))) . ' programmes'],
                 ['label' => $actor['canApprove'] ? 'Awaiting my approval' : 'Awaiting approval', 'value' => (string) count(array_filter($all, static fn ($p) => $p['status'] === 'Awaiting approval')),
@@ -115,7 +115,7 @@ class Procurement extends BaseApiController
             'page'     => $page,
             'pages'    => $pages,
             'pageSize' => self::PAGE_SIZE,
-            'footer'   => count($filtered) . ' of ' . count($all) . ' requisitions · three quotations required above ' . Prototype::fmt(Repo::QUOTE_THRESHOLD)
+            'footer'   => count($filtered) . ' of ' . count($all) . ' requisitions · three quotations required above ' . Prototype::fmt(Repo::quoteThreshold())
                 . ' · goods received notes raise the supplier bill',
         ];
     }

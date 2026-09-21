@@ -153,6 +153,40 @@ final class ProcurementTest extends CIUnitTestCase
         $this->assertEqualsWithDelta($spent + 214400, $repo->find('REQ-26-0060')['spent'], 0.001);
     }
 
+    public function testTheQuotationThresholdIsSetUnderApprovalsInSettings(): void
+    {
+        $this->assertSame(500000.0, ProcurementRepository::quoteThreshold());
+        $this->assertTrue(ProcurementRepository::needsQuotes((new ProcurementRepository())->find('REQ-26-0060')));
+        $this->assertSame(500000, $this->api('api/settings')['procurement']['quoteThreshold']);
+
+        // Nil would put every purchase through three quotations; it is refused.
+        $nil = $this->withBodyFormat('json')->post('api/settings', ['procurement' => ['quoteThreshold' => '0']]);
+        $nil->assertStatus(422);
+        $this->assertStringContainsString('has to be above nil', json_decode($nil->getJSON(), true)['error']);
+
+        $saved = $this->withBodyFormat('json')->post('api/settings', ['procurement' => ['quoteThreshold' => '2,000,000']]);
+        $saved->assertStatus(200);
+        $saved = json_decode($saved->getJSON(), true);
+        $this->assertSame(2000000, $saved['procurement']['quoteThreshold']);
+        $this->assertSame([['area' => 'Approvals', 'what' => 'Procurement threshold raised from 500,000 to 2,000,000 — three quotations and a pre-qualified supplier above it']], $saved['changes']);
+        $this->assertStringContainsString('Procurement threshold raised', $saved['audit'][0]['what'] ?? json_encode($saved['audit'][0]));
+
+        // At 1,340,000 the car hire is now below the line: no quotations, no justification.
+        Repository::forget();
+        $this->assertFalse(ProcurementRepository::needsQuotes((new ProcurementRepository())->find('REQ-26-0060')));
+        $reqs = $this->api('api/procurement');
+        $this->assertSame(2000000, $reqs['threshold']);
+        $this->assertStringContainsString('three quotations required above 2,000,000', $reqs['footer']);
+        $this->assertSame(2000000, $this->api('api/payables/form')['prequalThreshold']);
+
+        $this->actAs('s.njeri@elog.or.ke');
+        // Only someone who manages settings can move it.
+        $this->withBodyFormat('json')->post('api/settings', ['procurement' => ['quoteThreshold' => '100']])->assertStatus(403);
+        $ordered = $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', []);
+        $ordered->assertStatus(200);
+        $this->assertSame('PO raised', json_decode($ordered->getJSON(), true)['requisition']['status']);
+    }
+
     public function testAnRfqAndAReceivedOrderWithoutAnAccrualStillBill(): void
     {
         $this->actAs('s.njeri@elog.or.ke');

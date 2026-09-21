@@ -107,6 +107,48 @@ final class PayablesTest extends CIUnitTestCase
         $this->withBodyFormat('json')->post('api/payables', $this->invoice(['invoiceNo' => 'MC-3']))->assertStatus(403);
     }
 
+    public function testABillFromASupplierWithoutCurrentPrequalificationNeedsAReasonAndStaysBelowTheThreshold(): void
+    {
+        $repo = new PayablesRepository();
+        $njeri = (new Lookups())->userId('s.njeri@elog.or.ke');
+        $refusal = function (array $overrides) use ($repo, $njeri): string {
+            try {
+                $repo->capture($this->invoice($overrides), $njeri);
+            } catch (RuleViolation $e) {
+                return $e->getMessage();
+            }
+            $this->fail('The bill was captured.');
+        };
+        $status = array_column($repo->suppliers(), 'status', 'name');
+        $this->assertSame(['Expiring', 'Lapsed'], [$status['Zuri Consulting'], $status['Computech Ltd']]);
+
+        // A supplier new to the register, or one whose pre-qualification has lapsed, needs a reason.
+        $this->assertStringContainsString('Mwangaza Consultants is not pre-qualified. Say why', $refusal(['supplierReason' => ' ']));
+        $computech = ['supplier' => 'Computech Ltd', 'pin' => 'P051447731L', 'invoiceNo' => 'CT-88'];
+        $this->assertStringContainsString('Computech Ltd is lapsed. Say why', $refusal($computech + ['supplierReason' => '']));
+
+        // Above the three-quote threshold a reason is not enough.
+        $big = ['lines' => [['desc' => 'Laptops', 'amount' => '500001']], 'overReason' => 'Replacement cycle'];
+        $this->assertStringContainsString('A bill above KES 500,000 is paid only to a pre-qualified supplier', $refusal($computech + $big));
+        $this->assertStringContainsString('is not pre-qualified. A bill above', $refusal($big));
+
+        // The reason travels with the bill for the approver and into its history.
+        $bill = $repo->capture($this->invoice($computech + ['supplierReason' => 'Warranty repair by the original vendor']), $njeri);
+        $this->assertSame(['Warranty repair by the original vendor', 'Lapsed'], [$bill['supplierReason'], $bill['supplierStanding']]);
+        $this->assertContains('Supplier lapsed — Warranty repair by the original vendor', array_column($bill['trail'], 'what'));
+
+        // A current pre-qualification (expiring still counts) needs none, whatever the value.
+        $zuri = $repo->capture($this->invoice(['supplier' => 'Zuri Consulting', 'pin' => 'P051992288Z', 'invoiceNo' => 'ZC-7', 'supplierReason' => 'ignored'] + $big), $njeri);
+        $this->assertSame(['', 'Expiring'], [$zuri['supplierReason'], $zuri['supplierStanding']]);
+        $this->assertSame(500001, $zuri['taxable']);
+
+        // The line is the procurement threshold in Settings → Approvals.
+        (new \App\Repositories\SettingsRepository())->save(['procurement' => ['quoteThreshold' => 600000]], (new Lookups())->userId('w.kamau@elog.or.ke'));
+        $bill = $repo->capture($this->invoice(['invoiceNo' => 'CT-89', 'supplierReason' => 'Urgent replacement'] + $computech + $big), $njeri);
+        $this->assertSame(['Urgent replacement', 500001], [$bill['supplierReason'], $bill['taxable']]);
+        $this->assertStringContainsString('A bill above KES 600,000', $refusal(['invoiceNo' => 'CT-90'] + $computech + ['lines' => [['desc' => 'Server', 'amount' => '600001']], 'overReason' => 'Replacement cycle']));
+    }
+
     public function testApprovalPostsTheBillAndNeedsASecondPerson(): void
     {
         $repo = new PayablesRepository();
@@ -326,7 +368,7 @@ final class PayablesTest extends CIUnitTestCase
         return $overrides + [
             'supplier' => 'Mwangaza Consultants', 'pin' => 'P051999888Q', 'category' => 'Professional fees', 'invoiceNo' => 'MC-2026-014',
             'invoiceDate' => '2026-08-30', 'terms' => 30, 'budgetLine' => $line['id'], 'method' => 'EFT — KCB Current (KES)',
-            'wht' => 'auto', 'whtReason' => '', 'overReason' => '',
+            'wht' => 'auto', 'whtReason' => '', 'overReason' => '', 'supplierReason' => 'One-off analysis below the quotation threshold',
             'lines' => [['desc' => 'Observer data analysis', 'amount' => '150000'], ['desc' => 'Report drafting', 'amount' => '50,000'], ['desc' => '', 'amount' => '']],
         ];
     }

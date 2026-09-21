@@ -103,6 +103,8 @@ final class PayablesRepository extends Repository
                     'preparedBy' => (int) $b['prepared_by'],
                     'preparer'  => $this->lookups->shortName((int) $b['prepared_by']),
                     'rejectedReason' => $b['rejected_reason'] ?? '',
+                    'supplierStanding' => ProcurementRepository::supplierStatus(['status' => $b['supplier_status'], 'prequalified_until' => $b['prequalified_until']]),
+                    'supplierReason' => $b['unqualified_supplier_reason'] ?? '',
                     'journal'   => $b['journal_ref'],
                     'run'       => $b['run_ref'] === null ? null : ['ref' => $b['run_ref'], 'date' => self::dm($b['run_date']), 'status' => self::label($b['run_status'])],
                     'whtRemittance' => $b['remittance_ref'],
@@ -113,7 +115,7 @@ final class PayablesRepository extends Repository
                     'documents' => $documents[(int) $b['id']] ?? [],
                 ];
             }, $this->rows(
-                'SELECT b.*, s.name AS supplier_name, s.kra_pin, s.category, j.reference AS journal_ref,
+                'SELECT b.*, s.name AS supplier_name, s.kra_pin, s.category, s.status AS supplier_status, s.prequalified_until, j.reference AS journal_ref,
                         r.reference AS run_ref, r.run_date, r.status AS run_status, w.reference AS remittance_ref
                  FROM {bills} b JOIN {suppliers} s ON s.id = b.supplier_id
                  LEFT JOIN {journals} j ON j.id = b.journal_id LEFT JOIN {payment_runs} r ON r.id = b.payment_run_id
@@ -256,13 +258,30 @@ final class PayablesRepository extends Repository
         ));
     }
 
-    /** @return list<array{name: string, pin: string, category: string}> suppliers that can be billed */
+    /** @return list<array{name: string, pin: string, category: string, status: string}> suppliers that can be billed, with their pre-qualification */
     public function suppliers(): array
     {
         return array_map(
-            static fn ($s) => ['name' => $s['name'], 'pin' => $s['kra_pin'] ?? '', 'category' => $s['category']],
-            $this->rows("SELECT name, kra_pin, category FROM {suppliers} WHERE status <> 'blocked' ORDER BY name")
+            static fn ($s) => ['name' => $s['name'], 'pin' => $s['kra_pin'] ?? '', 'category' => $s['category'], 'status' => ProcurementRepository::supplierStatus($s)],
+            $this->rows("SELECT name, kra_pin, category, status, prequalified_until FROM {suppliers} WHERE status <> 'blocked' ORDER BY name")
         );
+    }
+
+    /**
+     * Above this taxable value a bill is paid only to a pre-qualified supplier; below
+     * it, one without a current pre-qualification needs a reason. The same line as the
+     * three-quote rule, so a purchase big enough to need quotations cannot be billed
+     * round the procurement controls.
+     */
+    public static function prequalThreshold(): float
+    {
+        return ProcurementRepository::quoteThreshold();
+    }
+
+    /** Whether a supplier's pre-qualification is current, as supplierStatus() words it. */
+    public static function prequalified(string $status): bool
+    {
+        return in_array($status, ['Pre-qualified', 'Expiring'], true);
     }
 
     /**
@@ -296,7 +315,7 @@ final class PayablesRepository extends Repository
      * is approved.
      *
      * @param array{supplier: string, pin: string, category: string, invoiceNo: string, invoiceDate: string, terms: int|string,
-     *              budgetLine: int|string, method: string, wht: string, whtReason: string, overReason: string,
+     *              budgetLine: int|string, method: string, wht: string, whtReason: string, overReason: string, supplierReason?: string,
      *              lines: list<array{desc: string, amount: float|string}>} $f
      */
     public function capture(array $f, int $actorId): array
@@ -378,12 +397,27 @@ final class PayablesRepository extends Repository
             }
         }
 
+        // Pre-qualification is the procurement control; a bill captured straight into
+        // payables must not be a way round it. Without a current pre-qualification a
+        // supplier can be billed up to the three-quote threshold, with a reason on the
+        // bill; above it, the purchase goes through a purchase order.
+        $standing = $supplier === null ? 'Not pre-qualified' : ProcurementRepository::supplierStatus($supplier);
+        $unqualified = !self::prequalified($standing);
+        $supplierReason = trim((string) ($f['supplierReason'] ?? ''));
+        if ($unqualified && $taxable > self::prequalThreshold()) {
+            throw new RuleViolation(($supplier['name'] ?? $name) . ' is ' . strtolower($standing) . '. A bill above KES ' . Prototype::fmt(self::prequalThreshold())
+                . ' is paid only to a pre-qualified supplier: pre-qualify them in Procurement first, or buy through a requisition and purchase order.');
+        }
+        if ($unqualified && $supplierReason === '') {
+            throw new RuleViolation(($supplier['name'] ?? $name) . ' is ' . strtolower($standing) . '. Say why this bill is paid without a current pre-qualification before it goes for approval.');
+        }
+
         $vat   = round($taxable * self::VAT_RATE);
         $wht   = round($taxable * $whtRate / 100);
         $who   = $this->lookups->shortName($actorId);
         $entity = $this->lookups->entityId();
 
-        $no = $this->transaction(function () use ($f, $name, $pin, $category, $invoiceNo, $date, $terms, $line, $method, $coded, $taxable, $vat, $wht, $whtRate, $whtDefault, $whtOverridden, $overBudget, $supplier, $actorId, $who, $entity, $attachments, $documents) {
+        $no = $this->transaction(function () use ($f, $name, $pin, $category, $invoiceNo, $date, $terms, $line, $method, $coded, $taxable, $vat, $wht, $whtRate, $whtDefault, $whtOverridden, $overBudget, $supplier, $actorId, $who, $entity, $attachments, $documents, $standing, $unqualified, $supplierReason) {
             $now = Clock::timestamp();
             $supplierId = $supplier['id'] ?? null;
             if ($supplier === null) {
@@ -403,6 +437,7 @@ final class PayablesRepository extends Repository
                 'prepared_by' => $actorId,
                 'wht_override_reason' => $whtOverridden ? trim((string) $f['whtReason']) : null,
                 'over_budget_reason' => $overBudget ? trim((string) $f['overReason']) : null,
+                'unqualified_supplier_reason' => $unqualified ? $supplierReason : null,
                 'created_at' => $now,
             ]);
             foreach ($coded as $i => $l) {
@@ -414,6 +449,9 @@ final class PayablesRepository extends Repository
 
             $attachments->claim($documents, 'bill', $id);
             $this->audit('bill', $id, $no, 'Captured and coded by ' . $who . ' — supplier invoice ' . $invoiceNo . self::documentNote($documents), $actorId, 'history', $entity);
+            if ($unqualified) {
+                $this->audit('bill', $id, $no, 'Supplier ' . strtolower($standing) . ' — ' . $supplierReason, $actorId, 'history', $entity);
+            }
             if ($whtOverridden) {
                 $this->audit('bill', $id, $no, 'Withholding tax set to ' . self::num($whtRate) . '% against the ' . self::num($whtDefault) . '% default — ' . trim((string) $f['whtReason']), $actorId, 'history', $entity);
             }

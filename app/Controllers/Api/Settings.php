@@ -222,6 +222,7 @@ class Settings extends BaseApiController
             'currencies'   => $settings->currencies(),
             'approvals'    => $settings->approvals(),
             'approverRoles' => $settings->approverRoles(),
+            'procurement'  => $settings->procurement(),
             'sodRules'     => SettingsRepository::SOD_RULES,
             'benefits'     => $settings->benefits(),
             'grades'       => $settings->grades(),

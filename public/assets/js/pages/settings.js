@@ -60,6 +60,7 @@
       segments: Object.fromEntries(d.segments.map(s => [s.key, s.required])),
       currencies: d.currencies.map(c => ({ code: c.code, name: c.name, rate: c.rate, active: c.active })),
       approvals: Object.fromEntries(d.approvals.map(a => [a.key, { threshold: a.threshold, approver: a.approver }])),
+      procurement: { quoteThreshold: d.procurement.quoteThreshold },
       payroll: {
         benefits: d.benefits.map(b => ({ key: b.key, name: b.name, basis: b.basis, taxable: b.taxable, active: b.active })),
         grades: d.grades.map(g => ({ grade: g.grade, band: g.band, ben: { ...g.ben }, active: g.active })),
@@ -462,6 +463,17 @@
             </div>`;
           }).join('')}
         </div></div>
+        <div style="margin-top:22px;">
+          ${head('Procurement threshold', 'Above this value a purchase needs three quotations, each with the supplier\'s document, or a single-source justification before its purchase order. A bill entered straight into Payables for more than this, before VAT, goes only to a pre-qualified supplier; below it, a supplier without a current pre-qualification needs a reason on the bill.')}
+          <div class="st-table"><div style="min-width:640px;">
+            <div class="st-tr st-th" style="grid-template-columns:minmax(140px,1fr) 152px minmax(160px,1fr);"><div>Control</div><div class="end">Threshold (KES)</div><div>Above threshold</div></div>
+            <div class="st-tr" style="grid-template-columns:minmax(140px,1fr) 152px minmax(160px,1fr);">
+              <div class="st-ellipsis">Quotations and supplier pre-qualification</div>
+              <div><input class="st-cell mono end" data-num data-bind="procurement.quoteThreshold" value="${esc(fmt(num(draft.procurement.quoteThreshold)))}" aria-label="Procurement threshold"></div>
+              <div class="st-muted st-ellipsis">Three quotations · pre-qualified supplier</div>
+            </div>
+          </div></div>
+        </div>
         <div class="st-infobox">
           <div class="st-kicker">Segregation of duties</div>
           ${data.sodRules.map(r => `<div class="st-bullet"><span>·</span>${esc(r)}</div>`).join('')}

@@ -192,6 +192,7 @@ class Payables extends BaseApiController
             'vatRate'     => PayablesRepository::VAT_RATE,
             'today'       => \App\Libraries\Clock::date(),
             'requireInvoice' => config(\Config\Documents::class)->requireBillInvoice,
+            'prequalThreshold' => PayablesRepository::prequalThreshold(),
             // For the duplicate-invoice warning.
             'bills'       => array_map(static fn ($b) => ['no' => $b['no'], 'supplier' => $b['supplier'], 'taxable' => $b['taxable'], 'invoiceNo' => $b['invoiceNo']], $repo->all()),
         ]);
