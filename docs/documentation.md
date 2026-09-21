@@ -21,49 +21,11 @@ Two principles run through the whole interface:
   the payroll run, the advances register, donor claims) are reconciled back to
   their control accounts, and the interface shows whether they agree.
 
-### Standing up a new instance
+### Setting up an installation
 
-This document describes an instance already in use. A new one — for a different
-organisation, in its own database — is stood up in four commands and then four
-screens:
-
-```
-php spark migrate                      # the schema
-php spark db:seed BaselineSeeder       # the reference data any instance needs
-php spark install                      # the organisation, its head office, its
-                                       # first financial year and its first user
-```
-
-`BaselineSeeder` writes what is the same everywhere: the roles and the permissions
-each holds, the approval ceilings, the coding segments, the document series, the
-currencies, Kenya's counties, the payroll components, grade scale and statutory
-rates, and the month-end checklist. It names no organisation — there is no entity,
-no user, no chart of accounts and no financial year — and running it again changes
-nothing.
-
-`php spark install` asks for the organisation's registered and short names, its tax
-PIN and registration number, the head office's code, name and functional currency,
-the reporting framework, year end and account code length, the first financial year
-to keep, and the first user's name and email. It writes them in one transaction, so
-an answer it cannot accept leaves the instance exactly as it was, and it refuses to
-run twice: a second head office is not something the consolidation can carry. For an
-unattended install, `php spark install --show-config --no-header > install.json`
-writes the answers file and `php spark install --config=install.json` reads it back.
-
-The first user holds the **Finance Manager** role, the only one that can change
-settings. From there:
-
-1. **Settings** → Ledger, Segments, Currencies and Approvals: check the defaults
-   against how the organisation actually works.
-2. **Chart of accounts**: add the top-level headings, then **Import** the rest.
-   Imported accounts open at zero — only journals move a balance.
-3. **Settings → Segments** and **Settings → Bank statements**: open the funds every
-   posting is coded to, and the cash accounts the reconciliation agrees. Then
-   **Programmes** → add the first one, which carries the whole shared-cost
-   allocation, since there is nothing else to recover support costs against yet.
-4. **Settings → Opening balances**: carry the trial balance from the old system.
-5. **Settings → Users**: invite a second person — the conversion cannot be approved
-   by whoever loaded it.
+This document describes an installation already in use. How to install one —
+with the demonstration data, or as a new instance for a real organisation — and
+the order to finish setting it up in, is in [setup.md](setup.md).
 
 ### How the interface is built
 
