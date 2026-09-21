@@ -136,6 +136,19 @@ components:
       schema: { type: string, default: All funds }
 
   schemas:
+    SupplierInput:
+      type: object
+      required: [name, category]
+      properties:
+        name: { type: string, maxLength: 120 }
+        pin: { type: string, description: 'KRA PIN, P0 then eight digits and a letter. Required to pre-qualify.', example: P051182934C }
+        category: { type: string, maxLength: 60 }
+        status: { type: string, enum: [not_prequalified, prequalified, blocked], default: not_prequalified }
+        prequalUntil: { type: string, format: date }
+        rating: { type: string, enum: [A, B, C] }
+        whtRate: { type: number, minimum: 0, maximum: 100, description: 'Withholding tax rate, in percent. Blank leaves the spend category''s rate to apply.' }
+        whtBasis: { type: string, maxLength: 40, example: on fees }
+        paymentDetails: { type: string, description: Bank or M-Pesa details the supplier is paid to. }
     Locale:
       type: object
       description: Interface language and reporting-locale envelope, attached to most 200 responses.
@@ -2086,6 +2099,88 @@ paths:
           content:
             application/json:
               schema: { type: object, additionalProperties: true }
+
+  /procurement/suppliers/form:
+    get:
+      tags: [Procurement]
+      summary: Options for the supplier register form
+      responses:
+        '200':
+          description: Categories in use and the spend categories (with their default withholding), ratings, statuses, and `can` — whether the acting user may register suppliers (`register`) and pre-qualify, renew, block or restore them (`qualify`).
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /procurement/suppliers:
+    post:
+      tags: [Procurement]
+      summary: Register a supplier
+      description: >-
+        Preparers and approvers may register a supplier. Registering one as pre-qualified or
+        blocked needs an approver. A pre-qualified supplier needs a KRA PIN, a rating and a
+        pre-qualification date after today. Names and KRA PINs are unique on the register.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierInput' }
+      responses:
+        '201':
+          description: The supplier as registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  supplier: { type: object, additionalProperties: true }
+                  locale: { $ref: '#/components/schemas/Locale' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /procurement/suppliers/{id}:
+    get:
+      tags: [Procurement]
+      summary: One supplier, as the register form edits it
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: The supplier with its history, plus the form options and `can` as `/procurement/suppliers/form`.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Procurement]
+      summary: Change a supplier on the register
+      description: >-
+        Changing the status, or the pre-qualification date or rating of a pre-qualified
+        supplier, needs an approver. A KRA PIN that has been billed against cannot be changed.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierInput' }
+      responses:
+        '200':
+          description: The supplier as changed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  supplier: { type: object, additionalProperties: true }
+                  locale: { $ref: '#/components/schemas/Locale' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /procurement/{no}/documents/{id}:
     get:

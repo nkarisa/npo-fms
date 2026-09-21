@@ -32,6 +32,14 @@ final class ProcurementRepository extends Repository
 
     private const ACCRUED = '2120';
 
+    /** Supplier register statuses, as stored → as the form offers them. */
+    public const SUPPLIER_STATUSES = ['not_prequalified' => 'Not pre-qualified', 'prequalified' => 'Pre-qualified', 'blocked' => 'Blocked'];
+
+    public const RATINGS = ['A', 'B', 'C'];
+
+    /** A KRA PIN: P0, eight digits and a letter. */
+    private const PIN_PATTERN = '/^P0\d{8}[A-Z]$/';
+
     /** Days before pre-qualification lapses that a supplier shows as expiring. */
     private const EXPIRY_WARNING_DAYS = 30;
 
@@ -218,6 +226,7 @@ final class ProcurementRepository extends Repository
     public function suppliers(): array
     {
         return $this->cached('suppliers', fn () => array_map(fn ($s) => [
+            'id'           => (int) $s['id'],
             'name'         => $s['name'],
             'pin'          => $s['kra_pin'] ?? '—',
             'category'     => $s['category'],
@@ -249,6 +258,45 @@ final class ProcurementRepository extends Repository
             $days <= self::EXPIRY_WARNING_DAYS => 'Expiring',
             default                            => 'Pre-qualified',
         };
+    }
+
+    /** One supplier as the register form edits it, or null when there is no such supplier. */
+    public function supplier(int $id): ?array
+    {
+        $s = $this->row('SELECT * FROM {suppliers} WHERE id = ?', [$id]);
+        if ($s === null) {
+            return null;
+        }
+
+        return [
+            'id'             => (int) $s['id'],
+            'name'           => $s['name'],
+            'pin'            => $s['kra_pin'] ?? '',
+            'category'       => $s['category'],
+            'status'         => $s['status'],
+            'label'          => self::supplierStatus($s),
+            'prequalUntil'   => $s['prequalified_until'] ?? '',
+            'rating'         => $s['rating'] ?? '',
+            'whtRate'        => $s['wht_rate_pct'] === null ? '' : (string) self::num($s['wht_rate_pct']),
+            'whtBasis'       => $s['wht_basis'] ?? '',
+            'paymentDetails' => $s['payment_details'] ?? '',
+            'billed'         => (int) $this->value('SELECT COUNT(*) FROM {bills} WHERE supplier_id = ?', [$id]) > 0,
+            'history'        => $this->trails('supplier', 'd M Y')[$id] ?? [],
+        ];
+    }
+
+    /** What the supplier form offers: the categories already in use and the spend categories that set withholding. */
+    public function supplierOptions(): array
+    {
+        $spend = (new PayablesRepository())->categories();
+        $used  = array_column($this->rows('SELECT DISTINCT category FROM {suppliers} ORDER BY category'), 'category');
+
+        return [
+            'categories' => array_values(array_unique(array_merge(array_column($spend, 'name'), $used))),
+            'withholding' => array_column($spend, 'wht', 'name'),
+            'ratings'    => self::RATINGS,
+            'statuses'   => self::SUPPLIER_STATUSES,
+        ];
     }
 
     /**
@@ -662,6 +710,112 @@ final class ProcurementRepository extends Repository
     }
 
     /** A supplier on the register by name; one not yet on it is added, not pre-qualified. */
+    /**
+     * Registers a supplier, or changes one already on the register. Registering and
+     * editing the details is a preparer's job; pre-qualifying, blocking or restoring a
+     * supplier changes who can be ordered from and paid, so it takes an approver
+     * ($canApprove). A PIN already billed against is not changed — the withholding
+     * certificates filed with KRA carry it.
+     *
+     * @param array{name: string, pin?: string, category: string, status?: string, prequalUntil?: string, rating?: string,
+     *              whtRate?: float|string, whtBasis?: string, paymentDetails?: string} $f
+     */
+    public function saveSupplier(array $f, int $actorId, bool $canApprove, ?int $id = null): array
+    {
+        $current = $id === null ? null : $this->row('SELECT * FROM {suppliers} WHERE id = ?', [$id]);
+        if ($id !== null && $current === null) {
+            throw new RuleViolation('There is no such supplier on the register.');
+        }
+
+        $name     = preg_replace('/\s+/', ' ', trim((string) ($f['name'] ?? '')));
+        $pin      = strtoupper(trim((string) ($f['pin'] ?? '')));
+        $category = trim((string) ($f['category'] ?? ''));
+        $status   = (string) ($f['status'] ?? ($current['status'] ?? 'not_prequalified'));
+        $until    = trim((string) ($f['prequalUntil'] ?? ''));
+        $untilAt  = $until === '' ? null : \DateTimeImmutable::createFromFormat('!Y-m-d', $until);
+        $rating   = strtoupper(trim((string) ($f['rating'] ?? '')));
+        $whtRaw   = trim((string) ($f['whtRate'] ?? ''));
+        $wht      = $whtRaw === '' ? null : (float) $whtRaw;
+        $basis    = trim((string) ($f['whtBasis'] ?? ''));
+        $payment  = trim((string) ($f['paymentDetails'] ?? ''));
+
+        $excluding = $id === null ? '' : ' AND id <> ' . (int) $id;
+        $nameTaken = $name === '' ? null : $this->value('SELECT name FROM {suppliers} WHERE LOWER(name) = ?' . $excluding, [mb_strtolower($name)]);
+        $pinHolder = $pin === '' ? null : $this->value('SELECT name FROM {suppliers} WHERE kra_pin = ?' . $excluding, [$pin]);
+        $billed    = $id !== null && (int) $this->value('SELECT COUNT(*) FROM {bills} WHERE supplier_id = ?', [$id]) > 0;
+        $statusChanged = $status !== ($current['status'] ?? 'not_prequalified');
+        // Renewing or re-rating a pre-qualification is as much an approval as granting it.
+        $qualificationChanged = $statusChanged || ($status === 'prequalified'
+            && ($until !== (string) ($current['prequalified_until'] ?? '') || $rating !== (string) ($current['rating'] ?? '')));
+
+        $error = match (true) {
+            $name === ''                                        => 'Name the supplier as it is registered.',
+            mb_strlen($name) > 120                              => 'Keep the supplier name to 120 characters.',
+            $nameTaken !== null                                 => $nameTaken . ' is already on the supplier register.',
+            $pin !== '' && preg_match(self::PIN_PATTERN, $pin) !== 1 => 'The KRA PIN looks wrong. It runs P0 then eight digits and a letter, e.g. P051182934C.',
+            $pinHolder !== null                                 => 'KRA PIN ' . $pin . ' belongs to ' . $pinHolder . ' on the supplier register.',
+            $billed && $current['kra_pin'] !== null && $pin !== $current['kra_pin']
+                                                                => $current['name'] . ' has been billed under KRA PIN ' . $current['kra_pin'] . '. The PIN cannot be changed once withholding has been filed against it.',
+            $category === ''                                    => 'Choose the supplier\'s category.',
+            mb_strlen($category) > 60                           => 'Keep the category to 60 characters.',
+            !array_key_exists($status, self::SUPPLIER_STATUSES) => 'Choose whether the supplier is pre-qualified, not pre-qualified or blocked.',
+            $qualificationChanged && !$canApprove               => 'Pre-qualifying, renewing, blocking or restoring a supplier needs an approver.',
+            $until !== '' && $untilAt === false                 => 'Enter the pre-qualification end date as a date.',
+            $status === 'prequalified' && $pin === ''           => 'A supplier is pre-qualified only with a KRA PIN on the register.',
+            $status === 'prequalified' && $untilAt === null     => 'Give the date pre-qualification runs to.',
+            $status === 'prequalified' && $qualificationChanged && $untilAt <= Clock::today()
+                                                                => 'Pre-qualification must run to a date after today.',
+            $status === 'prequalified' && $rating === ''        => 'Rate the supplier A, B or C when pre-qualifying it.',
+            $rating !== '' && !in_array($rating, self::RATINGS, true) => 'The rating is A, B or C.',
+            $wht !== null && ($wht < 0 || $wht > 100)           => 'The withholding rate is a percentage between 0 and 100.',
+            $wht !== null && $basis === ''                      => 'Say what the withholding applies to, e.g. "on fees".',
+            mb_strlen($basis) > 40                              => 'Keep the withholding basis to 40 characters.',
+            default                                             => null,
+        };
+        if ($error !== null) {
+            throw new RuleViolation($error);
+        }
+
+        $row = [
+            'name' => $name, 'kra_pin' => $pin !== '' ? $pin : null, 'category' => $category, 'status' => $status,
+            'prequalified_until' => $untilAt ? $untilAt->format('Y-m-d') : null, 'rating' => $rating !== '' ? $rating : null,
+            'wht_rate_pct' => $wht, 'wht_basis' => $wht !== null ? $basis : null, 'payment_details' => $payment !== '' ? $payment : null,
+        ];
+        $who = $this->lookups->shortName($actorId);
+
+        $id = $this->transaction(function () use ($id, $current, $row, $who, $actorId, $qualificationChanged) {
+            $now = Clock::timestamp();
+            if ($id === null) {
+                $id = $this->insert('suppliers', $row + ['created_at' => $now]);
+                $this->audit('supplier', $id, $row['name'], 'Registered by ' . $who . ' as ' . strtolower(self::SUPPLIER_STATUSES[$row['status']]), $actorId);
+
+                return $id;
+            }
+
+            $changed = array_keys(array_filter($row, static fn ($v, $k) => $k === 'wht_rate_pct'
+                ? ($v === null) !== ($current[$k] === null) || (float) $v !== (float) $current[$k]
+                : (string) $v !== (string) ($current[$k] ?? ''), ARRAY_FILTER_USE_BOTH));
+            if ($changed === []) {
+                return $id;
+            }
+            $this->db->table('suppliers')->where('id', $id)->update($row + ['updated_at' => $now]);
+            if ($qualificationChanged) {
+                $this->audit('supplier', $id, $row['name'], self::SUPPLIER_STATUSES[$row['status']] . ' by ' . $who
+                    . ($row['status'] === 'prequalified' ? ' to ' . self::dmy($row['prequalified_until']) . ', rated ' . $row['rating'] : ''), $actorId);
+            }
+            $details = array_diff($changed, $qualificationChanged ? ['status', 'prequalified_until', 'rating'] : ['status']);
+            if ($details !== []) {
+                $labels = ['name' => 'name', 'kra_pin' => 'KRA PIN', 'category' => 'category', 'prequalified_until' => 'pre-qualification date',
+                    'rating' => 'rating', 'wht_rate_pct' => 'withholding', 'wht_basis' => 'withholding', 'payment_details' => 'payment details'];
+                $this->audit('supplier', $id, $row['name'], 'Updated by ' . $who . ': ' . implode(', ', array_unique(array_map(static fn ($k) => $labels[$k], $details))), $actorId);
+            }
+
+            return $id;
+        });
+
+        return $this->supplier($id);
+    }
+
     private function supplierId(string $name): int
     {
         $id = $this->value('SELECT id FROM {suppliers} WHERE LOWER(name) = ?', [strtolower($name)]);

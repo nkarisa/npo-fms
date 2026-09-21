@@ -160,6 +160,7 @@ class Procurement extends BaseApiController
 
         return [
             'rows'   => $all,
+            'can'    => $this->supplierRights(),
             'footer' => count($all) . ' suppliers · pre-qualification runs to calendar year end · lapsed suppliers cannot be selected on a purchase order',
         ];
     }
@@ -310,6 +311,59 @@ class Procurement extends BaseApiController
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }
+    }
+
+    /** What the supplier form offers, and what the acting user may change. */
+    public function supplierForm()
+    {
+        return $this->json((new Repo())->supplierOptions() + ['can' => $this->supplierRights()]);
+    }
+
+    public function supplier($id)
+    {
+        $repo = new Repo();
+        $supplier = $repo->supplier((int) $id);
+        if ($supplier === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => 'There is no such supplier on the register.']);
+        }
+
+        return $this->json(['supplier' => $supplier] + $repo->supplierOptions() + ['can' => $this->supplierRights()]);
+    }
+
+    /** Body: {name, pin?, category, status?, prequalUntil?, rating?, whtRate?, whtBasis?, paymentDetails?}. */
+    public function createSupplier()
+    {
+        return $this->saveSupplier(null);
+    }
+
+    /** Body as createSupplier. */
+    public function updateSupplier($id)
+    {
+        return $this->saveSupplier((int) $id);
+    }
+
+    private function saveSupplier(?int $id)
+    {
+        $can = $this->supplierRights();
+        if (!$can['register']) {
+            return $this->forbidden($this->actor()['role'] . ' cannot change the supplier register.');
+        }
+
+        try {
+            $supplier = (new Repo())->saveSupplier($this->request->getJSON(true) ?? [], $this->actorId(), $can['qualify'], $id);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        return $this->json(['supplier' => $supplier])->setStatusCode($id === null ? 201 : 200);
+    }
+
+    /** Preparers register suppliers and keep their details; approvers pre-qualify, renew, block and restore them. */
+    private function supplierRights(): array
+    {
+        $actor = $this->actor();
+
+        return ['register' => $actor['canPrepare'] || $actor['canApprove'], 'qualify' => $actor['canApprove']];
     }
 
     public function document($no, $id)

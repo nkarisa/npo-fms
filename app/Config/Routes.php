@@ -134,6 +134,10 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('procurement', 'Api\Procurement::index');
     $routes->post('procurement', 'Api\Procurement::create');
     $routes->get('procurement/form', 'Api\Procurement::form');
+    $routes->get('procurement/suppliers/form', 'Api\Procurement::supplierForm');
+    $routes->post('procurement/suppliers', 'Api\Procurement::createSupplier');
+    $routes->get('procurement/suppliers/(:num)', 'Api\Procurement::supplier/$1');
+    $routes->post('procurement/suppliers/(:num)', 'Api\Procurement::updateSupplier/$1');
     $routes->get('procurement/(:segment)/documents/(:num)', 'Api\Procurement::document/$1/$2');
     $routes->get('procurement/(:segment)', 'Api\Procurement::show/$1');
     $routes->post('procurement/(:segment)/submit', 'Api\Procurement::submit/$1');

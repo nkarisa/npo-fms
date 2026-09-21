@@ -173,6 +173,65 @@ final class ProcurementTest extends CIUnitTestCase
     }
 
     /** The request reads cookies from the shared superglobals, which a test request does not refresh. */
+    public function testSuppliersAreRegisteredByAPreparerAndPrequalifiedByAnApprover(): void
+    {
+        $this->actAs('s.njeri@elog.or.ke');
+        $form = $this->api('api/procurement/suppliers/form');
+        $this->assertSame(['register' => true, 'qualify' => false], $form['can']);
+        $this->assertContains('Professional fees', $form['categories']);
+
+        $post = fn (string $url, array $body) => $this->withBodyFormat('json')->post($url, $body);
+        $expect = function ($response, int $status): array {
+            $response->assertStatus($status);
+
+            return json_decode($response->getJSON(), true);
+        };
+        $refusal = fn ($response) => $expect($response, 422)['error'];
+
+        $this->assertStringContainsString('KRA PIN looks wrong', $refusal($post('api/procurement/suppliers', ['name' => 'Tana Logistics', 'pin' => 'A123', 'category' => 'Transport'])));
+        $this->assertStringContainsString('already on the supplier register', $refusal($post('api/procurement/suppliers', ['name' => 'safaricom plc', 'category' => 'Communication'])));
+        $this->assertStringContainsString('belongs to Safaricom PLC', $refusal($post('api/procurement/suppliers', ['name' => 'Tana Logistics', 'pin' => 'P051092845Z', 'category' => 'Transport'])));
+        $this->assertStringContainsString('needs an approver', $refusal($post('api/procurement/suppliers', [
+            'name' => 'Tana Logistics', 'pin' => 'P051555123T', 'category' => 'Transport', 'status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => 'B',
+        ])));
+
+        $created = $expect($post('api/procurement/suppliers', [
+            'name' => '  Tana   Logistics ', 'pin' => 'p051555123t', 'category' => 'Transport', 'whtRate' => '5', 'whtBasis' => 'on hire', 'paymentDetails' => 'KCB Moi Avenue 1102334455',
+        ]), 201)['supplier'];
+        $this->assertSame(['Tana Logistics', 'P051555123T', 'not_prequalified', 'Not pre-qualified', '5', 'on hire'],
+            [$created['name'], $created['pin'], $created['status'], $created['label'], $created['whtRate'], $created['whtBasis']]);
+        $this->assertStringStartsWith('Registered by', $created['history'][0]['what']);
+
+        $row = array_column($this->api('api/procurement?view=Suppliers')['rows'], null, 'name')['Tana Logistics'];
+        $this->assertSame([$created['id'], '5% on hire', 'Not pre-qualified'], [$row['id'], $row['wht'], $row['status']]);
+
+        // A preparer keeps the details but cannot pre-qualify.
+        $url = 'api/procurement/suppliers/' . $created['id'];
+        $post($url, ['status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => 'A'] + $created)->assertStatus(422);
+        $post($url, ['category' => 'Vehicle hire'] + $created)->assertStatus(200);
+
+        $this->actAs('w.kamau@elog.or.ke');
+        $this->assertStringContainsString('after today', $refusal($post($url, ['category' => 'Vehicle hire', 'status' => 'prequalified', 'prequalUntil' => '2026-08-31', 'rating' => 'A'] + $created)));
+        $this->assertStringContainsString('Rate the supplier', $refusal($post($url, ['category' => 'Vehicle hire', 'status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => ''] + $created)));
+        $qualified = $expect($post($url, ['category' => 'Vehicle hire', 'status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => 'A'] + $created), 200)['supplier'];
+        $this->assertSame(['Pre-qualified', 'A', 'Vehicle hire'], [$qualified['label'], $qualified['rating'], $qualified['category']]);
+        $this->assertSame(['Updated by', 'Pre-qualified by'], array_map(static fn ($h) => implode(' ', array_slice(explode(' ', $h['what']), 0, 2)), array_slice($qualified['history'], 1)));
+
+        // Blocking takes the supplier off the bill form.
+        $post($url, ['status' => 'blocked'] + $qualified)->assertStatus(200);
+        $this->assertNotContains('Tana Logistics', array_column((new PayablesRepository())->suppliers(), 'name'));
+
+        // The PIN a supplier has been billed under stays.
+        $billed = $this->db->table('suppliers s')->select('s.id')->join('bills b', 'b.supplier_id = s.id')->where('s.kra_pin IS NOT NULL')->get(1)->getRowArray();
+        $supplier = $this->api('api/procurement/suppliers/' . $billed['id'])['supplier'];
+        $this->assertTrue($supplier['billed']);
+        $this->assertStringContainsString('cannot be changed', $refusal($post('api/procurement/suppliers/' . $billed['id'], ['pin' => 'P051000001X'] + $supplier)));
+
+        $this->get('api/procurement/suppliers/999999')->assertStatus(404);
+        $this->actAs('audit@pkfea.com');
+        $post('api/procurement/suppliers', ['name' => 'Anyone', 'category' => 'Transport'])->assertStatus(403);
+    }
+
     private function actAs(string $email): void
     {
         $_COOKIE['elog_actor'] = $email;

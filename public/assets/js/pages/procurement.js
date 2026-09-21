@@ -2,8 +2,8 @@
  * Procurement (v5): requisition to purchase order to goods received to bill. The
  * headline stats and a view switcher — Requisitions (status tabs, search, ten a
  * page), Purchase orders, Goods received and Suppliers — the requisition drawer with
- * each step's action, and the new requisition form with its lines, quotations and
- * budget check. /procurement/<requisition> opens a requisition straight away. The API
+ * each step's action, the new requisition form with its lines, quotations and
+ * budget check, and the supplier drawer that registers and edits suppliers. /procurement/<requisition> opens a requisition straight away. The API
  * enforces the budget check, the three-quote rule and segregation of duties.
  */
 (async function () {
@@ -41,6 +41,7 @@
           <p class="page-blurb" style="max-width:680px;">Requisition to purchase order to goods received. Budget availability is checked before approval, three quotations are required above KES 500,000, and a goods received note raises the supplier bill.</p>
         </div>
         <div class="page-actions" style="margin-left:0;margin-inline-start:auto;">
+          <button type="button" class="btn" id="pq-add-supplier" hidden>+ Add supplier</button>
           <button type="button" class="btn btn-primary" id="pq-new">+ New requisition</button>
         </div>
       </div>
@@ -84,15 +85,21 @@
       refresh();
     });
     const table = app.querySelector('#pq-table');
-    table.addEventListener('click', (e) => {
-      const row = e.target.closest('[data-no]');
+    const activate = (target) => {
+      const supplier = target.closest('[data-supplier]');
+      if (supplier) return Supplier.open(+supplier.dataset.supplier);
+      const row = target.closest('[data-no]');
       if (row) open(row.dataset.no);
-    });
+    };
+    table.addEventListener('click', (e) => activate(e.target));
     table.addEventListener('keydown', (e) => {
-      const row = e.target.closest('[data-no]');
-      if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); open(row.dataset.no); }
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      if (!e.target.closest('[data-supplier], [data-no]')) return;
+      e.preventDefault();
+      activate(e.target);
     });
     app.querySelector('#pq-new').addEventListener('click', () => NewRequisition.open());
+    app.querySelector('#pq-add-supplier').addEventListener('click', () => Supplier.open(null));
   }
 
   function render() {
@@ -107,6 +114,7 @@
 
     const reqs = state.view === 'Requisitions';
     app.querySelector('#pq-filters').hidden = !reqs;
+    app.querySelector('#pq-add-supplier').hidden = !(state.view === 'Suppliers' && data.can && data.can.register);
     app.querySelector('#pq-card').style.marginTop = reqs ? '' : '12px';
     if (reqs) {
       app.querySelector('#pq-tabs').innerHTML = data.tabs.map(t => `
@@ -182,7 +190,7 @@
           <div>Supplier</div><div>KRA PIN</div><div>Category</div><div>Pre-qualified to</div><div>Rating</div><div>Withholding</div><div style="text-align:end;">Spend YTD</div><div>Status</div>
         </div>
         ${data.rows.map(s => `
-          <div class="pq-grid pq-sups" style="border-bottom:1px solid #F0EEE9;height:40px;">
+          <div class="pq-grid pq-sups ap-row" data-supplier="${s.id}" tabindex="0" style="height:40px;">
             <div class="coa-cell" style="font-size:12.5px;color:#16211E;">${esc(s.name)}</div>
             <div class="jr-date" style="font-size:11px;">${esc(s.pin)}</div>
             <div class="coa-cell">${esc(s.category)}</div>
@@ -191,7 +199,8 @@
             <div class="coa-cell">${esc(s.wht)}</div>
             <div class="coa-amount">${fmt(s.spend)}</div>
             <div style="display:flex;align-items:center;gap:8px;">${pill(s.status)}<span style="font-size:11px;color:#8B948F;white-space:nowrap;">${s.openPos} open</span></div>
-          </div>`).join('')}`;
+          </div>`).join('')}
+        ${empty('No suppliers are on the register yet.')}`;
     }
   }
 
@@ -681,6 +690,174 @@
       renderBody();
       el.hidden = false;
       el.querySelector('[data-nr="title"]').focus();
+    }
+
+    function close() {
+      if (el) el.hidden = true;
+    }
+
+    return { open: openDrawer };
+  })();
+  // ---- Supplier drawer ----
+
+  const Supplier = (() => {
+    let el;
+    let opts = null; // categories, withholding, ratings, statuses, can
+    let f = null;
+    let editing = null; // the supplier as loaded, or null when registering
+    let saving = false;
+
+    function build() {
+      el = document.createElement('div');
+      el.className = 'rt';
+      el.hidden = true;
+      el.innerHTML = `
+        <div class="jd-backdrop" data-sp-close></div>
+        <div class="rt-panel" style="width:520px;" role="dialog" aria-modal="true" aria-label="Supplier">
+          <div class="rt-head" style="padding:16px 20px;align-items:center;">
+            <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+              <div class="jd-caps" style="letter-spacing:.1em;" id="sp-caps"></div>
+              <div style="font-size:15.5px;font-weight:600;letter-spacing:-.01em;" id="sp-title"></div>
+            </div>
+            <button type="button" class="rt-close" data-sp-close aria-label="Close">×</button>
+          </div>
+          <div class="rt-body pq-body" style="padding:18px 20px;gap:16px;" id="sp-body"></div>
+          <div class="rt-foot" style="padding:13px 20px;background:#FBFAF7;">
+            <span id="sp-status" style="font-size:12px;line-height:1.5;flex:1;min-width:0;"></span>
+            <button type="button" class="btn" data-sp-close>Cancel</button>
+            <button type="button" class="btn btn-primary" id="sp-save"></button>
+          </div>
+        </div>`;
+      document.body.appendChild(el);
+
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('[data-sp-close]')) return close();
+        if (e.target.closest('#sp-save')) save();
+      });
+      el.addEventListener('input', (e) => {
+        const t = e.target;
+        if (!t.dataset.sp) return;
+        f[t.dataset.sp] = t.value;
+        if (t.dataset.sp === 'status') renderBody();
+        else renderDerived();
+      });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && el && !el.hidden) close(); });
+    }
+
+    function renderBody() {
+      const can = opts.can;
+      const option = (value, label, cur) => `<option value="${esc(value)}" ${String(value) === String(cur) ? 'selected' : ''}>${esc(label)}</option>`;
+      const qualifyLocked = !can.qualify;
+      const prequalified = f.status === 'prequalified';
+      const pinLocked = editing && editing.billed && editing.pin;
+      el.querySelector('#sp-body').innerHTML = `
+        <label class="ap-f"><span>Supplier name</span><input data-sp="name" value="${esc(f.name)}" maxlength="120" placeholder="As registered, e.g. Zuri Consulting Ltd"></label>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <label class="ap-f"><span>KRA PIN</span>
+            <input class="mono" data-sp="pin" value="${esc(f.pin)}" maxlength="11" placeholder="P051182934C" ${pinLocked ? 'readonly' : ''}>
+            ${pinLocked ? '<span class="ap-note" style="font-weight:400;">Billed against — withholding has been filed under this PIN.</span>' : ''}
+          </label>
+          <label class="ap-f"><span>Category</span>
+            <input data-sp="category" value="${esc(f.category)}" list="sp-categories" maxlength="60" placeholder="e.g. Professional fees">
+            <datalist id="sp-categories">${opts.categories.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+          </label>
+        </div>
+        <div class="pq-section">
+          <div class="pq-section-head"><span class="jd-caps">Pre-qualification</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+            <label class="ap-f"><span>Status</span>
+              <select data-sp="status" ${qualifyLocked ? 'disabled' : ''}>${Object.entries(opts.statuses).map(([k, v]) => option(k, v, f.status)).join('')}</select>
+            </label>
+            <label class="ap-f"><span>Pre-qualified to</span><input type="date" class="mono" data-sp="prequalUntil" value="${esc(f.prequalUntil)}" ${qualifyLocked || !prequalified ? 'disabled' : ''}></label>
+            <label class="ap-f"><span>Rating</span>
+              <select data-sp="rating" ${qualifyLocked || !prequalified ? 'disabled' : ''}>${option('', '—', f.rating)}${opts.ratings.map(r => option(r, r, f.rating)).join('')}</select>
+            </label>
+          </div>
+          <div class="ap-note" style="font-weight:400;margin-top:6px;">${qualifyLocked
+            ? 'An approver pre-qualifies, renews, blocks or restores a supplier. You can register it and keep its details.'
+            : f.status === 'blocked' ? 'A blocked supplier cannot be ordered from or billed.'
+            : prequalified ? 'Purchase orders can be placed with a supplier only while its pre-qualification is current.'
+            : 'Quotations can be taken, but no purchase order is placed until the supplier is pre-qualified.'}</div>
+        </div>
+        <div class="pq-section">
+          <div class="pq-section-head"><span class="jd-caps">Withholding tax</span></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;">
+            <label class="ap-f"><span>Rate %</span><input class="amount" data-sp="whtRate" value="${esc(f.whtRate)}" inputmode="decimal" placeholder="Category default"></label>
+            <label class="ap-f"><span>Applies to</span><input data-sp="whtBasis" value="${esc(f.whtBasis)}" maxlength="40" placeholder="e.g. on fees"></label>
+          </div>
+          <div class="ap-note" style="font-weight:400;margin-top:6px;" id="sp-wht-note"></div>
+        </div>
+        <label class="ap-f"><span>Payment details</span>
+          <textarea data-sp="paymentDetails" rows="2" class="ar-textarea" placeholder="Bank, branch and account, or M-Pesa paybill and account">${esc(f.paymentDetails)}</textarea>
+        </label>
+        ${editing && editing.history.length ? `
+          <div class="pq-section">
+            <div class="pq-section-head"><span class="jd-caps">History</span></div>
+            ${editing.history.map(h => `<div style="display:flex;gap:10px;font-size:12px;line-height:1.5;"><span class="jr-date" style="font-size:11px;flex:none;width:78px;">${esc(h.when)}</span><span style="color:#28352F;">${esc(h.what)}</span></div>`).join('')}
+          </div>` : ''}`;
+      renderDerived();
+    }
+
+    function renderDerived() {
+      const rate = opts.withholding[f.category];
+      el.querySelector('#sp-wht-note').textContent = f.whtRate.trim() !== ''
+        ? 'This rate replaces the spend category\'s on every bill from this supplier.'
+        : rate !== undefined ? `Left blank, bills use the ${f.category} rate of ${rate}%.` : 'Left blank, bills use the rate of the spend category they are coded to.';
+      const err = !f.name.trim() ? 'Name the supplier.'
+        : !f.category.trim() ? 'Choose the supplier\'s category.'
+        : f.pin.trim() && !/^P0\d{8}[A-Z]$/i.test(f.pin.trim()) ? 'The KRA PIN runs P0, eight digits and a letter.'
+        : '';
+      el.querySelector('#sp-status').innerHTML = err
+        ? `<span style="color:#A6412F;">${esc(err)}</span>`
+        : `<span style="color:#8B948F;">${editing ? 'Changes are recorded in the supplier\'s history.' : 'The supplier is added to the register and offered on requisitions and bills.'}</span>`;
+      return err;
+    }
+
+    async function save() {
+      const err = renderDerived();
+      if (err) return UI.toast(err);
+      if (saving) return;
+      saving = true;
+      const btn = el.querySelector('#sp-save');
+      btn.disabled = true;
+      try {
+        const url = editing ? `/api/procurement/suppliers/${editing.id}` : '/api/procurement/suppliers';
+        const res = await UI.postJSON(url, f);
+        close();
+        UI.toast(editing ? `${res.supplier.name} updated on the register.` : `${res.supplier.name} added to the supplier register as ${res.supplier.label.toLowerCase()}.`);
+        await refresh();
+      } catch (e) {
+        el.querySelector('#sp-status').innerHTML = `<span style="color:#A6412F;">${esc(e.message)}</span>`;
+      } finally {
+        saving = false;
+        btn.disabled = false;
+      }
+    }
+
+    async function openDrawer(id) {
+      if (!el) build();
+      try {
+        const res = await UI.fetchJSON(id ? `/api/procurement/suppliers/${id}` : '/api/procurement/suppliers/form');
+        opts = res;
+        editing = res.supplier || null;
+      } catch (err) {
+        UI.toast('The supplier could not be loaded.');
+        return;
+      }
+      const s = editing || {};
+      f = {
+        name: s.name || '', pin: s.pin || '', category: s.category || '', status: s.status || 'not_prequalified',
+        prequalUntil: s.prequalUntil || '', rating: s.rating || '', whtRate: s.whtRate || '', whtBasis: s.whtBasis || '', paymentDetails: s.paymentDetails || '',
+      };
+      el.querySelector('#sp-caps').textContent = editing ? 'Supplier register' : 'New supplier';
+      el.querySelector('#sp-title').textContent = editing ? editing.name : 'Register a supplier';
+      const save = el.querySelector('#sp-save');
+      save.textContent = editing ? 'Save changes' : 'Add supplier';
+      save.hidden = !opts.can.register;
+      renderBody();
+      el.querySelector('#sp-body').querySelectorAll('input, select, textarea').forEach(i => { if (!opts.can.register) i.disabled = true; });
+      el.hidden = false;
+      if (opts.can.register) el.querySelector('[data-sp="name"]').focus();
     }
 
     function close() {
