@@ -25,7 +25,7 @@
   },
   {
     "code": "1110",
-    "name": "Bank — KCB Current (KES)",
+    "name": "Bank — Current accounts (KES)",
     "level": 2,
     "type": "Asset",
     "restriction": "Unrestricted",
@@ -37,7 +37,7 @@
   },
   {
     "code": "1120",
-    "name": "Bank — Equity Grant Account (USD)",
+    "name": "Bank — Grant accounts (USD)",
     "level": 2,
     "type": "Asset",
     "restriction": "Restricted",

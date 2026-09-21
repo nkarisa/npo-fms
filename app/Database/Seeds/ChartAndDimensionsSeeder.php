@@ -23,7 +23,11 @@ class ChartAndDimensionsSeeder extends Seeder
     /** When the chart was last edited, and by whom ("Last edited 12 Aug 2026 by W. Kamau"): the archiving of 1395. */
     private const LAST_CHART_EDIT = ['2026-08-12 10:00:00', 'W. Kamau'];
 
-    /** GL code → bank account detail the prototype gives only in prose. */
+    /**
+     * GL code → the head office's cash account on it, with the detail the prototype
+     * gives only in prose. The chart names the ledger (Bank — Current accounts), which
+     * every entity may open its own cash account on; the bank is the cash account's.
+     */
     private const BANKS = [
         '1110' => ['kind' => 'bank', 'bank' => 'KCB', 'number' => '1104578921', 'currency' => 'KES'],
         '1120' => ['kind' => 'bank', 'bank' => 'Equity Bank', 'number' => '0410294778', 'currency' => 'USD'],
@@ -64,7 +68,7 @@ class ChartAndDimensionsSeeder extends Seeder
             $account = $this->chartRow($ctx, $code);
             $register = current(array_filter($ctx->data('BR_ACCOUNTS'), static fn ($b) => $b['code'] === $code)) ?: null;
             $ctx->remember('bank_accounts', $code, $ctx->insert('bank_accounts', [
-                'entity_id' => $entity, 'account_id' => $ctx->accountId($code), 'name' => $account['name'],
+                'entity_id' => $entity, 'account_id' => $ctx->accountId($code), 'name' => $register['name'] ?? $account['name'],
                 'short_name' => $register['short'] ?? 'Petty cash', 'kind' => $bank['kind'], 'bank_name' => $bank['bank'],
                 'account_number' => $bank['number'], 'currency' => $bank['currency'], 'created_at' => $now,
             ]));

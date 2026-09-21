@@ -307,7 +307,7 @@ components:
             properties:
               line: { type: integer, description: The line of the file this balance was on. }
               account: { type: string, example: '1110' }
-              name: { type: string, example: Bank — KCB Current (KES) }
+              name: { type: string, example: Bank — Current accounts (KES) }
               description: { type: string }
               fund: { type: string, example: General Fund }
               programme: { type: string, example: Shared services }
