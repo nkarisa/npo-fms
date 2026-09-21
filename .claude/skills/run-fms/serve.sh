@@ -14,6 +14,12 @@
 # DATA=blank is a brand-new instance: BaselineSeeder + `spark install` with
 #   install.json (Coast Community Trust, a.salim@cct.or.ke), port 8096.
 # PORT and PHP_BIN (default /opt/homebrew/bin/php, else php) override.
+#
+# When .env keeps documents in S3 at a local endpoint (documents.disk = s3,
+# documents.s3Endpoint = http://localhost:4566), `up` starts LocalStack and sets
+# up the bucket first (../../../localstack.sh), as ./server.sh does. The
+# instance shares that bucket with the dev server; storage keys are random, so
+# they never collide. LOCALSTACK=0 skips it (uploads and downloads then fail).
 
 set -euo pipefail
 
@@ -67,6 +73,41 @@ build_db() {
   echo "Built."
 }
 
+# One documents.* value from .env, without quotes or a trailing comment.
+documents_setting() {
+  [ -f .env ] || return 0
+  sed -n -E "s/^[[:space:]]*documents\.$1[[:space:]]*=[[:space:]]*(.*)$/\1/p" .env | tail -n 1 \
+    | sed -E "s/[[:space:]]+#.*$//; s/[[:space:]]+$//; s/^['\"](.*)['\"]$/\1/"
+}
+
+# Where documents go: "local", "localstack <endpoint>", or "s3 <endpoint or AWS>".
+documents_target() {
+  if [ "$(documents_setting disk)" != "s3" ]; then echo "local (writable/uploads)"; return; fi
+  local endpoint; endpoint=$(documents_setting s3Endpoint)
+  case "$endpoint" in
+    http://localhost:*|http://127.0.0.1:*) echo "localstack $endpoint, bucket $(documents_setting s3Bucket)" ;;
+    *) echo "s3 ${endpoint:-AWS}, bucket $(documents_setting s3Bucket)" ;;
+  esac
+}
+
+# .env's documents.disk wins over the environment too, so a local S3 has to be up.
+ensure_localstack() {
+  case "$(documents_target)" in
+    localstack*) ;;
+    *) return 0 ;;
+  esac
+  if [ "${LOCALSTACK:-1}" = 0 ]; then
+    echo "LOCALSTACK=0: not starting LocalStack; document uploads and downloads will fail." >&2
+    return 0
+  fi
+  PHP_BIN="$PHP_BIN" ./localstack.sh >"$DIR/localstack.log" 2>&1 || {
+    cat "$DIR/localstack.log" >&2
+    echo "LocalStack is not ready, so documents cannot be stored. Start Docker, or run with LOCALSTACK=0." >&2
+    exit 1
+  }
+  echo "Documents: $(documents_target) (ready)"
+}
+
 running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
 url() { echo "http://localhost:$(cat "$PORTFILE" 2>/dev/null || echo "$PORT")"; }
 
@@ -75,6 +116,7 @@ up() {
     running && down
     build_db
   fi
+  ensure_localstack
   if running; then echo "Already up: $(url) (pid $(cat "$PIDFILE"))"; return; fi
   if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     echo "Port $PORT is taken by something else. Use PORT=<n> $0 up" >&2; exit 1
@@ -107,7 +149,8 @@ case "${1:-}" in
   up) shift; up "$@" ;;
   down) down ;;
   reset) down; rm -f "$DB"; up ;;
-  status) if running; then echo "Up: $(url) (pid $(cat "$PIDFILE"), db $DB)"; else echo "Down (db $DB $( [ -s "$DB" ] && echo exists || echo missing))"; fi ;;
+  status) if running; then echo "Up: $(url) (pid $(cat "$PIDFILE"), db $DB)"; else echo "Down (db $DB $( [ -s "$DB" ] && echo exists || echo missing))"; fi
+    echo "Documents: $(documents_target)" ;;
   spark) shift; spark "$@" ;;
-  *) sed -n '3,17p' "$0"; exit 1 ;;
+  *) sed -n '3,23p' "$0"; exit 1 ;;
 esac

@@ -84,7 +84,7 @@ final class ProcurementTest extends CIUnitTestCase
         $this->assertSame(['REQ-26-0063', 'Draft', 135000, 'Shared services'], [$req['no'], $req['status'], $req['amount'], $req['program']]);
         $this->assertSame('safaricom-routers.pdf', $req['quotes'][0]['file']);
         $this->seeInDatabase('suppliers', ['name' => 'Liquid Telecom', 'status' => 'not_prequalified']);
-        $this->get('api/procurement/REQ-26-0063/documents/' . $req['quotes'][0]['document']['id'])->assertStatus(200);
+        $this->assertDownloads($this->get('api/procurement/REQ-26-0063/documents/' . $req['quotes'][0]['document']['id']), '%PDF-1.4 quotation');
 
         $this->actAs('j.achieng@elog.or.ke');
         $this->post('api/procurement/REQ-26-0063/submit')->assertStatus(200);

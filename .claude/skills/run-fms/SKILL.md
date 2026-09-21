@@ -30,12 +30,18 @@ npm install --prefix .claude/skills/run-fms
 
 If Chromium is missing: `npx --prefix .claude/skills/run-fms playwright install chromium`.
 
+- Docker running, when `.env` keeps documents in S3 at a local endpoint
+  (`documents.disk = s3`, `documents.s3Endpoint = http://localhost:4566`, as it
+  does now). `serve.sh up` then runs `./localstack.sh`, which starts (or reuses) the
+  `localstack` container on 4566, sets up the `documents.s3Bucket` bucket with Object
+  Lock, and runs `spark documents:check`. Its output goes to `writable/run-skill/localstack.log`.
+
 ## Run (agent path)
 
 ```bash
 .claude/skills/run-fms/serve.sh up                # demo data (ELOG), http://localhost:8095
 DATA=blank .claude/skills/run-fms/serve.sh up     # brand-new instance (CCT), http://localhost:8096
-.claude/skills/run-fms/serve.sh status
+.claude/skills/run-fms/serve.sh status             # also says where documents go
 ```
 
 The first `up` builds the DB in about 1s (migrate + seed). Later `up`s reuse it,
@@ -74,6 +80,18 @@ Blank instance flow (chart-of-accounts template adoption), verified:
 node .claude/skills/run-fms/driver.mjs --port 8096 goto:/coa 'click:text=Start from a template' \
   'click:text=Not-for-profit — compact' 'click:text=Review 44 accounts' 'click:text=Adopt 44 accounts' sleep:500 ss:14-adopted
 ```
+
+### Documents (S3 / LocalStack)
+
+Environment variables cannot override `.env`'s `documents.disk` (same dotted-name
+rule as the database, below), so the throwaway instance stores documents wherever
+the dev server does. With LocalStack that is the shared `npo-fms-documents` bucket.
+Storage keys are random, so instances never collide. A download then answers **302**
+to a presigned `http://localhost:4566/...` link that expires after
+`documents.linkSeconds` (120 s), and the browser follows it. `curl -L` does the same.
+`LOCALSTACK=0 serve.sh up` skips starting it (uploads then fail). LocalStack's free
+edition forgets the bucket when the container restarts, so documents stored
+before a restart stop opening. Rebuild with `up --fresh`.
 
 ### Signing in
 
@@ -126,7 +144,11 @@ vendor/bin/phpunit --filter JournalLifecycleTest   # ~12s
 vendor/bin/phpunit                                 # 263 tests, ~2m40s
 ```
 
-Tests use their own in-memory SQLite and need no server. Feature tests start signed
+Tests use their own in-memory SQLite and need no server. They do use `.env`'s
+document storage, so with `documents.disk = s3` the tests that upload documents
+need LocalStack running (`./localstack.sh`, or any `serve.sh up`). Download tests
+assert through `assertDownloads()` (`tests/_support/StoresDocuments.php`), which
+expects a 200 on the local disk, or on S3 a 302 whose presigned link returns the file. Feature tests start signed
 in as the settings manager (`tests/_support/SignsIn.php`; `signIn($email)` switches user).
 `phpunit.dist.xml` sets `auth.actAs=true`, so the older tests' act-as cookie still works there.
 
@@ -169,6 +191,8 @@ dev data.
   Use `serve.sh down`, or check with `lsof -nP -iTCP:8095 -sTCP:LISTEN`.
 - `db:seed` fails with `no such table: db_entities`: migrations went to MySQL
   (missing `-g tests`). Use `serve.sh up --fresh`.
+- `LocalStack is not ready`: Docker isn't running, or port 4566 is held by
+  something else. See `writable/run-skill/localstack.log`.
 - `Server did not come up; see writable/run-skill/server-<data>.log`: PHP not found
   or crashed. Set `PHP_BIN=/path/to/php`.
 - Driver `locator… Timeout 15000ms exceeded`: the text isn't on the page. Open
