@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Libraries\Brand;
 use App\Libraries\Clock;
+use App\Libraries\EntityCalendar;
 use App\Libraries\Prototype;
 use App\Libraries\Theme;
 
@@ -445,7 +446,7 @@ final class SettingsRepository extends Repository
         return $this->cached('audit', fn () => array_map(fn ($e) => [
             'when' => date('d M H:i', strtotime($e['occurred_at'])), 'who' => $this->lookups->shortName($e['actor_user_id'] === null ? null : (int) $e['actor_user_id']),
             'what' => $e['summary'] ?? '', 'area' => ucfirst(substr((string) strstr($e['object_type'], ':'), 1)),
-        ], $this->rows("SELECT * FROM {audit_events} WHERE action = 'settings.changed' ORDER BY occurred_at DESC, id DESC")));
+        ], $this->rows("SELECT * FROM {all:audit_events} WHERE action = 'settings.changed' ORDER BY occurred_at DESC, id DESC")));
     }
 
     // ------------------------------------------------------------------
@@ -828,10 +829,34 @@ final class SettingsRepository extends Repository
 
         $parentId = $this->headOffice()['id'];
         $plan('Organisation', $name . ' (' . $code . ') added as a ' . mb_strtolower($type) . ' reporting in ' . $currency . ($status === 'dormant' ? ', dormant' : ''),
-            fn () => $this->insert('entities', [
+            // With the organisation's calendar: nothing can be posted to an entity without periods.
+            fn () => EntityCalendar::fill($this->db, $this->insert('entities', [
                 'parent_id' => $parentId, 'code' => $code, 'name' => $name, 'type' => $type,
                 'functional_currency' => $currency, 'status' => $status, 'created_at' => Clock::timestamp(),
-            ]));
+            ])));
+
+        // Whoever reaches every entity reaches the new one too, in the roles they hold
+        // at the head office — "All entities" stays true, and so does their consolidated view.
+        $everywhere = $this->rows(
+            'SELECT ur.user_id FROM {user_entity_roles} ur GROUP BY ur.user_id HAVING COUNT(DISTINCT ur.entity_id) = (SELECT COUNT(*) FROM {entities})'
+        );
+        if ($everywhere !== []) {
+            $userIds = array_map('intval', array_column($everywhere, 'user_id'));
+            $plan('Users', count($userIds) . ' ' . (count($userIds) === 1 ? 'person' : 'people') . ' with access to all entities given access to ' . $name,
+                fn () => $this->extendAccess($userIds, $code, $parentId));
+        }
+    }
+
+    /** Gives each user the roles they hold at the head office at an entity just added. */
+    private function extendAccess(array $userIds, string $code, int $headOfficeId): void
+    {
+        $entityId = (int) $this->value('SELECT id FROM {entities} WHERE code = ?', [$code]);
+        $now = Clock::timestamp();
+        foreach ($userIds as $userId) {
+            foreach ($this->rows('SELECT DISTINCT role_id FROM {user_entity_roles} WHERE user_id = ? AND entity_id = ?', [$userId, $headOfficeId]) as $r) {
+                $this->insert('user_entity_roles', ['user_id' => $userId, 'entity_id' => $entityId, 'role_id' => (int) $r['role_id'], 'created_at' => $now]);
+            }
+        }
     }
 
     private function planEntityChange(array $current, string $name, string $type, string $currency, string $status, callable $plan): void

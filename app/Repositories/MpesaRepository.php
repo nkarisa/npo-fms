@@ -168,7 +168,7 @@ final class MpesaRepository extends Repository
         $this->transaction(function () use ($held, $next, $changes, $actorId) {
             $row = array_intersect_key($next, self::DEFAULTS) + ['updated_by' => $actorId, 'updated_at' => Clock::timestamp()];
             if ($held['id'] === null) {
-                $this->insert('mpesa_integrations', $row + ['entity_id' => $this->lookups->entityId(), 'created_at' => Clock::timestamp()]);
+                $this->insert('mpesa_integrations', $row + ['entity_id' => $this->lookups->headOfficeId(), 'created_at' => Clock::timestamp()]);
             } else {
                 $this->db->table('mpesa_integrations')->where('id', $held['id'])->update($row);
             }
@@ -197,7 +197,7 @@ final class MpesaRepository extends Repository
             $row = ['checked_at' => Clock::timestamp(), 'check_result' => mb_substr($result['note'], 0, 160), 'updated_at' => Clock::timestamp()];
             if ($held['id'] === null) {
                 $this->insert('mpesa_integrations', array_intersect_key($held, self::DEFAULTS) + $row + [
-                    'entity_id' => $this->lookups->entityId(), 'updated_by' => $actorId, 'created_at' => Clock::timestamp(),
+                    'entity_id' => $this->lookups->headOfficeId(), 'updated_by' => $actorId, 'created_at' => Clock::timestamp(),
                 ]);
             } else {
                 $this->db->table('mpesa_integrations')->where('id', $held['id'])->update($row + ['updated_by' => $actorId]);
@@ -553,7 +553,7 @@ final class MpesaRepository extends Repository
     private function held(): array
     {
         return $this->cached('integration', function () {
-            $row = $this->row('SELECT * FROM {mpesa_integrations} WHERE entity_id = ?', [$this->lookups->entityId()]);
+            $row = $this->row('SELECT * FROM {mpesa_integrations} WHERE entity_id = ?', [$this->lookups->headOfficeId()]);
 
             return $row ?? ['id' => null] + self::DEFAULTS;
         });
@@ -588,7 +588,7 @@ final class MpesaRepository extends Repository
 
     private function log(string $what, int $actorId): void
     {
-        $this->audit('settings:integrations', null, null, $what, $actorId, 'settings.changed', $this->lookups->entityId());
+        $this->audit('settings:integrations', null, null, $what, $actorId, 'settings.changed', $this->lookups->headOfficeId());
     }
 
     /** @return list<array{value: string, text: string, note: string}> a choice and what it means, for a select */

@@ -171,7 +171,7 @@ final class MailRepository extends Repository
                 $this->hold($key, $value, $label);
             }
             foreach ($changes as $what) {
-                $this->audit('settings:integrations', null, null, $what, $actorId, 'settings.changed', $this->lookups->entityId());
+                $this->audit('settings:integrations', null, null, $what, $actorId, 'settings.changed', $this->lookups->headOfficeId());
             }
         });
 
@@ -182,7 +182,7 @@ final class MailRepository extends Repository
     public function logTest(string $to, bool $sent, int $actorId): void
     {
         $this->transaction(fn () => $this->audit('settings:integrations', null, null,
-            'Test message ' . ($sent ? 'sent' : 'could not be sent') . ' to ' . $to . ' through ' . $this->describe($this->transport()), $actorId, 'settings.changed', $this->lookups->entityId()));
+            'Test message ' . ($sent ? 'sent' : 'could not be sent') . ' to ' . $to . ' through ' . $this->describe($this->transport()), $actorId, 'settings.changed', $this->lookups->headOfficeId()));
     }
 
     // ------------------------------------------------------------------
@@ -271,14 +271,14 @@ final class MailRepository extends Repository
     private function held(): array
     {
         return $this->cached('mail', fn () => array_column($this->rows(
-            "SELECT s.key, s.value FROM {settings} s WHERE s.entity_id = ? AND s.kind = 'mail'", [$this->lookups->entityId()]
+            "SELECT s.key, s.value FROM {settings} s WHERE s.entity_id = ? AND s.kind = 'mail'", [$this->lookups->headOfficeId()]
         ), 'value', 'key'));
     }
 
     /** Written rather than updated blind: until a field is first set it has no row. */
     private function hold(string $key, string $value, string $label): void
     {
-        $entityId = $this->lookups->entityId();
+        $entityId = $this->lookups->headOfficeId();
         $held = $this->db->table('settings')->select('id')->where('entity_id', $entityId)->where('key', $key)->get()->getRowArray();
         $now = Clock::timestamp();
 

@@ -3,6 +3,7 @@
 namespace App\Database\Seeds;
 
 use App\Database\Seeds\Support\SeedContext;
+use App\Libraries\EntityCalendar;
 use CodeIgniter\Database\Seeder;
 use RuntimeException;
 
@@ -62,6 +63,8 @@ class DatabaseSeeder extends Seeder
         foreach (self::SEEDERS as $seeder) {
             $this->call($seeder);
         }
+        // The branches keep their books on the head office's calendar, as it now stands.
+        EntityCalendar::fill($this->db);
 
         $this->db->transComplete();
     }

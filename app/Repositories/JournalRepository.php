@@ -743,7 +743,7 @@ final class JournalRepository extends Repository
     {
         $stem = $prefix . '-' . substr($date, 2, 2) . '-';
         $max  = 0;
-        foreach ($this->rows('SELECT reference FROM {journals} WHERE reference LIKE ?', [$stem . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:journals} WHERE reference LIKE ?', [$stem . '%']) as $r) {
             $max = max($max, (int) substr($r['reference'], strlen($stem)));
         }
 
@@ -831,7 +831,7 @@ final class JournalRepository extends Repository
     {
         $prefix = self::DOC_SERIES[$type] ?? 'JV';
         $max = self::DOC_SERIES_FLOOR;
-        foreach ($this->rows('SELECT document_ref FROM {journals} WHERE document_ref LIKE ?', ['%/' . $prefix . '/%']) as $r) {
+        foreach ($this->rows('SELECT document_ref FROM {all:journals} WHERE document_ref LIKE ?', ['%/' . $prefix . '/%']) as $r) {
             if (preg_match('#/' . $prefix . '/(\d+)$#', (string) $r['document_ref'], $m) === 1) {
                 $max = max($max, (int) $m[1]);
             }
@@ -900,7 +900,11 @@ final class JournalRepository extends Repository
                 }
             }
         } elseif ($kind === 'bankline') {
-            $line = $this->row('SELECT id, reference FROM {bank_statement_lines} WHERE id = ?', [(int) $key]);
+            $line = $this->row(
+                'SELECT l.id, l.reference FROM {bank_statement_lines} l JOIN {bank_statements} s ON s.id = l.bank_statement_id
+                 JOIN {bank_accounts} b ON b.id = s.bank_account_id WHERE l.id = ?',
+                [(int) $key]
+            );
             if ($line !== null) {
                 return ['type' => 'bank_statement_line', 'id' => (int) $line['id'], 'ref' => $line['reference'] ?? ('Statement line ' . $line['id']), 'prefix' => 'BK'];
             }

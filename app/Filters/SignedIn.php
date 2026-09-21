@@ -2,6 +2,7 @@
 
 namespace App\Filters;
 
+use App\Libraries\EntityScope;
 use App\Libraries\SignIn;
 use App\Repositories\UserRepository;
 use CodeIgniter\Filters\FilterInterface;
@@ -18,6 +19,10 @@ use CodeIgniter\HTTP\ResponseInterface;
  * turn into the same trip. A session part-way through (password given, second
  * factor not yet) counts as not signed in, and so does one whose user has since
  * been suspended or lost every role.
+ *
+ * In the consolidated view (App\Libraries\EntityScope), which reads every
+ * entity's books and belongs to none of them, the API refuses writes other than
+ * to the person's own account.
  *
  * Writes to the API must also carry the X-Requested-With header the page scripts
  * send. A form on another site can make the browser post with the session cookie,
@@ -43,8 +48,17 @@ class SignedIn implements FilterInterface
 
             return self::refuse($request, $api, 'Your account is no longer active. Ask whoever manages users.');
         }
-        if ($api && !in_array(strtoupper($request->getMethod()), ['GET', 'HEAD', 'OPTIONS'], true) && !self::fromOwnPages($request)) {
+        $write = !in_array(strtoupper($request->getMethod()), ['GET', 'HEAD', 'OPTIONS'], true);
+        if ($api && $write && !self::fromOwnPages($request)) {
             return service('response')->setStatusCode(403)->setJSON(['error' => 'This request did not come from the application\'s own pages, so it was not acted on.']);
+        }
+        // The consolidated view reads every entity's books and belongs to none of
+        // them, so nothing is recorded from it — only the person's own account.
+        if ($api && $write && EntityScope::consolidated() && !self::personal(self::path($request))) {
+            return service('response')->setStatusCode(409)->setJSON([
+                'error' => 'You are viewing the consolidated books, which are read only. Choose an entity at the top of the page to make changes there.',
+                'consolidated' => true,
+            ]);
         }
 
         SignIn::touch();
@@ -69,6 +83,18 @@ class SignedIn implements FilterInterface
     private static function path(RequestInterface $request): string
     {
         return trim($request instanceof IncomingRequest ? $request->getPath() : $request->getUri()->getPath(), '/');
+    }
+
+    /** A change to the person's own account, which belongs to no entity. */
+    private static function personal(string $path): bool
+    {
+        foreach (['api/me', 'api/account', 'api/auth', 'api/notifications'] as $prefix) {
+            if ($path === $prefix || str_starts_with($path, $prefix . '/')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static function fromOwnPages(RequestInterface $request): bool

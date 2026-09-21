@@ -200,6 +200,23 @@
     } catch (e) { return null; }
   }
 
+  // ---- Entity picker ----
+  // Every screen reads the chosen entity's books, so switching reloads the page —
+  // without its query, since a record open there belongs to the entity just left.
+  $('entity-picker')?.addEventListener('change', async (e) => {
+    const select = e.target;
+    const was = [...select.options].find((o) => o.defaultSelected)?.value;
+    select.disabled = true;
+    try {
+      await UI.postJSON('/api/me/entity', { entity: select.value });
+      window.location.href = window.location.pathname;
+    } catch (err) {
+      if (was !== undefined) select.value = was;
+      select.disabled = false;
+      UI.toast(err.message);
+    }
+  });
+
   $('user-btn')?.addEventListener('click', () => toggleMenu('user-menu', async (menu) => {
     const data = await UI.fetchJSON('/api/me');
     const me = data.me;
@@ -239,8 +256,7 @@
       await UI.postJSON('/api/me/act-as', { email: b.dataset.email });
       window.location.reload();
     }));
-    // Entity switching does not exist yet — say so plainly
-    // rather than opening a dead end.
+    // A menu entry with no page yet says so plainly rather than opening a dead end.
     menu.querySelectorAll('[data-soon]').forEach((b) => b.addEventListener('click', () => {
       closeMenus();
       UI.toast(`${b.dataset.soon} is not built yet.`);

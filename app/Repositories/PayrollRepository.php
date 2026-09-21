@@ -960,7 +960,7 @@ final class PayrollRepository extends Repository
     {
         $stem = 'PR-' . substr($date, 2, 2) . '-';
         $max  = 0;
-        foreach ($this->rows('SELECT reference FROM {payroll_runs} WHERE reference LIKE ?', [$stem . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:payroll_runs} WHERE reference LIKE ?', [$stem . '%']) as $r) {
             $max = max($max, (int) substr($r['reference'], strlen($stem)));
         }
 
@@ -970,7 +970,7 @@ final class PayrollRepository extends Repository
     private function nextStaffNo(): string
     {
         $max = 0;
-        foreach ($this->rows("SELECT staff_no FROM {staff} WHERE staff_no LIKE 'ELG-%'") as $s) {
+        foreach ($this->rows("SELECT staff_no FROM {all:staff} WHERE staff_no LIKE 'ELG-%'") as $s) {
             $max = max($max, (int) substr($s['staff_no'], 4));
         }
 

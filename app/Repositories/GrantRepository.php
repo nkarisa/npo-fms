@@ -265,7 +265,7 @@ final class GrantRepository extends Repository
                 ], $actorId);
                 $fundId = (int) $fund['id'];
                 if ($a['fund']['override'] !== '') {
-                    $this->audit('settings:segments', $fundId, $fund['code'], $fund['name'] . ' is restricted but presented in the General Fund: ' . $a['fund']['override'], $actorId, 'settings.changed', $this->lookups->entityId());
+                    $this->audit('settings:segments', $fundId, $fund['code'], $fund['name'] . ' is restricted but presented in the General Fund: ' . $a['fund']['override'], $actorId, 'settings.changed', $this->lookups->headOfficeId());
                 }
             } else {
                 $fundId = (int) $a['fund']['id'];
@@ -341,7 +341,7 @@ final class GrantRepository extends Repository
         $funder !== '' || $fail('Funder is required — an award cannot exist without one.');
         $ref !== '' || $fail('Award reference is required. It is the key the donor quotes in every query.');
         mb_strlen($ref) <= 40 || $fail('Keep the award reference to 40 characters.');
-        $this->value('SELECT id FROM {grants} WHERE LOWER(award_ref) = LOWER(?)', [$ref]) === null || $fail('Award reference ' . $ref . ' is already in the portfolio.');
+        $this->value('SELECT id FROM {all:grants} WHERE LOWER(award_ref) = LOWER(?)', [$ref]) === null || $fail('Award reference ' . $ref . ' is already in the portfolio.');
         $title !== '' || $fail('Give the award a title.');
 
         $programmeIds = [];
@@ -483,7 +483,7 @@ final class GrantRepository extends Repository
     {
         $prefix = 'DR-' . substr($due, 2, 2) . '-';
         $last = 0;
-        foreach ($this->rows('SELECT reference FROM {donor_reports} WHERE reference LIKE ?', [$prefix . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:donor_reports} WHERE reference LIKE ?', [$prefix . '%']) as $r) {
             $last = max($last, (int) substr($r['reference'], strlen($prefix)));
         }
 

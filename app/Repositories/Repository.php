@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Libraries\Clock;
+use App\Libraries\EntityScope;
 use CodeIgniter\Database\BaseConnection;
 use CodeIgniter\Database\Exceptions\DatabaseException;
 use Throwable;
@@ -34,11 +35,13 @@ abstract class Repository
     public static function forget(): void
     {
         self::$cache = [];
+        EntityScope::forget();
     }
 
     protected function cached(string $key, callable $load): mixed
     {
-        $key = static::class . ':' . $key;
+        // Keyed by the entities in scope too, so a read made for one is never served for another.
+        $key = static::class . ':' . implode(',', EntityScope::ids() ?? ['*']) . ':' . $key;
 
         if (!array_key_exists($key, self::$cache)) {
             self::$cache[$key] = $load();
@@ -51,7 +54,10 @@ abstract class Repository
     // Queries
     // ------------------------------------------------------------------
 
-    /** Runs SQL with {table} placeholders resolved to prefixed names. */
+    /**
+     * Runs SQL with {table} placeholders resolved to prefixed names, and each
+     * entity's table read only for the entities the user is working in.
+     */
     protected function rows(string $sql, array $binds = []): array
     {
         return $this->db->query($this->sql($sql), $binds)->getResultArray();
@@ -69,9 +75,40 @@ abstract class Repository
         return $row === null ? null : reset($row);
     }
 
+    /**
+     * Resolves {table} placeholders to prefixed names.
+     *
+     * An entity's table read after FROM or JOIN becomes a derived table holding only
+     * the rows of the entities in scope (App\Libraries\EntityScope), under the alias
+     * the query gave it or else its own name — so `FROM {journals} j` reads as
+     * `FROM (SELECT * FROM journals WHERE entity_id IN (3)) j`. Both MySQL and SQLite
+     * merge such a table back into the query, so the entity_id index is still used.
+     * A write's own table (DELETE FROM, UPDATE, INSERT INTO) is left as it is, and
+     * {all:table} reads every entity's rows on purpose: for the organisation's own
+     * records (the settings log), for a check against a key the whole organisation
+     * shares (an award reference, a supplier's invoice number), and for the next
+     * document number, which is issued across the organisation so that a reference
+     * names one record even in the consolidated view.
+     */
     protected function sql(string $sql): string
     {
-        return preg_replace_callback('/\{(\w+)\}/', fn ($m) => $this->db->prefixTable($m[1]), $sql);
+        $keywords = 'WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|NATURAL|STRAIGHT_JOIN|ON|USING|ORDER|GROUP|LIMIT|HAVING|UNION|SET|FOR|WINDOW';
+
+        return preg_replace_callback(
+            '/(\bDELETE\s+)?(\b(?:FROM|JOIN)\s+)?\{(all:)?(\w+)\}(?:(\s+(?:AS\s+)?)(?!(?:' . $keywords . ')\b)([A-Za-z_]\w*))?/i',
+            function ($m) {
+                $table = $this->db->prefixTable($m[4]);
+                $alias = $m[6] ?? '';
+                $condition = $m[2] !== '' && ($m[1] ?? '') === '' && ($m[3] ?? '') === '' ? EntityScope::condition($m[4]) : null;
+
+                if ($condition === null) {
+                    return ($m[1] ?? '') . $m[2] . $table . ($alias !== '' ? $m[5] . $alias : '');
+                }
+
+                return $m[2] . '(SELECT * FROM ' . $table . ' WHERE ' . $condition . ') ' . ($alias !== '' ? $alias : $table);
+            },
+            $sql
+        );
     }
 
     protected function insert(string $table, array $row): int

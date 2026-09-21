@@ -2,6 +2,8 @@
 
 namespace App\Repositories;
 
+use App\Libraries\EntityScope;
+
 /**
  * Reference data every other repository needs: people, the chart, funds,
  * programmes, grants, periods and ledger balances, each loaded once per request.
@@ -11,12 +13,29 @@ final class Lookups extends Repository
     /** The demonstration organisation's head office, and the fallback before one exists. */
     public const SECRETARIAT = 'ELOG-NS';
 
-    /** The entity everything is read against unless another is named: the head office. */
+    /**
+     * The entity records are written to and whose calendar is read: the one chosen
+     * at the top of the page (App\Libraries\EntityScope) — the head office in the
+     * consolidated view, and outside a signed-in request. Or the entity named.
+     */
     public function entityId(?string $code = null): int
     {
+        if ($code === null && ($active = EntityScope::activeId()) !== null) {
+            return $active;
+        }
         $code ??= $this->headOfficeCode();
 
         return (int) $this->cached("entity:{$code}", fn () => $this->value('SELECT id FROM {entities} WHERE code = ?', [$code]));
+    }
+
+    /**
+     * The head office, which holds what belongs to the whole organisation rather
+     * than to one entity's books: settings, approval rules, statement formats, the
+     * mail server and M-Pesa.
+     */
+    public function headOfficeId(): int
+    {
+        return $this->entityId($this->headOfficeCode());
     }
 
     /**
@@ -81,13 +100,13 @@ final class Lookups extends Repository
         return null;
     }
 
-    /** A user's role at the head office (or their first role elsewhere). */
+    /** A user's role at the entity being worked in (else at the head office, else their first role). */
     public function roleOf(int $userId): string
     {
         return $this->cached("role:{$userId}", fn () => (string) $this->value(
             'SELECT r.name FROM {user_entity_roles} ur JOIN {roles} r ON r.id = ur.role_id JOIN {entities} e ON e.id = ur.entity_id
-             WHERE ur.user_id = ? ORDER BY e.code = ? DESC, ur.id LIMIT 1',
-            [$userId, $this->headOfficeCode()]
+             WHERE ur.user_id = ? ORDER BY ur.entity_id = ? DESC, e.code = ? DESC, ur.id LIMIT 1',
+            [$userId, $this->entityId(), $this->headOfficeCode()]
         ));
     }
 
@@ -109,13 +128,16 @@ final class Lookups extends Repository
         });
     }
 
-    /** The first active user holding a role, e.g. who a journal is submitted to. */
+    /**
+     * The first active user holding a role, e.g. who a journal is submitted to:
+     * someone holding it at the entity being worked in, before anyone elsewhere.
+     */
     public function holderOf(string $role): ?int
     {
         $id = $this->value(
             "SELECT u.id FROM {users} u JOIN {user_entity_roles} ur ON ur.user_id = u.id JOIN {roles} r ON r.id = ur.role_id
-             WHERE r.name = ? AND u.status = 'active' ORDER BY u.id LIMIT 1",
-            [$role]
+             WHERE r.name = ? AND u.status = 'active' ORDER BY ur.entity_id = ? DESC, u.id LIMIT 1",
+            [$role, $this->entityId()]
         );
 
         return $id === null ? null : (int) $id;
@@ -243,7 +265,8 @@ final class Lookups extends Repository
     {
         return $this->cached('grant-funds', function () {
             $out = [];
-            foreach ($this->rows('SELECT gf.grant_id, gf.fund_id FROM {grant_funds} gf JOIN {funds} f ON f.id = gf.fund_id ORDER BY gf.grant_id, f.code') as $r) {
+            // Through the grant, so only the awards of the entities in scope: the funds are shared, the awards are not.
+            foreach ($this->rows('SELECT gf.grant_id, gf.fund_id FROM {grant_funds} gf JOIN {grants} g ON g.id = gf.grant_id JOIN {funds} f ON f.id = gf.fund_id ORDER BY gf.grant_id, f.code') as $r) {
                 $out[(int) $r['grant_id']][] = (int) $r['fund_id'];
             }
 

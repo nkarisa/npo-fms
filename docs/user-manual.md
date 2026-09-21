@@ -110,7 +110,15 @@ Running left to right across the top of every page:
 - **Breadcrumb** — the current group and page.
 - **Interface language** — switches the language of the interface text only;
   posted amounts, dates and account codes are unchanged.
-- **Entity picker** — switches between entities, or a consolidated view.
+- **Entity picker** — the entity whose books you are working in. Every page
+  shows, searches and records only that entity's records, and you act with the
+  role you hold there. The picker lists the entities you hold a role at; if you
+  hold one at a single entity it is shown as a label instead. Switching reloads
+  the page, and the application remembers your choice for your next sign-in.
+  Someone holding a role at every entity also sees **Consolidated**, which reads
+  all the entities together. It is read only: to record or approve anything,
+  choose an entity first. Settings, the chart of accounts, funds, programmes,
+  suppliers and funders are shared by the whole organisation.
 - **Search everything (⌘K)** — a command palette that searches journals,
   accounts, suppliers, donors and awards.
 - **Financial-year pill** — the current FY and whether it is open.

@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Libraries\Clock;
+use App\Libraries\EntityScope;
 use App\Libraries\Prototype;
 
 /**
@@ -19,11 +20,20 @@ final class UserRepository extends Repository
         $this->lookups = new Lookups();
     }
 
-    /** Active users with a role, in the order they were set up. */
+    /**
+     * Active users with a role, in the order they were set up.
+     *
+     * Role, permissions and approval limit are those held at the entity being
+     * worked in (App\Libraries\EntityScope): an Accountant at one branch and a
+     * Programme Officer at another can do at each only what that role allows. In
+     * the consolidated view, which only reads, they are everything held anywhere.
+     */
     public function actors(): array
     {
         return $this->cached('actors', function () {
             $entityCount = (int) $this->value('SELECT COUNT(*) FROM {entities}');
+            $at = EntityScope::consolidated() ? null : EntityScope::activeId();
+            [$here, $hereBind] = $at === null ? ['', []] : [' AND ur.entity_id = ?', [$at]];
             $out = [];
 
             foreach ($this->rows(
@@ -34,8 +44,8 @@ final class UserRepository extends Repository
                 $role = $this->lookups->roleOf($id);
                 $permissions = array_column($this->rows(
                     'SELECT DISTINCT p.key FROM {user_entity_roles} ur JOIN {role_permissions} rp ON rp.role_id = ur.role_id
-                     JOIN {permissions} p ON p.id = rp.permission_id WHERE ur.user_id = ?',
-                    [$id]
+                     JOIN {permissions} p ON p.id = rp.permission_id WHERE ur.user_id = ?' . $here,
+                    [$id, ...$hereBind]
                 ), 'key');
                 $entities = array_column($this->rows(
                     'SELECT DISTINCT e.name, e.code FROM {user_entity_roles} ur JOIN {entities} e ON e.id = ur.entity_id WHERE ur.user_id = ? ORDER BY e.code',
@@ -54,8 +64,8 @@ final class UserRepository extends Repository
                     'role'       => $role,
                     // Every role held; `role` is the one named on approvals and in messages.
                     'roles'      => array_column($this->rows(
-                        'SELECT DISTINCT r.id, r.name FROM {user_entity_roles} ur JOIN {roles} r ON r.id = ur.role_id WHERE ur.user_id = ? ORDER BY r.id',
-                        [$id]
+                        'SELECT DISTINCT r.id, r.name FROM {user_entity_roles} ur JOIN {roles} r ON r.id = ur.role_id WHERE ur.user_id = ?' . $here . ' ORDER BY r.id',
+                        [$id, ...$hereBind]
                     ), 'name'),
                     'entities'   => count($entities) === $entityCount ? 'All entities (' . $entityCount . ')' : implode(', ', array_map([self::class, 'entityWord'], $entities)),
                     'rights'     => match (true) {
@@ -65,7 +75,7 @@ final class UserRepository extends Repository
                         in_array('ledger.view', $permissions, true) => 'Read only — no preparation or approval',
                         default                    => 'Raise requisitions only',
                     },
-                    'limit'      => $this->limitOf($id),
+                    'limit'      => $this->limitOf($id, $at),
                     'lastSignIn' => $this->lastSignIn($u),
                     // When someone joined is not recorded.
                     'since'      => '—',
@@ -102,12 +112,13 @@ final class UserRepository extends Repository
         return null;
     }
 
-    private function limitOf(int $userId): string
+    private function limitOf(int $userId, ?int $entityId): string
     {
         $limit = $this->row(
             'SELECT al.ceiling FROM {user_entity_roles} ur JOIN {approval_limits} al ON al.role_id = ur.role_id
-             WHERE ur.user_id = ? AND al.document_type IS NULL ORDER BY al.ceiling IS NULL DESC, al.ceiling DESC LIMIT 1',
-            [$userId]
+             WHERE ur.user_id = ? AND al.document_type IS NULL' . ($entityId === null ? '' : ' AND ur.entity_id = ?')
+            . ' ORDER BY al.ceiling IS NULL DESC, al.ceiling DESC LIMIT 1',
+            $entityId === null ? [$userId] : [$userId, $entityId]
         );
 
         return match (true) {

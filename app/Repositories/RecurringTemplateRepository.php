@@ -190,7 +190,7 @@ final class RecurringTemplateRepository extends Repository
         }
 
         $max = 0;
-        foreach ($this->rows('SELECT code FROM {recurring_templates}') as $r) {
+        foreach ($this->rows('SELECT code FROM {all:recurring_templates}') as $r) {
             $max = max($max, (int) substr($r['code'], 3));
         }
         $code = 'RT-' . str_pad((string) ($max + 1), 2, '0', STR_PAD_LEFT);

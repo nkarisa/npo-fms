@@ -999,7 +999,7 @@ final class ReceivablesRepository extends Repository
     {
         $stem = 'INV-' . substr($date, 2, 2) . '-';
         $max = 0;
-        foreach ($this->rows('SELECT reference FROM {invoices} WHERE reference LIKE ?', [$stem . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:invoices} WHERE reference LIKE ?', [$stem . '%']) as $r) {
             $max = max($max, (int) substr($r['reference'], strlen($stem)));
         }
 
@@ -1011,7 +1011,7 @@ final class ReceivablesRepository extends Repository
     {
         $stem = 'RV-' . substr($date, 2, 2) . '-';
         $max = 0;
-        foreach ($this->rows('SELECT reference FROM {receipts} WHERE reference LIKE ?', [$stem . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:receipts} WHERE reference LIKE ?', [$stem . '%']) as $r) {
             $max = max($max, (int) substr($r['reference'], strlen($stem)));
         }
 

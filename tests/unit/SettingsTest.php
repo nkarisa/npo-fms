@@ -325,16 +325,18 @@ final class SettingsTest extends CIUnitTestCase
             'ELOG-CST renamed from ELOG Coast Regional Office to ELOG Coast Office',
             'ELOG-RV made live',
             'ELOG Nyanza Regional Office (ELOG-NYZ) added as a branch reporting in USD',
+            '4 people with access to all entities given access to ELOG Nyanza Regional Office',
         ], array_column($saved['changes'], 'what'));
 
         $added = end($saved['entities']);
         $this->assertSame(['ELOG-NYZ', 'Branch', 'USD', 'Live', false], [$added['code'], $added['type'], $added['currency'], $added['status'], $added['head']]);
 
-        // The topbar picker offers the live entities, so a new office appears without a deployment.
+        // Whoever reached every entity reaches the new office too, so it appears in their
+        // topbar picker without a deployment, and their consolidated view still covers everything.
         Repository::forget();
-        $picker = Navigation::entities();
+        $picker = array_column(Navigation::entities(), 'name');
         $this->assertContains('ELOG Nyanza Regional Office', $picker);
-        $this->assertSame(Navigation::CONSOLIDATED, end($picker));
+        $this->assertSame('Consolidated', end($picker));
 
         $refused = function (array $entities, string $reason) {
             $response = $this->withBodyFormat('json')->post('api/settings', ['entities' => $entities]);

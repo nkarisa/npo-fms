@@ -36,7 +36,7 @@ final class ApprovalPolicy extends Repository
                 'SELECT ar.label, ar.threshold, ar.escalation_note, r.name AS approver, e.name AS escalation
                  FROM {approval_rules} ar JOIN {roles} r ON r.id = ar.approver_role_id LEFT JOIN {roles} e ON e.id = ar.escalation_role_id
                  WHERE ar.document_type = ? AND ar.entity_id = ?',
-                [$documentType, $this->lookups->entityId()]
+                [$documentType, $this->lookups->headOfficeId()]
             );
 
             return $r === null ? null : [

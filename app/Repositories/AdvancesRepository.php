@@ -555,7 +555,7 @@ final class AdvancesRepository extends Repository
     {
         $stem = $prefix . '-' . substr($date, 2, 2) . '-';
         $max  = 0;
-        foreach ($this->rows('SELECT reference FROM {advances} WHERE reference LIKE ?', [$stem . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:advances} WHERE reference LIKE ?', [$stem . '%']) as $r) {
             $max = max($max, (int) substr($r['reference'], strlen($stem)));
         }
 

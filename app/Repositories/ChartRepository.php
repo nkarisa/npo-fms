@@ -99,7 +99,7 @@ final class ChartRepository extends Repository
     /** The latest change to the chart: when, and who made it. */
     public function lastEdited(): ?array
     {
-        $e = $this->row("SELECT occurred_at, actor_user_id FROM {audit_events} WHERE object_type = 'account' ORDER BY occurred_at DESC, id DESC LIMIT 1");
+        $e = $this->row("SELECT occurred_at, actor_user_id FROM {all:audit_events} WHERE object_type = 'account' ORDER BY occurred_at DESC, id DESC LIMIT 1");
 
         return $e === null ? null : ['date' => self::dmy($e['occurred_at']), 'who' => $this->lookups->shortName($e['actor_user_id'] === null ? null : (int) $e['actor_user_id'])];
     }

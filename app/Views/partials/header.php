@@ -8,6 +8,7 @@
  */
 
 use App\Libraries\Brand;
+use App\Libraries\EntityScope;
 use App\Libraries\I18n;
 use App\Libraries\Navigation;
 use App\Libraries\Theme;
@@ -89,11 +90,18 @@ $entities = Navigation::entities();
           <div class="tb-menu tb-menu-lang" id="lang-menu" hidden></div>
         </div>
 
+        <?php if (count($entities) > 1): ?>
         <label class="entity-picker">Entity
-          <select>
-            <?php foreach ($entities as $e): ?><option><?= esc($e) ?></option><?php endforeach; ?>
+          <select id="entity-picker" title="The entity whose books you are working in">
+            <?php foreach ($entities as $e): ?><option value="<?= esc($e['value'], 'attr') ?>"<?= $e['current'] ? ' selected' : '' ?>><?= esc($e['name']) ?></option><?php endforeach; ?>
           </select>
+          <?php if (in_array(true, array_map(static fn ($e) => $e['current'] && $e['value'] === EntityScope::CONSOLIDATED, $entities), true)): ?>
+          <span class="entity-readonly" title="Choose an entity to record or approve anything">Read only</span>
+          <?php endif; ?>
         </label>
+        <?php elseif ($entities !== []): ?>
+        <span class="entity-picker" title="The only entity you hold a role at">Entity <strong class="entity-fixed"><?= esc($entities[0]['name']) ?></strong></span>
+        <?php endif; ?>
 
         <button type="button" class="tb-search" id="search-btn" title="Search everything (⌘K)" aria-label="Search everything">
           <span class="tb-search-glyph">⌕</span>

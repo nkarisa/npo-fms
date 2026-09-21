@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Libraries\Clock;
+use App\Libraries\EntityScope;
 use App\Libraries\StatementCsv;
 
 /**
@@ -27,8 +28,9 @@ final class StatementFormatRepository extends Repository
     public function formats(): array
     {
         return $this->cached('formats', function () {
+            // Formats are the organisation's, so every entity's accounts count as using one.
             $accounts = [];
-            foreach ($this->lookups->bankAccounts() as $code => $b) {
+            foreach (EntityScope::across(fn () => $this->lookups->bankAccounts()) as $code => $b) {
                 if ($b['statement_format_id'] !== null) {
                     $accounts[(int) $b['statement_format_id']][] = (string) $code;
                 }
@@ -36,7 +38,7 @@ final class StatementFormatRepository extends Repository
 
             return array_map(fn ($f) => self::shape($f) + ['accounts' => $accounts[(int) $f['id']] ?? []], $this->rows(
                 'SELECT * FROM {bank_statement_formats} WHERE entity_id = ? ORDER BY is_builtin DESC, name',
-                [$this->lookups->entityId()]
+                [$this->lookups->headOfficeId()]
             ));
         });
     }
@@ -81,7 +83,8 @@ final class StatementFormatRepository extends Repository
     {
         // Read from the rows, not the keys: bankAccounts() is keyed by account code,
         // and PHP turns a numeric code like "1110" into an integer key.
-        $taken = array_column($this->lookups->bankAccounts(), 'code');
+        // One ledger account carries one cash account, whichever entity holds it.
+        $taken = array_column(EntityScope::across(fn () => $this->lookups->bankAccounts()), 'code');
 
         return array_values(array_map(
             static fn ($a) => ['code' => $a['code'], 'name' => $a['name']],
@@ -107,7 +110,7 @@ final class StatementFormatRepository extends Repository
         $f = self::validate($input);
         $clash = $this->value(
             'SELECT id FROM {bank_statement_formats} WHERE entity_id = ? AND LOWER(name) = LOWER(?) AND id <> ?',
-            [$this->lookups->entityId(), $f['name'], $id ?? 0]
+            [$this->lookups->headOfficeId(), $f['name'], $id ?? 0]
         );
         if ($clash !== null) {
             throw new RuleViolation('A statement format called ' . $f['name'] . ' already exists.');
@@ -119,7 +122,7 @@ final class StatementFormatRepository extends Repository
         $savedId = $this->transaction(function () use ($id, $row, $f, $actorId, $now) {
             if ($id === null) {
                 $id = $this->insert('bank_statement_formats', $row + [
-                    'entity_id' => $this->lookups->entityId(), 'is_builtin' => 0, 'created_by' => $actorId, 'created_at' => $now, 'updated_at' => $now,
+                    'entity_id' => $this->lookups->headOfficeId(), 'is_builtin' => 0, 'created_by' => $actorId, 'created_at' => $now, 'updated_at' => $now,
                 ]);
                 $this->logChange('Statement format ' . $f['name'] . ' created', $actorId);
             } else {
@@ -171,12 +174,14 @@ final class StatementFormatRepository extends Repository
         $kind = trim((string) ($input['kind'] ?? 'bank'));
 
         $account = $this->lookups->accounts()[$code] ?? null;
+        // Whichever entity holds it: one ledger account carries one cash account.
+        $taken = EntityScope::across(fn () => $this->lookups->bankAccounts());
         $refusal = match (true) {
             $account === null                    => 'Account ' . $code . ' is not in the chart of accounts.',
             $account['type'] !== 'asset'         => $code . ' ' . $account['name'] . ' is ' . $account['type'] . '. Cash is held on an asset account.',
             (int) $account['is_leaf'] === 0      => $code . ' ' . $account['name'] . ' is a heading, not a postable account.',
             $account['status'] !== 'active'      => $code . ' ' . $account['name'] . ' is archived.',
-            isset($this->lookups->bankAccounts()[$code]) => $code . ' already carries ' . $this->lookups->bankAccounts()[$code]['name']
+            isset($taken[$code]) => $code . ' already carries ' . $taken[$code]['name']
                 . '. One ledger account holds one cash account, or a reconciliation cannot say which balance it agreed.',
             $name === ''                         => 'Give the account the name it is known by — it is what the reconciliation and the cash book show.',
             !isset(self::KINDS[$kind])           => 'A cash account is a ' . implode(', a ', array_map('lcfirst', self::KINDS)) . '.',
@@ -223,7 +228,7 @@ final class StatementFormatRepository extends Repository
     /** Format changes are settings changes, and show in Settings → Audit log. */
     private function logChange(string $what, int $actorId): void
     {
-        $this->audit('settings:bank statements', null, null, $what, $actorId, 'settings.changed', $this->lookups->entityId());
+        $this->audit('settings:bank statements', null, null, $what, $actorId, 'settings.changed', $this->lookups->headOfficeId());
     }
 
     /**

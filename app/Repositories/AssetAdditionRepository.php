@@ -345,7 +345,7 @@ final class AssetAdditionRepository extends Repository
     private function nextTags(string $prefix, int $count): array
     {
         $max = 0;
-        foreach ($this->rows('SELECT tag FROM {assets} WHERE tag LIKE ?', [$prefix . '-%']) as $r) {
+        foreach ($this->rows('SELECT tag FROM {all:assets} WHERE tag LIKE ?', [$prefix . '-%']) as $r) {
             $suffix = substr($r['tag'], strlen($prefix) + 1);
             if (ctype_digit($suffix)) {
                 $max = max($max, (int) $suffix);

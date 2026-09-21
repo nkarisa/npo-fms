@@ -99,7 +99,7 @@ final class FundRepository extends Repository
                 'status' => 'active', 'created_at' => Clock::timestamp(),
             ]);
             $this->audit('settings:segments', $id, $code, $code . ' ' . $name . ' opened as a ' . $restriction
-                . ' fund in the ' . $group . ' column', $actorId, 'settings.changed', $this->lookups->entityId());
+                . ' fund in the ' . $group . ' column', $actorId, 'settings.changed', $this->lookups->headOfficeId());
         });
 
         return $this->find($code) ?? ['code' => $code, 'name' => $name];
@@ -194,18 +194,20 @@ final class FundRepository extends Repository
         $rows = $this->rows(
             'SELECT l.fund_id,'
             . "  SUM(CASE WHEN p.starts_on < ? THEN {$net}"
-            . "           WHEN p.fiscal_year_id = ? AND a.type = 'equity' AND NOT {$transfer} THEN l.credit - l.debit ELSE 0 END) AS opening,"
-            . "  SUM(CASE WHEN p.fiscal_year_id = ? AND a.type = 'income' THEN l.credit - l.debit ELSE 0 END) AS income,"
-            . "  SUM(CASE WHEN p.fiscal_year_id = ? AND a.type = 'expense' THEN l.debit - l.credit ELSE 0 END) AS expenditure,"
-            . "  SUM(CASE WHEN p.fiscal_year_id = ? AND a.type = 'equity' AND {$transfer} THEN l.credit - l.debit ELSE 0 END) AS transfers"
+            . "           WHEN fy.code = ? AND a.type = 'equity' AND NOT {$transfer} THEN l.credit - l.debit ELSE 0 END) AS opening,"
+            . "  SUM(CASE WHEN fy.code = ? AND a.type = 'income' THEN l.credit - l.debit ELSE 0 END) AS income,"
+            . "  SUM(CASE WHEN fy.code = ? AND a.type = 'expense' THEN l.debit - l.credit ELSE 0 END) AS expenditure,"
+            . "  SUM(CASE WHEN fy.code = ? AND a.type = 'equity' AND {$transfer} THEN l.credit - l.debit ELSE 0 END) AS transfers"
             . ' FROM {journal_lines} l'
             . ' JOIN {journals} j ON j.id = l.journal_id'
             . ' LEFT JOIN {journals} r ON r.id = j.reverses_journal_id'
             . ' JOIN {periods} p ON p.id = j.period_id'
+            // By the year's code, not its id: in the consolidated view each entity's journals sit in its own copy of the year.
+            . ' JOIN {fiscal_years} fy ON fy.id = p.fiscal_year_id'
             . ' JOIN {accounts} a ON a.id = l.account_id'
             . " WHERE j.status IN ('posted', 'reversed')"
             . ' GROUP BY l.fund_id',
-            [$year['startsOn'], $year['id'], $year['id'], $year['id'], $year['id']]
+            [$year['startsOn'], $year['code'], $year['code'], $year['code'], $year['code']]
         );
 
         $out = [];
@@ -267,10 +269,11 @@ final class FundRepository extends Repository
             . ' FROM {journal_lines} l'
             . ' JOIN {journals} j ON j.id = l.journal_id'
             . ' JOIN {periods} p ON p.id = j.period_id'
+            . ' JOIN {fiscal_years} fy ON fy.id = p.fiscal_year_id'
             . ' JOIN {accounts} a ON a.id = l.account_id'
-            . " WHERE j.status IN ('posted', 'reversed') AND l.fund_id = ? AND p.fiscal_year_id = ?"
+            . " WHERE j.status IN ('posted', 'reversed') AND l.fund_id = ? AND fy.code = ?"
             . ' GROUP BY a.code, a.name, a.type',
-            [$fund['id'], $year['id']]
+            [$fund['id'], $year['code']]
         );
 
         $out = [];

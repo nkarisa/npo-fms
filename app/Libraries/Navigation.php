@@ -2,7 +2,6 @@
 
 namespace App\Libraries;
 
-use App\Repositories\SettingsRepository;
 use Throwable;
 
 /**
@@ -48,25 +47,20 @@ class Navigation
         ],
     ];
 
-    /** What the topbar picker offers when the entity list cannot be read. */
-    public const CONSOLIDATED = 'Consolidated — all entities';
-
     /**
-     * The entities the topbar picker offers: the live ones, then consolidated.
+     * What the topbar picker offers the person signed in: the entities they hold a
+     * role at, then the consolidated view when they hold one at every entity
+     * (App\Libraries\EntityScope). The one being worked in is marked current.
      *
-     * Read rather than listed, because the entity list is now something the Finance
-     * Manager adds to in Settings — a branch opened this morning has to appear in
-     * the picker without a deployment.
+     * @return list<array{value: string, code: string, name: string, current: bool}>
      */
     public static function entities(): array
     {
         try {
-            $names = array_column((new SettingsRepository())->entityOptions(), 'name');
+            return EntityScope::picker()['options'];
         } catch (Throwable $e) {
-            $names = [];
+            return [];
         }
-
-        return array_merge($names, [self::CONSOLIDATED]);
     }
 
     /** URL for a page key, falling back to the dashboard for an unknown key. */

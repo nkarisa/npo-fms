@@ -71,6 +71,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('search', 'Api\Search::index');
     $routes->get('me', 'Api\Me::index');
     $routes->post('me/act-as', 'Api\Me::actAs');
+    $routes->post('me/entity', 'Api\Me::entity');
     $routes->get('period-close', 'Api\PeriodClose::index');
     $routes->get('period-close/(:segment)/pack', 'Api\PeriodClose::pack/$1');
     $routes->post('period-close/(:segment)/confirm', 'Api\PeriodClose::confirm/$1');

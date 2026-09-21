@@ -583,7 +583,7 @@ final class ConversionRepository extends Repository
     {
         $stem = $prefix . '-' . substr($date, 2, 2) . '-';
         $max  = 0;
-        foreach ($this->rows('SELECT reference FROM {journals} WHERE reference LIKE ?', [$stem . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:journals} WHERE reference LIKE ?', [$stem . '%']) as $r) {
             $max = max($max, (int) substr($r['reference'], strlen($stem)));
         }
 

@@ -396,7 +396,7 @@ final class PayablesRepository extends Repository
             throw new RuleViolation('KRA PIN ' . $pin . ' belongs to ' . $pinHolder['name'] . ' on the supplier register.');
         }
         if ($supplier !== null) {
-            $dupe = $this->value('SELECT reference FROM {bills} WHERE supplier_id = ? AND supplier_invoice_no = ?', [$supplier['id'], $invoiceNo]);
+            $dupe = $this->value('SELECT reference FROM {all:bills} WHERE supplier_id = ? AND supplier_invoice_no = ?', [$supplier['id'], $invoiceNo]);
             if ($dupe !== null) {
                 throw new RuleViolation('Invoice ' . $invoiceNo . ' from ' . $supplier['name'] . ' is already on file as ' . $dupe . '. It cannot be captured twice.');
             }
@@ -496,7 +496,7 @@ final class PayablesRepository extends Repository
         if ($grn['kra_pin'] === null) {
             throw new RuleViolation($grn['supplier'] . ' has no KRA PIN on the register — the VAT and WHT on its invoice cannot be filed.');
         }
-        $dupe = $this->value('SELECT reference FROM {bills} WHERE supplier_id = ? AND supplier_invoice_no = ?', [$grn['supplier_id'], $invoiceNo]);
+        $dupe = $this->value('SELECT reference FROM {all:bills} WHERE supplier_id = ? AND supplier_invoice_no = ?', [$grn['supplier_id'], $invoiceNo]);
         if ($dupe !== null) {
             throw new RuleViolation('Invoice ' . $invoiceNo . ' from ' . $grn['supplier'] . ' is already on file as ' . $dupe . '. It cannot be captured twice.');
         }
@@ -950,7 +950,7 @@ final class PayablesRepository extends Repository
     private function nextBillReference(): string
     {
         $max = 0;
-        foreach ($this->rows("SELECT reference FROM {bills} WHERE reference LIKE 'BILL-%'") as $r) {
+        foreach ($this->rows("SELECT reference FROM {all:bills} WHERE reference LIKE 'BILL-%'") as $r) {
             $max = max($max, (int) substr($r['reference'], 5));
         }
 
@@ -962,7 +962,7 @@ final class PayablesRepository extends Repository
     {
         $stem = 'PR-' . substr($date, 2, 2) . '-';
         $max = self::RUN_FLOOR;
-        foreach ($this->rows('SELECT reference FROM {payment_runs} WHERE reference LIKE ?', [$stem . '%']) as $r) {
+        foreach ($this->rows('SELECT reference FROM {all:payment_runs} WHERE reference LIKE ?', [$stem . '%']) as $r) {
             $max = max($max, (int) substr($r['reference'], strlen($stem)));
         }
 
