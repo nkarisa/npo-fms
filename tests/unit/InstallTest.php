@@ -1,5 +1,6 @@
 <?php
 
+use App\Commands\Install;
 use App\Database\Seeds\BaselineSeeder;
 use App\Libraries\Installer;
 use App\Repositories\ChartRepository;
@@ -596,6 +597,19 @@ final class InstallTest extends CIUnitTestCase
         db_connect()->table('roles')->truncate();
 
         $this->assertStringContainsString('BaselineSeeder', (string) (new Installer())->refusal());
+    }
+
+    public function testTheAnswersFileIsReadWithOrWithoutAnEqualsSignAndFromWhereSparkWasRun(): void
+    {
+        // What CodeIgniter's parser makes of `--config=install.json` and `--config install.json`.
+        $cwd = WRITEPATH;
+        $this->assertSame(WRITEPATH . 'install.json', Install::answersFile(['config=install.json' => null], $cwd));
+        $this->assertSame(WRITEPATH . 'install.json', Install::answersFile(['config' => 'install.json'], $cwd));
+        $this->assertSame('/etc/answers.json', Install::answersFile(['config=/etc/answers.json' => null], $cwd));
+        $this->assertSame(ROOTPATH . 'install.json', Install::answersFile(['config' => 'install.json'], ''));
+
+        $this->assertNull(Install::answersFile(['yes' => null], $cwd), 'No --config: the answers are asked for.');
+        $this->assertSame('', Install::answersFile(['config' => null], $cwd), '--config with no file is refused, not asked for.');
     }
 
     // ------------------------------------------------------------------

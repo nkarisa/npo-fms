@@ -18,8 +18,10 @@ use Throwable;
  *
  * Asks for each answer in turn, or takes them all from a JSON file:
  *
- *     php spark install --config=install.json
+ *     php spark install --config=install.json    (or --config install.json)
  *     php spark install --show-config --no-header > install.json
+ *
+ * A relative path is read from the directory spark is run in.
  *
  * Nothing is written until every answer has been checked, and it is written in one
  * transaction, so a refusal leaves the instance exactly as it was.
@@ -52,7 +54,7 @@ class Install extends BaseCommand
             return EXIT_ERROR;
         }
 
-        $file = CLI::getOption('config');
+        $file = self::answersFile(CLI::getOptions(), (string) getenv('PWD'));
         try {
             $answers = is_string($file) ? $this->fromFile($file) : $this->ask();
         } catch (RuleViolation $e) {
@@ -118,9 +120,43 @@ class Install extends BaseCommand
         return $answers;
     }
 
+    /**
+     * The answers file --config names, or null when there is none and the answers
+     * are asked for instead.
+     *
+     * CodeIgniter only reads `--config file`; `--config=file` reaches it as an option
+     * named `config=file` with no value, so both spellings are read here. A relative
+     * path is taken from the directory spark was run in ($cwd) — spark itself has
+     * already moved into public/ — or from the project root when that is unknown.
+     *
+     * @param array<string, string|null> $options
+     */
+    public static function answersFile(array $options, string $cwd): ?string
+    {
+        $path = null;
+        foreach ($options as $name => $value) {
+            if ($name === 'config') {
+                $path = (string) $value;
+            } elseif (str_starts_with((string) $name, 'config=')) {
+                $path = substr((string) $name, strlen('config='));
+            }
+        }
+
+        if ($path === null || $path === '' || str_starts_with($path, '/')) {
+            return $path;
+        }
+
+        $base = $cwd !== '' && is_dir($cwd) ? $cwd : ROOTPATH;
+
+        return rtrim($base, '/') . '/' . $path;
+    }
+
     /** @return array<string, string> */
     private function fromFile(string $path): array
     {
+        if ($path === '') {
+            throw new RuleViolation('--config needs the answers file: `php spark install --config=install.json`.');
+        }
         if (!is_file($path)) {
             throw new RuleViolation($path . ' does not exist. Write the answers file with `php spark install --show-config --no-header > ' . $path . '`.');
         }
