@@ -25,9 +25,7 @@ final class AssetAdditionRepository extends Repository
 {
     public const BASES = ['donation' => 'Donated in kind', 'found' => 'Found in a count, never recorded'];
 
-    public const DONATED = '4260';
 
-    public const FUND_BALANCE = '3100';
 
     /** Journals that put cost on 1310/1320 without being a purchase: the balances brought forward, their history, and the register's own entries. */
     private const NOT_PURCHASES = ['fiscal_year', 'archive', 'asset_disposal', 'asset_addition', 'depreciation_run'];
@@ -228,7 +226,7 @@ final class AssetAdditionRepository extends Repository
         }
         $found = $f['basis'] === 'found';
         $who = $this->lookups->shortName($actorId);
-        $credit = $this->lookups->accounts()[$found ? self::FUND_BALANCE : self::DONATED];
+        $credit = $this->lookups->accounts()[$found ? PostingAccounts::of('foundAssets') : PostingAccounts::of('donatedAssets')];
         // Recommended: the donor's letter, the valuation or a photo of what was found.
         $attachments = new AttachmentRepository($this->db);
         $documents = $attachments->pending($f['documents'] ?? [], $actorId);

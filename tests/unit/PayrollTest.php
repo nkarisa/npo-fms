@@ -3,6 +3,7 @@
 use App\Database\Seeds\DatabaseSeeder;
 use App\Repositories\Lookups;
 use App\Repositories\PayrollRepository;
+use App\Repositories\PostingAccounts;
 use App\Repositories\Repository;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
@@ -113,7 +114,7 @@ final class PayrollTest extends CIUnitTestCase
         // The run agrees to what it charged and to what it withheld.
         $run = (new PayrollRepository())->runFor((int) (new Lookups())->periodByName('Aug 2026')['id']);
         $this->assertSame('posted', $run['status']);
-        $this->assertSame((float) $run['net'], $this->sum($run['journal_ref'], PayrollRepository::BANK));
+        $this->assertSame((float) $run['net'], $this->sum($run['journal_ref'], PostingAccounts::of('payrollBank')));
         $this->assertSame(15, (int) db_connect()->table('payslips')->where('payroll_run_id', $run['id'])->countAllResults());
 
         // Remittance is a second journal, and it clears the liabilities.

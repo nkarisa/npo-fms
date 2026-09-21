@@ -17,8 +17,6 @@ use App\Libraries\Prototype;
  */
 final class PeriodCloseRepository extends Repository
 {
-    public const ORGANISATION = 'Elections Observation Group';
-
     /** How many pills the year switcher shows before the rest move to "Earlier". */
     private const SHOWN_YEARS = 3;
 
@@ -221,7 +219,7 @@ final class PeriodCloseRepository extends Repository
         $accounts = $this->lookups->accounts();
 
         return [
-            'org'      => self::ORGANISATION,
+            'org'      => $this->lookups->organisationNames()['registered'],
             'period'   => $period['name'],
             'stamp'    => $closed ? $this->closeMeta($period) : 'Draft pack · assembled ' . $period['name'] . ' · not yet closed',
             'contents' => array_map(static fn ($d) => ['no' => $d['no'], 'name' => $d['name'], 'status' => $d['ready'] ? 'Ready' : 'Outstanding'], $this->packContents($period, $tasks, $totals)['docs']),
@@ -511,7 +509,7 @@ final class PeriodCloseRepository extends Repository
 
         return [
             'title' => 'Close pack — ' . $period['name'],
-            'meta'  => ($closed ? 'Assembled at close · ' : 'Draft · figures as at ' . $period['name'] . ' · ') . self::ORGANISATION . ' · KES',
+            'meta'  => ($closed ? 'Assembled at close · ' : 'Draft · figures as at ' . $period['name'] . ' · ') . $this->lookups->organisationNames()['registered'] . ' · KES',
             'intro' => $closed
                 ? 'The evidence bundle assembled when ' . $period['name'] . ' was locked. Figures are frozen as at the close date.'
                 : 'The evidence bundle for ' . $period['name'] . '. Documents marked outstanding will be incomplete until the checklist item behind them is settled.',

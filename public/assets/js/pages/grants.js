@@ -237,7 +237,7 @@
     UI.drawer('Reporting calendar', `
       <div class="pg-head">
         <b>Reports owed to donors</b>
-        <small>${esc(cal.summary)}. Each is flagged 45 days before it falls due.</small>
+        <small>${esc(cal.summary)}. Each is flagged ${esc(cal.warningDays)} days before it falls due.</small>
       </div>
       <div class="pg-body">
         ${cal.reports.map((r) => `
@@ -568,7 +568,7 @@
     if (wz.step === 4) {
       return `
         <div class="gr-wz-bar">
-          <div>Every date here is flagged on the grants page 45 days out. The presets date themselves from the agreement start.</div>
+          <div>Every date here is flagged on the grants page ${esc(opts.reportWarningDays)} days out. The presets date themselves from the agreement start.</div>
           <div>
             <button type="button" class="btn" data-preset="quarterly">+ Quarterly financial</button>
             <button type="button" class="btn" data-preset="narrative">+ Narrative</button>
@@ -614,7 +614,7 @@
       ['Disbursements scheduled', wz.status === 'Pipeline'
         ? 'None claimable. A pipeline award raises no receivable until the agreement is signed and it is converted.'
         : wz.tranches.length + (wz.tranches.length === 1 ? ' tranche' : ' tranches') + ', the first ' + fmt(num(firstTranche.amount)) + ' expected ' + dmy(firstTranche.date) + '. Each is claimed under Receivables when due.'],
-      ['Reporting deadlines set', wz.reports.length + (wz.reports.length === 1 ? ' report' : ' reports') + ' written to the reporting calendar; the grants page flags each one 45 days out.'],
+      ['Reporting deadlines set', wz.reports.length + (wz.reports.length === 1 ? ' report' : ' reports') + ' written to the reporting calendar; the grants page flags each one ' + opts.reportWarningDays + ' days out.'],
       ['Audit trail', 'Award set-up recorded against you. Value and period become locked fields — later changes need a recorded variation.'],
     ];
     return `

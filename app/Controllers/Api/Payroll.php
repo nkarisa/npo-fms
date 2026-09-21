@@ -6,6 +6,7 @@ use App\Libraries\Prototype;
 use App\Repositories\ApprovalPolicy;
 use App\Repositories\Lookups;
 use App\Repositories\PayrollRepository;
+use App\Repositories\PostingAccounts;
 use App\Repositories\RuleViolation;
 
 /**
@@ -112,7 +113,7 @@ class Payroll extends BaseApiController
                 ['label' => 'Statutory deductions', 'value' => Prototype::fmt($totals['paye'] + $totals['nssf'] + $totals['shif'] + $totals['housingLevy']),
                     'note' => 'PAYE, NSSF, SHIF and housing levy withheld'],
                 ['label' => 'Employer contributions', 'value' => Prototype::fmt($totals['employerCost']), 'note' => 'NSSF match, housing levy and NITA'],
-                ['label' => 'Net pay to staff', 'value' => Prototype::fmt($totals['net']), 'note' => $posted ? 'released from ' . PayrollRepository::BANK : 'to be released from KCB Current'],
+                ['label' => 'Net pay to staff', 'value' => Prototype::fmt($totals['net']), 'note' => $posted ? 'released from ' . PostingAccounts::of('payrollBank') : 'to be released from KCB Current'],
                 ['label' => 'Total cost to ELOG', 'value' => Prototype::fmt($totals['cost']), 'note' => $this->costNote($totals['cost'], $previousCost, $grantCost, $previous)],
             ],
 
@@ -319,7 +320,7 @@ class Payroll extends BaseApiController
                 ? $period['name'] . ' is closed to posting. Reopen the month in Period close before posting this run.'
                 : null,
             'note' => match ($status) {
-                'posted'   => '✓ Posted to the ledger. Net pay has left ' . PayrollRepository::BANK . ' and the statutory liabilities sit in 22xx until they are remitted.',
+                'posted'   => '✓ Posted to the ledger. Net pay has left ' . PostingAccounts::of('payrollBank') . ' and the statutory liabilities sit in 22xx until they are remitted.',
                 'approved' => '◐ Approved. Posting will release net pay and raise the statutory liabilities.',
                 default    => '◐ Nothing reaches the ledger until the run is approved by the Executive Director.',
             },

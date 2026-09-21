@@ -274,6 +274,67 @@ final class SettingsRepository extends Repository
         ) ?? self::QUOTE_THRESHOLD_DEFAULT));
     }
 
+    /**
+     * Payment terms and reminder windows, in days: key => [label, standard value,
+     * what it decides]. Changed in Settings → Terms and reminders.
+     */
+    public const DAY_RULES = [
+        'supplierTerms'       => ['Supplier payment terms offered', '14, 30, 45, 60', 'The terms a bill can be captured on. A bill raised from goods received takes 30 days when it is offered, otherwise the shortest.'],
+        'claimTermsDays'      => ['A donor claim falls due after', 30, 'Days from issue; the ageing and the expected receipts work from it.'],
+        'advanceRecoveryDays' => ['An unsurrendered advance is recovered from pay after', 14, 'Days past the surrender date before the balance can be taken from payroll.'],
+        'prequalWarningDays'  => ['A supplier shows as expiring', 30, 'Days before its pre-qualification lapses.'],
+        'reportWarningDays'   => ['A donor report is flagged as due', 45, 'Days before its deadline, on the grants page and the reporting calendar.'],
+        'trancheWarningDays'  => ['A grant tranche shows as due', 30, 'Days before it is expected.'],
+    ];
+
+    /** One of the day rules, as held or at its standard value. */
+    public static function day(string $key): int
+    {
+        return (int) (new self())->dayRule($key);
+    }
+
+    /** @return list<int> the payment terms a bill may carry, shortest first */
+    public static function supplierTerms(): array
+    {
+        return self::termList((string) (new self())->dayRule('supplierTerms'));
+    }
+
+    /** What a bill raised without a choice of terms is given: 30 days when offered, otherwise the shortest. */
+    public static function defaultSupplierTerms(): int
+    {
+        $terms = self::supplierTerms();
+
+        return in_array(30, $terms, true) ? 30 : $terms[0];
+    }
+
+    /** The rules with their values, for the screen. */
+    public function dayRules(): array
+    {
+        return array_map(fn (string $key) => [
+            'key' => $key, 'label' => self::DAY_RULES[$key][0], 'note' => self::DAY_RULES[$key][2],
+            'value' => (string) $this->dayRule($key), 'standard' => (string) self::DAY_RULES[$key][1],
+        ], array_keys(self::DAY_RULES));
+    }
+
+    private function dayRule(string $key): string|int
+    {
+        $standard = self::DAY_RULES[$key][1] ?? throw new \InvalidArgumentException('No day rule ' . $key . '.');
+
+        return $this->cached('day:' . $key, fn () => $this->value(
+            'SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = ?',
+            [$this->lookups->headOfficeCode(), $key]
+        ) ?? $standard);
+    }
+
+    /** "14, 30, 45, 60" as whole days, shortest first. */
+    private static function termList(string $text): array
+    {
+        $terms = array_map('intval', preg_split('/[^0-9]+/', $text, -1, PREG_SPLIT_NO_EMPTY));
+        sort($terms);
+
+        return array_values(array_unique($terms));
+    }
+
     /** Roles a user can hold — every role, in the order they were set up. Settings → Roles defines them. */
     public function roles(): array
     {
@@ -430,6 +491,15 @@ final class SettingsRepository extends Repository
         }
         if (isset($draft['procurement'])) {
             $this->planProcurement((array) $draft['procurement'], $plan);
+        }
+        if (isset($draft['taxes'])) {
+            $this->planTaxes((array) $draft['taxes'], $plan);
+        }
+        if (isset($draft['days'])) {
+            $this->planDays((array) $draft['days'], $plan);
+        }
+        if (isset($draft['postingAccounts'])) {
+            $this->planPostingAccounts((array) $draft['postingAccounts'], $plan);
         }
         if (isset($draft['payroll'])) {
             $this->planPayroll((array) $draft['payroll'], $plan);
@@ -937,6 +1007,146 @@ final class SettingsRepository extends Repository
         $plan('Approvals', 'Procurement threshold ' . ($threshold > $current ? 'raised' : 'lowered') . ' from ' . Prototype::fmt($current) . ' to ' . Prototype::fmt($threshold)
             . ' — three quotations and a pre-qualified supplier above it',
             fn () => $this->hold(self::QUOTE_THRESHOLD_KEY, 'approvals', (string) self::num($threshold), self::QUOTE_THRESHOLD_LABEL));
+    }
+
+    /**
+     * Terms and reminder windows. Each is a whole number of days within a year; the
+     * supplier terms are a list. A bill already captured keeps the terms it carries.
+     *
+     * $in: {key: value}
+     */
+    private function planDays(array $in, callable $plan): void
+    {
+        foreach ($in as $key => $value) {
+            $key = (string) $key;
+            if (!isset(self::DAY_RULES[$key])) {
+                continue;
+            }
+            [$label] = self::DAY_RULES[$key];
+            $current = (string) $this->dayRule($key);
+            if ($key === 'supplierTerms') {
+                $terms = self::termList((string) $value);
+                if ($terms === [] || min($terms) < 1 || max($terms) > 365 || preg_match('/[^0-9,\s]/', (string) $value)) {
+                    throw new RuleViolation('Give the supplier payment terms as days between 1 and 365, separated by commas — e.g. 14, 30, 45, 60.');
+                }
+                $new = implode(', ', $terms);
+                if ($new === implode(', ', self::termList($current))) {
+                    continue;
+                }
+                $plan('Terms', $label . ' changed from ' . $current . ' to ' . $new . ' days', fn () => $this->hold($key, 'terms', $new, $label));
+
+                continue;
+            }
+            $text = trim((string) $value);
+            if (!ctype_digit($text) || (int) $text < 1 || (int) $text > 365) {
+                throw new RuleViolation($label . ' has to be a whole number of days between 1 and 365.');
+            }
+            if ((int) $text === (int) $current) {
+                continue;
+            }
+            $plan('Terms', $label . ' changed from ' . (int) $current . ' to ' . (int) $text . ' days', fn () => $this->hold($key, 'terms', (string) (int) $text, $label));
+        }
+    }
+
+    /**
+     * Which account each automatic posting goes to. Only future postings follow a
+     * change; a control account that still holds a balance cannot move, because the
+     * entries that clear it would land somewhere else.
+     *
+     * $in: {role: account code}
+     */
+    private function planPostingAccounts(array $in, callable $plan): void
+    {
+        $accounts = new PostingAccounts();
+        foreach ($in as $role => $code) {
+            $role = (string) $role;
+            $code = trim((string) $code);
+            if ($code === '') {
+                throw new RuleViolation('Every posting role needs an account. ' . (PostingAccounts::ROLES[$role][0] ?? $role) . ' has none.');
+            }
+            $what = $accounts->check($role, $code);
+            if ($what !== null) {
+                $plan('Ledger', $what, fn () => $accounts->set($role, $code));
+            }
+        }
+    }
+
+    /**
+     * VAT and the withholding rates, changed from a date: the rates in force then end
+     * the day before and the new ones start, so a bill keeps the tax it was captured
+     * with and one dated after the change takes the new rates. A change starts today
+     * or later — a rate is never rewritten under bills already on file.
+     *
+     * $in: {vat: {rate, label}, wht: [{rate, label}], from: Y-m-d}
+     */
+    private function planTaxes(array $in, callable $plan): void
+    {
+        $taxes = new TaxRepository();
+        $today = Clock::date();
+        $from = (string) ($in['from'] ?? '') ?: $today;
+        $day = \DateTimeImmutable::createFromFormat('!Y-m-d', $from);
+        $rate = static function (mixed $value, string $what): float {
+            $text = trim(str_replace('%', '', (string) $value));
+            if ($text === '' || !is_numeric($text) || (float) $text <= 0 || (float) $text >= 100) {
+                throw new RuleViolation($what . ' has to be a percentage above nil and below 100.');
+            }
+
+            return round((float) $text, 3);
+        };
+        $shown = static fn (array $rates) => $rates === [] ? 'none' : implode(', ', array_map(static fn ($r) => self::num($r['rate']) . '%', $rates));
+        $changes = [];
+
+        if (isset($in['vat'])) {
+            $vat = ['rate' => $rate($in['vat']['rate'] ?? '', 'The VAT rate'), 'label' => trim((string) ($in['vat']['label'] ?? '')) ?: 'Standard rate'];
+            $held = $taxes->labelled('vat', $from)[0] ?? null;
+            if ($held === null || $held['rate'] != $vat['rate'] || $held['label'] !== $vat['label']) {
+                $changes['vat'] = [[$vat], $held === null ? 'VAT set at ' . self::num($vat['rate']) . '%'
+                    : ($held['rate'] != $vat['rate'] ? 'VAT changed from ' . self::num($held['rate']) . '% to ' . self::num($vat['rate']) . '%' : 'VAT rate renamed "' . $vat['label'] . '"')];
+            }
+        }
+
+        if (isset($in['wht'])) {
+            $wht = [];
+            foreach ((array) $in['wht'] as $r) {
+                $pct = $rate($r['rate'] ?? '', 'A withholding rate');
+                $label = trim((string) ($r['label'] ?? ''));
+                if ($label === '') {
+                    throw new RuleViolation('Say what the ' . self::num($pct) . '% withholding rate applies to. The bill form lists it by that.');
+                }
+                if (isset($wht[(string) $pct])) {
+                    throw new RuleViolation('The ' . self::num($pct) . '% withholding rate is listed twice.');
+                }
+                $wht[(string) $pct] = ['rate' => self::num($pct), 'label' => mb_substr($label, 0, 80)];
+            }
+            ksort($wht, SORT_NUMERIC);
+            $wht = array_values($wht);
+            $held = $taxes->labelled('wht', $from);
+            if ($wht != $held) {
+                // A default no longer offered would put every bill in its category out of policy.
+                $kept = array_map(static fn ($r) => (float) $r['rate'], $wht);
+                foreach ($this->rows('SELECT name, wht_rate_pct FROM {spend_categories} WHERE wht_rate_pct > 0 ORDER BY id') as $c) {
+                    if (!in_array((float) $c['wht_rate_pct'], $kept, true)) {
+                        throw new RuleViolation($c['name'] . ' withholds ' . self::num($c['wht_rate_pct']) . '% by default. Keep that rate, or change the spend category\'s default first.');
+                    }
+                }
+                $changes['wht'] = [$wht, 'Withholding rates changed from ' . $shown($held) . ' to ' . $shown($wht)
+                    . ($shown($held) === $shown($wht) ? ' (what they apply to reworded)' : '')];
+            }
+        }
+
+        if ($changes === []) {
+            return;
+        }
+        if ($day === false || $day->format('Y-m-d') !== $from) {
+            throw new RuleViolation('Give the date the new rates take effect.');
+        }
+        if ($from < $today) {
+            throw new RuleViolation('A new rate takes effect today or later. Bills already captured keep the tax they were entered with, so a rate is never changed under them.');
+        }
+
+        foreach ($changes as $tax => [$rates, $what]) {
+            $plan('Taxes', $what . ' from ' . self::dmy($from), fn () => $taxes->change($tax, $rates, $from));
+        }
     }
 
     /**

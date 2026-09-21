@@ -34,6 +34,23 @@ final class Lookups extends Repository
         ) ?? self::SECRETARIAT));
     }
 
+    /**
+     * The organisation's names as Settings → Organisation holds them, for the
+     * documents that carry them: the close pack, the board pack, a donor report.
+     *
+     * @return array{registered: string, short: string}
+     */
+    public function organisationNames(): array
+    {
+        return $this->cached('organisation-names', function () {
+            $e = $this->row('SELECT registered_name, short_name FROM {entities} WHERE parent_id IS NULL ORDER BY id LIMIT 1') ?? [];
+            $registered = trim((string) ($e['registered_name'] ?? ''));
+            $short      = trim((string) ($e['short_name'] ?? ''));
+
+            return ['registered' => $registered !== '' ? $registered : $short, 'short' => $short !== '' ? $short : $registered];
+        });
+    }
+
     // ---- People ----
 
     /** @return array<int, array> users by id */

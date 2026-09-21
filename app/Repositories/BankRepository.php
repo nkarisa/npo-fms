@@ -21,14 +21,14 @@ use App\Libraries\Clock;
 final class BankRepository extends Repository
 {
     /**
-     * What each kind of bank entry is journalised against. Money in credits the
-     * account named here; money out debits it.
+     * What each kind of bank entry is journalised against: the account filling the
+     * posting role named here. Money in credits it; money out debits it.
      */
     public const BANK_ENTRIES = [
-        'charges'      => ['account' => '5340', 'label' => 'Post bank charges', 'mobile' => 'Post transaction charges', 'desc' => 'Bank charges and fees per statement'],
-        'interest'     => ['account' => '4230', 'label' => 'Post interest received', 'desc' => 'Interest credited per statement'],
-        'fx_gain'      => ['account' => '4240', 'label' => 'Post exchange gain', 'desc' => 'Exchange gain credited per statement'],
-        'unidentified' => ['account' => '2190', 'label' => 'Post to suspense', 'desc' => 'Unidentified credit held in suspense'],
+        'charges'      => ['role' => 'bankCharges', 'label' => 'Post bank charges', 'mobile' => 'Post transaction charges', 'desc' => 'Bank charges and fees per statement'],
+        'interest'     => ['role' => 'bankInterest', 'label' => 'Post interest received', 'desc' => 'Interest credited per statement'],
+        'fx_gain'      => ['role' => 'fxGain', 'label' => 'Post exchange gain', 'desc' => 'Exchange gain credited per statement'],
+        'unidentified' => ['role' => 'suspense', 'label' => 'Post to suspense', 'desc' => 'Unidentified credit held in suspense'],
     ];
 
     private Lookups $lookups;
@@ -302,7 +302,8 @@ final class BankRepository extends Repository
 
         $accounts = $this->lookups->accounts();
         $bank = $accounts[$r['code']];
-        $contra = $accounts[$entry['account']] ?? throw new RuleViolation('Account ' . $entry['account'] . ' is not in the chart of accounts.');
+        $contraCode = PostingAccounts::of($entry['role']);
+        $contra = $accounts[$contraCode] ?? throw new RuleViolation('Account ' . $contraCode . ' is not in the chart of accounts. Choose the account for ' . strtolower(PostingAccounts::ROLES[$entry['role']][0]) . ' in Settings → Ledger.');
         $bankFund = $bank['default_fund_id'] === null ? null : (int) $bank['default_fund_id'];
         $bankGrant = $bankFund === null ? null : $this->lookups->grantOfFund($bankFund);
         $amount = abs((float) $line['amt']);
@@ -315,7 +316,7 @@ final class BankRepository extends Repository
             'dr' => $in ? $amount : 0, 'cr' => $in ? 0 : $amount,
         ];
         $contraLine = [
-            'code' => $entry['account'], 'desc' => $entry['desc'],
+            'code' => $contraCode, 'desc' => $entry['desc'],
             'fund' => $this->lookups->fundGroupLabel($contra['default_fund_id'] === null ? null : (int) $contra['default_fund_id']),
             'program' => $this->lookups->programmeName($contra['default_programme_id'] === null ? null : (int) $contra['default_programme_id']),
             'grantRef' => '', 'dr' => $in ? 0 : $amount, 'cr' => $in ? $amount : 0,

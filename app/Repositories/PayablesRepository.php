@@ -21,18 +21,8 @@ use Config\Documents;
  */
 final class PayablesRepository extends Repository
 {
-    public const VAT_RATE = 0.16;
-
-    /** Withholding rates a bill may carry, in %. */
-    public const WHT_RATES = [0, 3, 5, 10];
-
-    public const TERMS = [14, 30, 45, 60];
-
     private const STATUS_LABELS = ['pending_approval' => 'Awaiting approval'];
 
-    private const PAYABLE = '2110';
-    private const WHT_PAYABLE = '2240';
-    private const ACCRUED = '2120';
 
     /** Payment run numbers continue from the prototype's last run, PR-26-0087. */
     private const RUN_FLOOR = 87;
@@ -94,6 +84,7 @@ final class PayablesRepository extends Repository
                     'budget'    => $position === null ? '—' : 'KES ' . Prototype::fmt($position['actual'] + $position['committed']) . ' of ' . Prototype::fmt($position['budget']),
                     'taxable'   => self::num($b['subtotal']),
                     'vat'       => self::num($b['vat']),
+                    'vatRate'   => self::num((new TaxRepository())->inForce('vat', $b['invoice_date'])[0] ?? round((float) $b['vat'] * 100 / max(1, (float) $b['subtotal']), 1)),
                     'gross'     => self::num($b['total']),
                     'wht'       => self::num($wht),
                     'net'       => self::num((float) $b['total'] - $wht),
@@ -267,6 +258,18 @@ final class PayablesRepository extends Repository
         );
     }
 
+    /** "0%, 3%, 5% or 10%". */
+    private static function rateList(array $rates): string
+    {
+        return self::dayList(array_map(static fn ($r) => self::num($r) . '%', $rates));
+    }
+
+    /** "14, 30, 45 or 60". */
+    private static function dayList(array $items): string
+    {
+        return count($items) > 1 ? implode(', ', array_slice($items, 0, -1)) . ' or ' . end($items) : implode('', $items);
+    }
+
     /**
      * Above this taxable value a bill is paid only to a pre-qualified supplier; below
      * it, one without a current pre-qualification needs a reason. The same line as the
@@ -353,6 +356,8 @@ final class PayablesRepository extends Repository
 
         $whtDefault = $category['wht'] ?? 0;
         $whtRate = ($f['wht'] ?? 'auto') === 'auto' ? $whtDefault : (float) $f['wht'];
+        $taxes = new TaxRepository();
+        $whtRates = $date === false ? [] : $taxes->wht($date->format('Y-m-d'));
         $whtOverridden = ($f['wht'] ?? 'auto') !== 'auto' && $whtRate != $whtDefault;
         $overBudget = $line !== null && $taxable > $line['remaining'];
         $attachments = new AttachmentRepository();
@@ -364,12 +369,12 @@ final class PayablesRepository extends Repository
             $category === null                             => 'Choose the spend category. It sets the withholding tax policy.',
             $invoiceNo === ''                              => "Enter the supplier's invoice number. It is the duplicate-payment check.",
             $date === false                                => 'Enter the invoice date.',
-            !in_array($terms, self::TERMS, true)           => 'Payment terms must be 14, 30, 45 or 60 days.',
+            !in_array($terms, SettingsRepository::supplierTerms(), true) => 'Payment terms must be ' . self::dayList(SettingsRepository::supplierTerms()) . ' days.',
             $line === null                                 => 'Choose the budget line the bill is coded to.',
             $method === null                               => 'Choose how the supplier will be paid.',
             $coded === []                                  => 'Code at least one line with an amount.',
             array_filter($coded, static fn ($l) => $l['desc'] === '') !== [] => 'Every coded line needs a description of what was supplied.',
-            !in_array((int) $whtRate, self::WHT_RATES, true) || $whtRate != (int) $whtRate => 'Withholding tax must be 0%, 3%, 5% or 10%.',
+            !in_array($whtRate, $whtRates)                 => 'Withholding tax on a bill dated ' . self::dmy($date->format('Y-m-d')) . ' must be ' . self::rateList($whtRates) . '.',
             $whtOverridden && trim((string) $f['whtReason']) === '' => 'Overriding the withholding rate needs a reason — the tax file has to explain it.',
             $overBudget && trim((string) $f['overReason']) === ''   => 'This bill takes the line over budget. Say why before it goes for approval, or split the coding.',
             $documents === [] && config(Documents::class)->requireBillInvoice => self::NEEDS_INVOICE,
@@ -412,7 +417,7 @@ final class PayablesRepository extends Repository
             throw new RuleViolation(($supplier['name'] ?? $name) . ' is ' . strtolower($standing) . '. Say why this bill is paid without a current pre-qualification before it goes for approval.');
         }
 
-        $vat   = round($taxable * self::VAT_RATE);
+        $vat   = round($taxable * $taxes->vat($date->format('Y-m-d')) / 100);
         $wht   = round($taxable * $whtRate / 100);
         $who   = $this->lookups->shortName($actorId);
         $entity = $this->lookups->entityId();
@@ -468,7 +473,7 @@ final class PayablesRepository extends Repository
     /**
      * Raises the supplier bill for goods received against a purchase order: the
      * three-way match of order, goods received note and the supplier's invoice. The
-     * bill carries the order's lines and coding, VAT at 16%, the supplier's
+     * bill carries the order's lines and coding, VAT at the rate in force today, the supplier's
      * withholding rate (or its spend category's), and waits for approval like any
      * other. Call it inside the caller's transaction.
      */
@@ -500,7 +505,7 @@ final class PayablesRepository extends Repository
         $taxable = array_sum(array_map(static fn ($l) => (float) $l['amount'], $lines));
         $category = current(array_filter($this->categories(), static fn ($c) => $c['name'] === $grn['category'])) ?: null;
         $whtRate = (float) ($grn['wht_rate_pct'] ?? $category['wht'] ?? 0);
-        $vat = round($taxable * self::VAT_RATE);
+        $vat = round($taxable * (new TaxRepository())->vat(Clock::date()) / 100);
         $wht = round($taxable * $whtRate / 100);
         $method = $this->methodOptions()[0] ?? throw new RuleViolation('There is no active bank account to pay from.');
         $who = $this->lookups->shortName($actorId);
@@ -511,7 +516,7 @@ final class PayablesRepository extends Repository
             $no = $this->nextBillReference();
             $id = $this->insert('bills', [
                 'entity_id' => $grn['entity_id'], 'reference' => $no, 'supplier_id' => $grn['supplier_id'], 'supplier_invoice_no' => $invoiceNo,
-                'invoice_date' => $today, 'due_date' => date('Y-m-d', strtotime($today . ' +30 days')), 'terms_days' => 30,
+                'invoice_date' => $today, 'due_date' => date('Y-m-d', strtotime($today . ' +' . SettingsRepository::defaultSupplierTerms() . ' days')), 'terms_days' => SettingsRepository::defaultSupplierTerms(),
                 'subtotal' => $taxable, 'vat' => $vat, 'wht_rate_pct' => $whtRate, 'wht_amount' => $wht, 'total' => $taxable + $vat,
                 'status' => 'pending_approval', 'pay_from_bank_account_id' => $method['bankId'], 'payment_method' => $method['method'],
                 'purchase_order_id' => $grn['po_id'], 'goods_received_note_id' => $grn['id'], 'prepared_by' => $actorId, 'created_at' => $now,
@@ -572,15 +577,15 @@ final class PayablesRepository extends Repository
                     $vatLeft -= $vat;
                     $code = $this->accountCode((int) $l['account_id']);
                     if ($accrued && $l['purchase_order_line_id'] !== null) {
-                        $posting[] = $this->posting(self::ACCRUED, $l, 'Accrual cleared — ' . $l['description'], (float) $l['amount'], 0);
+                        $posting[] = $this->posting(PostingAccounts::of('accrued'), $l, 'Accrual cleared — ' . $l['description'], (float) $l['amount'], 0);
                         $posting[] = $this->posting($code, $l, 'VAT on ' . $l['description'], $vat, 0);
                     } else {
                         $posting[] = $this->posting($code, $l, $l['description'], (float) $l['amount'] + $vat, 0);
                     }
                 }
                 $first = $lines[0];
-                $posting[] = $this->posting(self::PAYABLE, $first, 'Payable to ' . $b['supplier_name'] . ' · ' . $b['reference'], 0, (float) $b['total'] - (float) $b['wht_amount']);
-                $posting[] = $this->posting(self::WHT_PAYABLE, $first, 'Withholding tax at ' . self::num($b['wht_rate_pct']) . '% held on ' . $b['supplier_name'], 0, (float) $b['wht_amount']);
+                $posting[] = $this->posting(PostingAccounts::of('payables'), $first, 'Payable to ' . $b['supplier_name'] . ' · ' . $b['reference'], 0, (float) $b['total'] - (float) $b['wht_amount']);
+                $posting[] = $this->posting(PostingAccounts::of('whtPayable'), $first, 'Withholding tax at ' . self::num($b['wht_rate_pct']) . '% held on ' . $b['supplier_name'], 0, (float) $b['wht_amount']);
 
                 $ref = $journals->postFromSource([
                     'date' => $date, 'sourceType' => 'bill', 'sourceId' => (int) $b['id'], 'docRef' => $b['reference'], 'series' => 'JV',
@@ -712,7 +717,7 @@ final class PayablesRepository extends Repository
                 foreach ($group as $b) {
                     $first = $this->row('SELECT * FROM {bill_lines} WHERE bill_id = ? ORDER BY line_no LIMIT 1', [$b['id']]);
                     $net = (float) $b['total'] - (float) $b['wht_amount'];
-                    $posting[] = $this->posting(self::PAYABLE, $first, 'Paid ' . $b['supplier_name'] . ' · ' . $b['reference'], $net, 0);
+                    $posting[] = $this->posting(PostingAccounts::of('payables'), $first, 'Paid ' . $b['supplier_name'] . ' · ' . $b['reference'], $net, 0);
                     $posting[] = $this->posting($bank['code'], $first, $bank['short_name'] . ' — ' . $ref . ' · ' . $b['reference'], 0, $net);
                 }
                 $journal = $journals->postFromSource([
@@ -795,7 +800,7 @@ final class PayablesRepository extends Repository
         );
         $amount = array_sum(array_map(static fn ($b) => (float) $b['wht_amount'], $bills));
         if ($amount <= 0) {
-            throw new RuleViolation('Nothing is held on ' . self::WHT_PAYABLE . ' — there is no withholding tax to remit.');
+            throw new RuleViolation('Nothing is held on ' . PostingAccounts::of('whtPayable') . ' — there is no withholding tax to remit.');
         }
 
         $bank = $this->mainBank();
@@ -822,7 +827,7 @@ final class PayablesRepository extends Repository
             }
             $posting = [];
             foreach ($groups as $g) {
-                $posting[] = $this->posting(self::WHT_PAYABLE, $g['segments'], 'WHT remitted to KRA iTax', $g['amount'], 0);
+                $posting[] = $this->posting(PostingAccounts::of('whtPayable'), $g['segments'], 'WHT remitted to KRA iTax', $g['amount'], 0);
                 $posting[] = $this->posting($bank['code'], $g['segments'], 'Paid from ' . $bank['short_name'], 0, $g['amount']);
             }
 

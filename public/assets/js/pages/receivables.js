@@ -752,7 +752,7 @@
           <span class="jd-caps" style="color:var(--accent-ink);">Total claim</span>
           <span id="an-total" class="pc-mono" style="font-size:16px;font-weight:600;color:var(--accent);"></span>
           <span id="an-fc" style="font-size:11.5px;color:#7A857F;"></span>
-          <span style="margin-inline-start:auto;font-size:11.5px;color:#7A857F;">Due ${esc(form.due)} · 30 days after issue</span>
+          <span style="margin-inline-start:auto;font-size:11.5px;color:#7A857F;">Due ${esc(form.due)} · ${esc(form.termsDays)} days after issue</span>
         </div>`;
       renderDerived();
     }

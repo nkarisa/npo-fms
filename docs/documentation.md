@@ -629,7 +629,7 @@ and section totals, followed by notes.
 ### Settings
 
 **Purpose:** configure the organisation and its entities, the ledger, controls,
-currencies, approvals, bank-statement formats, opening balances, integrations, payroll scales,
+posting accounts, currencies, taxes, terms and reminders, approvals, bank-statement formats, opening balances, integrations, payroll scales,
 appearance, language/translation, users and the audit log. Changes are edited into one draft and saved together.
 
 **On screen:** a left navigation of sections and a content pane on the right. The
@@ -649,8 +649,21 @@ warning appears if you try to leave with unsaved changes.
   to it; the head office cannot change type or go dormant; there is only ever one
   of it; and an entity that holds postings can no longer change its functional
   currency.
+- **Organisation names on documents** — the registered name printed on the close
+  pack, the board pack and a donor report's cover (the cover shows the short name
+  with it) is the one held here, never a fixed name.
 - **Ledger** — reporting framework, functional currency, year end, code length;
-  posting-control toggles; open-period chips.
+  posting-control toggles; the **posting accounts**; open-period chips. The posting
+  accounts say where the postings the system makes itself go — trade payables for
+  a bill, grants receivable for a claim, the allowance for a doubtful debt, the
+  depreciation charge, the bank a payroll is paid from, the account a bank charge
+  is taken to — grouped by module. Each role starts at its standard code and
+  offers only active postable accounts of the right type (an expense for a charge,
+  a liability for a payable). A change applies to postings from then on. An
+  account that holds a balance to be cleared later (payables, goods received not
+  invoiced, withholding tax, receivables, the allowance, staff advances, suspense)
+  can move only once that balance is nil, or after it has been journalled across;
+  otherwise the entries that clear it would land in the new account.
 - **Segments** — which coding segments are required and shown on reports, with a
   warning if grant/fund segments are left optional; and, below them, the **funds**
   every posting is coded to. A fund is opened as it is entered rather than saved
@@ -663,6 +676,19 @@ warning appears if you try to leave with unsaved changes.
   Funds are never deleted; the table shows how many postings each carries.
 - **Currencies** — indicative rates and enable/disable; add a currency. The base
   and in-use currencies cannot be disabled.
+- **Taxes** — the VAT rate and the withholding rates a bill may carry (each with
+  what it applies to; nil is always allowed), as the Finance Act sets them. Rates
+  are dated: a change takes effect from a date chosen here, today or later, and a
+  bill takes the rates in force on its invoice date. Bills already captured keep
+  the tax they were entered with. A rate that a spend category defaults to cannot
+  be removed. The rate history is listed below. Out of the box: VAT 16%;
+  withholding 3%, 5% and 10%, from 1 January 2021.
+- **Terms and reminders** — the supplier payment terms a bill can carry (14, 30,
+  45 and 60 days to start; a bill raised from goods received takes 30 when it is
+  offered), the days after issue a donor claim falls due (30), the days past its
+  surrender date before an advance can be recovered from pay (14), and how far
+  ahead a supplier shows as expiring (30), a donor report is flagged (45) and a
+  tranche shows as due (30). A bill or claim already raised keeps its due date.
 - **Approvals** — thresholds and approvers per transaction type, with a
   segregation-of-duties note, and the **procurement threshold** (KES 500,000 to
   start): above it a purchase needs three quotations before its purchase order,

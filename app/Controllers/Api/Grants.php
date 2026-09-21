@@ -5,6 +5,7 @@ namespace App\Controllers\Api;
 use App\Libraries\Prototype;
 use App\Repositories\GrantRepository;
 use App\Repositories\RuleViolation;
+use App\Repositories\SettingsRepository;
 
 /**
  * Grants and awards (v5): the award portfolio with burn read against elapsed
@@ -47,12 +48,12 @@ class Grants extends BaseApiController
             'fund' => $g['fund'], 'period' => $g['period'], 'status' => $g['status'],
             'value' => Prototype::fmt($g['value']), 'received' => Prototype::fmt($g['received']), 'spent' => Prototype::fmt($g['spent']),
             'burnPct' => self::burn($g), 'elapsed' => $g['elapsed'], 'burnColour' => self::burnColour(self::burn($g), $g['elapsed']),
-            'reportDue' => $g['reportDays'] <= GrantRepository::REPORT_WARNING_DAYS,
+            'reportDue' => $g['reportDays'] <= SettingsRepository::day('reportWarningDays'),
             'nextReport' => $g['nextReport'],
         ], $filtered);
 
         $live = array_values(array_filter($all, fn ($g) => in_array($g['status'], ['Active', 'Closing'], true)));
-        $reportsSoon = array_values(array_filter($all, fn ($g) => $g['reportDays'] <= GrantRepository::REPORT_WARNING_DAYS && !in_array($g['status'], ['Closed', 'Pipeline'], true)));
+        $reportsSoon = array_values(array_filter($all, fn ($g) => $g['reportDays'] <= SettingsRepository::day('reportWarningDays') && !in_array($g['status'], ['Closed', 'Pipeline'], true)));
         $sum = static fn (array $grants, callable $of) => array_sum(array_map($of, $grants));
         $liveValue = $sum($live, fn ($g) => $g['value']);
 
@@ -67,7 +68,7 @@ class Grants extends BaseApiController
                 ['label' => 'Received to date', 'value' => Prototype::fmt($sum($live, fn ($g) => $g['received'])), 'note' => Prototype::fmt($sum($live, fn ($g) => $g['value'] - $g['received'])) . ' still receivable'],
                 ['label' => 'Spent to date', 'value' => Prototype::fmt($sum($live, fn ($g) => $g['spent'])), 'note' => 'against elapsed time'],
                 ['label' => 'Unspent commitment', 'value' => Prototype::fmt($sum($live, fn ($g) => $g['value'] - $g['spent'])), 'note' => 'to deliver before close'],
-                ['label' => 'Reports due', 'value' => (string) count($reportsSoon), 'note' => 'within ' . GrantRepository::REPORT_WARNING_DAYS . ' days'],
+                ['label' => 'Reports due', 'value' => (string) count($reportsSoon), 'note' => 'within ' . SettingsRepository::day('reportWarningDays') . ' days'],
             ],
             'footer' => count($rows) . ' of ' . count($all) . ' awards · ' . count($live) . ' live, portfolio burn '
                 . (int) round($sum($live, fn ($g) => $g['spent']) / max(1, $liveValue) * 100) . '%',
@@ -131,7 +132,7 @@ class Grants extends BaseApiController
                     . ($overdue ? ' The ' . $overdue[0]['name'] . ' is ' . abs($overdue[0]['days']) . ' days overdue,' : '')
                     . ' and no new commitments may be made against this award.',
                 $g['status'] === 'Closing' => 'Award closes on ' . $g['end'] . '. ' . Prototype::fmt($unspent) . ' is uncommitted and would be returnable unless a no-cost extension is agreed.',
-                $g['reportDays'] >= 0 && $g['reportDays'] <= GrantRepository::REPORT_WARNING_DAYS && $g['status'] !== 'Closed'
+                $g['reportDays'] >= 0 && $g['reportDays'] <= SettingsRepository::day('reportWarningDays') && $g['status'] !== 'Closed'
                     => 'Next donor report is due in ' . $g['reportDays'] . ($g['reportDays'] === 1 ? ' day.' : ' days.'),
                 default => '',
             },
@@ -145,8 +146,9 @@ class Grants extends BaseApiController
 
         return $this->json([
             'reports' => $reports,
+            'warningDays' => SettingsRepository::day('reportWarningDays'),
             'summary' => count(array_filter($reports, static fn ($r) => $r['state'] === 'Overdue')) . ' overdue · '
-                . count(array_filter($reports, static fn ($r) => $r['state'] === 'Due')) . ' due within ' . GrantRepository::REPORT_WARNING_DAYS . ' days · '
+                . count(array_filter($reports, static fn ($r) => $r['state'] === 'Due')) . ' due within ' . SettingsRepository::day('reportWarningDays') . ' days · '
                 . count($reports) . ' outstanding in all',
         ]);
     }
@@ -157,6 +159,7 @@ class Grants extends BaseApiController
         return $this->json((new GrantRepository())->formOptions() + [
             'nextFundCode' => (new GrantRepository())->nextFundCode(),
             'requireAgreement' => config(\Config\Documents::class)->requireGrantAgreement,
+            'reportWarningDays' => SettingsRepository::day('reportWarningDays'),
         ]);
     }
 

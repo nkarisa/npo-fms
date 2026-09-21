@@ -149,6 +149,57 @@ final class PayablesTest extends CIUnitTestCase
         $this->assertStringContainsString('A bill above KES 600,000', $refusal(['invoiceNo' => 'CT-90'] + $computech + ['lines' => [['desc' => 'Server', 'amount' => '600001']], 'overReason' => 'Replacement cycle']));
     }
 
+    public function testTaxRatesAreSetInSettingsFromADateAndABillTakesThoseInForceOnItsInvoiceDate(): void
+    {
+        $taxes = $this->api('api/settings')['taxes'];
+        $this->assertSame([16, 'Standard rate'], [$taxes['vat']['rate'], $taxes['vat']['label']]);
+        $this->assertSame([3, 5, 10], array_column($taxes['wht'], 'rate'));
+        $held = $taxes['wht'];
+        $change = fn (array $taxes) => $this->withBodyFormat('json')->post('api/settings', ['taxes' => $taxes]);
+        $error = static fn ($response) => json_decode($response->getJSON(), true)['error'];
+
+        // A rate is never changed under bills already captured.
+        $past = $change(['vat' => ['rate' => 15, 'label' => 'Standard rate'], 'from' => '2026-08-01']);
+        $past->assertStatus(422);
+        $this->assertStringContainsString('takes effect today or later', $error($past));
+        // Professional fees withholds 5% by default, so 5% stays on offer.
+        $dropped = $change(['wht' => [$held[0], $held[2]], 'from' => '2026-09-15']);
+        $dropped->assertStatus(422);
+        $this->assertStringContainsString('Professional fees withholds 5% by default', $error($dropped));
+        $this->assertStringContainsString('above nil and below 100', $error($change(['vat' => ['rate' => 0], 'from' => '2026-09-15'])));
+
+        $saved = $change(['vat' => ['rate' => '15', 'label' => 'Standard rate'], 'wht' => [['rate' => '2', 'label' => 'Digital content, resident'], ...$held], 'from' => '2026-09-15']);
+        $saved->assertStatus(200);
+        $body = json_decode($saved->getJSON(), true);
+        $this->assertSame([
+            'VAT changed from 16% to 15% from 15 Sep 2026',
+            'Withholding rates changed from 3%, 5%, 10% to 2%, 3%, 5%, 10% from 15 Sep 2026',
+        ], array_column($body['changes'], 'what'));
+        // Today's rates stand until then.
+        $this->assertSame(16, $body['taxes']['vat']['rate']);
+        $this->assertSame(['from' => '15 Sep 2026', 'rates' => [['rate' => 15, 'label' => 'Standard rate']]], $body['taxes']['next']['vat']);
+        $this->seeInDatabase('tax_rates', ['tax' => 'vat', 'rate_pct' => 16, 'effective_to' => '2026-09-14']);
+
+        // A bill takes the rates in force on its invoice date.
+        $repo = new PayablesRepository();
+        $njeri = (new Lookups())->userId('s.njeri@elog.or.ke');
+        $august = $repo->capture($this->invoice(), $njeri);
+        $this->assertSame([200000, 32000], [$august['taxable'], $august['vat']]);
+        $september = $repo->capture($this->invoice(['invoiceNo' => 'MC-2026-015', 'invoiceDate' => '2026-09-20', 'wht' => '2', 'whtReason' => 'Licensed dataset']), $njeri);
+        $this->assertSame([30000, 4000, 15], [$september['vat'], $september['wht'], $september['vatRate']]);
+        try {
+            $repo->capture($this->invoice(['invoiceNo' => 'MC-2026-016', 'wht' => '2', 'whtReason' => 'Licensed dataset']), $njeri);
+            $this->fail('A rate not yet in force was accepted.');
+        } catch (RuleViolation $e) {
+            $this->assertStringContainsString('dated 30 Aug 2026 must be 0%, 3%, 5% or 10%', $e->getMessage());
+        }
+
+        // The bill form carries the dated rates; changing them is the settings manager's.
+        $this->assertContains(['tax' => 'vat', 'rate' => 15, 'label' => 'Standard rate', 'from' => '2026-09-15', 'to' => null], $this->api('api/payables/form')['taxRates']);
+        $this->actAs('s.njeri@elog.or.ke');
+        $change(['vat' => ['rate' => 14, 'label' => 'Standard rate'], 'from' => '2026-09-15'])->assertStatus(403);
+    }
+
     public function testApprovalPostsTheBillAndNeedsASecondPerson(): void
     {
         $repo = new PayablesRepository();

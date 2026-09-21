@@ -6,6 +6,8 @@ use App\Libraries\Prototype;
 use App\Repositories\ApprovalPolicy;
 use App\Repositories\PayablesRepository;
 use App\Repositories\RuleViolation;
+use App\Repositories\SettingsRepository;
+use App\Repositories\TaxRepository;
 
 /**
  * Payables (v5): supplier bills with their ageing, filtered by status, ageing bucket,
@@ -118,6 +120,7 @@ class Payables extends BaseApiController
                 },
             ], self::TABS),
             'hint'   => $age === 'All' ? count($overdue) . ' bills past due' : 'Aging filter: ' . $age,
+            'vatRate' => (new TaxRepository())->inForce('vat', \App\Libraries\Clock::date())[0] ?? null,
             'footer' => count($filtered) . ' of ' . count($all) . ' bills · net payable ' . Prototype::fmt(self::net(array_filter($filtered, [self::class, 'isOpen']))),
             'stats'  => [
                 ['label' => 'Total outstanding', 'value' => Prototype::fmt(self::net($outstanding)), 'note' => count($outstanding) . ' open bills'],
@@ -187,9 +190,10 @@ class Payables extends BaseApiController
             'categories'  => $repo->categories(),
             'budgetLines' => array_map(static fn ($l) => array_intersect_key($l, array_flip(['id', 'code', 'name', 'fund', 'program', 'grant', 'annual', 'actual', 'onBills', 'remaining'])), $repo->budgetLines()),
             'methods'     => $repo->methods(),
-            'terms'       => PayablesRepository::TERMS,
-            'whtRates'    => PayablesRepository::WHT_RATES,
-            'vatRate'     => PayablesRepository::VAT_RATE,
+            'terms'       => SettingsRepository::supplierTerms(),
+            'defaultTerms' => SettingsRepository::defaultSupplierTerms(),
+            // Dated, so the form can follow the invoice date across a change of rate.
+            'taxRates'    => (new TaxRepository())->forForm(),
             'today'       => \App\Libraries\Clock::date(),
             'requireInvoice' => config(\Config\Documents::class)->requireBillInvoice,
             'prequalThreshold' => PayablesRepository::prequalThreshold(),

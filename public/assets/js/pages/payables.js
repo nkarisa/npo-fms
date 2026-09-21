@@ -75,7 +75,7 @@
         <div id="ap-pager"></div>
         <div class="coa-foot">
           <span id="ap-footer"></span>
-          <span style="margin-inline-start:auto;">WHT remitted by the 20th · VAT at 16% · payments cleared through KCB and M-Pesa</span>
+          <span style="margin-inline-start:auto;" id="ap-foot-tax"></span>
         </div>
       </div>`;
 
@@ -164,6 +164,7 @@
     app.querySelector('#ap-fund').innerHTML = data.fundOptions.map(f => `<option ${f === state.fund ? 'selected' : ''}>${esc(f)}</option>`).join('');
     app.querySelector('#ap-hint').textContent = data.hint;
     app.querySelector('#ap-footer').textContent = data.footer;
+    app.querySelector('#ap-foot-tax').textContent = `WHT remitted by the 20th · ${data.vatRate === null ? 'no VAT rate in force' : `VAT at ${data.vatRate}%`} · payments cleared through KCB and M-Pesa`;
 
     app.querySelector('#ap-table').innerHTML = `
       <div class="ap-grid coa-head">
@@ -451,7 +452,7 @@
           <div class="jd-caps">Tax and settlement</div>
           <div class="ap-settle">
             <div><span>Taxable amount</span><span>${fmt(b.taxable)}</span></div>
-            <div><span>VAT at 16%</span><span>${fmt(b.vat)}</span></div>
+            <div><span>VAT at ${esc(b.vatRate)}%</span><span>${fmt(b.vat)}</span></div>
             <div class="rule"><span>Gross invoice value</span><span style="font-weight:600;">${fmt(b.gross)}</span></div>
             <div><span>Withholding tax at ${esc(b.whtRate)}%</span><span style="color:#A45B3E;">${b.wht ? '(' + fmt(b.wht) + ')' : 'nil'}</span></div>
             <div class="rule" style="font-size:13.5px;"><span style="font-weight:600;color:#16211E;">Net payable to supplier</span><span style="font-weight:700;color:var(--accent);">${fmt(b.net)}</span></div>
@@ -549,7 +550,7 @@
     let saving = false;
 
     const blank = () => ({
-      supplier: '', pin: '', category: 'Professional fees', invoiceNo: '', invoiceDate: form.today, terms: '30',
+      supplier: '', pin: '', category: 'Professional fees', invoiceNo: '', invoiceDate: form.today, terms: String(form.defaultTerms),
       budgetLine: String((form.budgetLines.find(l => l.code === '5150') || form.budgetLines[0] || {}).id || ''),
       method: form.methods[0] || '', wht: 'auto', whtReason: '', overReason: '', supplierReason: '',
     });
@@ -626,21 +627,28 @@
       document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el.hidden) close(); });
     }
 
+    /** The VAT or withholding rates in force on a date, as Settings → Taxes holds them. */
+    const ratesOn = (tax, day) => form.taxRates.filter(r => r.tax === tax && r.from <= day && (!r.to || r.to >= day));
+
     /** Everything the form shows that follows from what has been entered, and the first thing still wrong. */
     function derive() {
       const cat = form.categories.find(c => c.name === f.category) || form.categories[0];
+      const day = f.invoiceDate || form.today;
+      const vatRate = (ratesOn('vat', day)[0] || { rate: 0 }).rate;
+      const whtRates = [{ rate: 0, label: 'no withholding' }, ...ratesOn('wht', day)];
       const whtDefault = cat.wht;
       const whtRate = f.wht === 'auto' ? whtDefault : +f.wht;
       const whtOverridden = f.wht !== 'auto' && whtRate !== whtDefault;
+      const whtAllowed = whtRates.some(r => r.rate === whtRate);
       const line = form.budgetLines.find(l => String(l.id) === f.budgetLine) || form.budgetLines[0];
       const parsed = lines.map(l => ({ desc: l.desc.trim(), amount: amountOf(l.amount) }));
       const coded = parsed.filter(l => l.amount > 0);
       const taxable = coded.reduce((a, l) => a + l.amount, 0);
-      const vat = Math.round(taxable * form.vatRate);
+      const vat = Math.round(taxable * vatRate / 100);
       const wht = Math.round(taxable * whtRate / 100);
       const overBudget = taxable > line.remaining;
       const due = f.invoiceDate ? new Date(f.invoiceDate + 'T00:00:00') : null;
-      if (due) due.setDate(due.getDate() + (+f.terms || 30));
+      if (due) due.setDate(due.getDate() + (+f.terms || form.defaultTerms));
       const supplier = f.supplier.trim().toLowerCase();
       // A supplier not on the register is added as not pre-qualified.
       const registered = form.suppliers.find(s => s.name.toLowerCase() === supplier);
@@ -653,6 +661,8 @@
         : !/^P0\d{8}[A-Z]$/.test(f.pin.trim().toUpperCase()) ? 'The KRA PIN looks wrong. It runs P0 then eight digits and a letter, e.g. P051182934C — without it the VAT and WHT cannot be filed.'
         : !f.invoiceNo.trim() ? "Enter the supplier's invoice number. It is the duplicate-payment check."
         : !f.invoiceDate ? 'Enter the invoice date.'
+        : !ratesOn('vat', day).length ? `There is no VAT rate in force on ${shortDate(new Date(day + 'T00:00:00'))}. Set one in Settings → Taxes.`
+        : !whtAllowed ? `Withholding tax on a bill dated then must be ${whtRates.map(r => r.rate + '%').join(', ').replace(/, ([^,]*)$/, ' or $1')}.`
         : !coded.length ? 'Code at least one line with an amount.'
         : coded.some(l => !l.desc) ? 'Every coded line needs a description of what was supplied.'
         : whtOverridden && !f.whtReason.trim() ? 'Overriding the withholding rate needs a reason — the tax file has to explain it.'
@@ -663,7 +673,7 @@
         : '';
 
       return {
-        cat, whtDefault, whtRate, whtOverridden, line, taxable, vat, wht, gross: taxable + vat, net: taxable + vat - wht, overBudget, err,
+        cat, vatRate, whtRates, whtDefault, whtRate, whtOverridden, line, taxable, vat, wht, gross: taxable + vat, net: taxable + vat - wht, overBudget, err,
         registered, standing, unqualified, overPrequal,
         dueText: due && !isNaN(due) ? `${shortDate(due)} (${f.terms} days)` : '—',
         dupeText: dupe ? (dupe.invoiceNo === f.invoiceNo.trim()
@@ -724,8 +734,7 @@
           <label class="ap-f"><span>Withholding tax</span>
             <select data-nb="wht">
               ${option('auto', `Policy default for ${f.category} — ${d.whtDefault}%`, f.wht)}
-              ${option('0', '0% — no withholding', f.wht)}${option('3', '3% — goods, resident', f.wht)}
-              ${option('5', '5% — professional and management fees', f.wht)}${option('10', '10% — rent and royalties', f.wht)}
+              ${d.whtRates.map(r => option(String(r.rate), `${r.rate}% — ${r.label.charAt(0).toLowerCase() + r.label.slice(1)}`, f.wht)).join('')}
             </select>
             <span class="ap-note" id="nb-wht-label" style="font-weight:400;"></span>
           </label>
@@ -768,7 +777,7 @@
       $('nb-wht-label').textContent = `${d.whtRate}% withheld on ${d.taxable ? fmt(d.taxable) : '0'} — held back from the supplier and remitted to KRA by the 20th of the following month.`;
       $('nb-sum').innerHTML = `
         <div><span>Net of tax</span><span>${fmt(d.taxable)}</span></div>
-        <div><span>VAT at 16%</span><span>${fmt(d.vat)}</span></div>
+        <div><span>VAT at ${esc(d.vatRate)}%</span><span>${fmt(d.vat)}</span></div>
         <div><span>Invoice total</span><span style="font-weight:600;">${fmt(d.gross)}</span></div>
         <div><span>Withholding tax held</span><span>${fmt(d.wht)}</span></div>
         <div class="net"><span>Payable to supplier</span><span>${fmt(d.net)}</span></div>`;

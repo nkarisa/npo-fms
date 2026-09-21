@@ -6,9 +6,12 @@ use App\Libraries\Brand;
 use App\Libraries\I18n as I18nLib;
 use App\Libraries\Theme;
 use App\Repositories\AuthRepository;
+use App\Repositories\PayablesRepository;
+use App\Repositories\PostingAccounts;
 use App\Repositories\RoleRepository;
 use App\Repositories\RuleViolation;
 use App\Repositories\SettingsRepository;
+use App\Repositories\TaxRepository;
 
 /**
  * Settings (v5): organisation and its entities, ledger, segments, currencies,
@@ -27,12 +30,14 @@ use App\Repositories\SettingsRepository;
  */
 class Settings extends BaseApiController
 {
-    /** Sections in the order the screen lists them. "Bank statements", "Opening balances", "Integrations" and "Appearance" are the additions to the v5 prototype. */
+    /** Sections in the order the screen lists them. "Taxes", "Terms and reminders", "Bank statements", "Opening balances", "Integrations" and "Appearance" are the additions to the v5 prototype. */
     private const SECTIONS = [
         ['label' => 'Organisation', 'icon' => '◧'],
         ['label' => 'Ledger', 'icon' => '▤'],
         ['label' => 'Segments', 'icon' => '◈'],
         ['label' => 'Currencies', 'icon' => '⇄'],
+        ['label' => 'Taxes', 'icon' => '%'],
+        ['label' => 'Terms and reminders', 'icon' => '◔'],
         ['label' => 'Approvals', 'icon' => '✓'],
         ['label' => 'Bank statements', 'icon' => '⇅'],
         ['label' => 'Opening balances', 'icon' => '⇥'],
@@ -52,7 +57,7 @@ class Settings extends BaseApiController
 
     /**
      * Saves the draft. Body: any of organisation, entities, ledger, toggles, segments,
-     * currencies, approvals, payroll, appearance, users, language — only what differs
+     * currencies, approvals, procurement, taxes, days, postingAccounts, payroll, appearance, users, language — only what differs
      * from what is held is changed. The logo is not in the draft; it has its own
      * endpoints below.
      */
@@ -216,6 +221,8 @@ class Settings extends BaseApiController
                 'yearEnds'    => SettingsRepository::YEAR_ENDS,
                 'codeLengths' => SettingsRepository::CODE_LENGTHS,
             ],
+            'postingAccounts' => (new PostingAccounts())->all(),
+            'postingAccountOptions' => (new PostingAccounts())->options(),
             'toggles'      => $settings->toggles(),
             'periods'      => $settings->periods(),
             'segments'     => $settings->segments(),
@@ -223,6 +230,8 @@ class Settings extends BaseApiController
             'approvals'    => $settings->approvals(),
             'approverRoles' => $settings->approverRoles(),
             'procurement'  => $settings->procurement(),
+            'days'         => $settings->dayRules(),
+            'taxes'        => (new TaxRepository())->schedule() + ['categories' => (new PayablesRepository())->categories()],
             'sodRules'     => SettingsRepository::SOD_RULES,
             'benefits'     => $settings->benefits(),
             'grades'       => $settings->grades(),

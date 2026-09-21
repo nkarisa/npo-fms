@@ -9,8 +9,8 @@ use Config\Documents;
 /**
  * Grants and awards. Received is the tranches received; spent is the
  * expenditure posted to the grant; elapsed is the share of the agreement period
- * gone by today. A scheduled tranche expected within 30 days shows as due, and a
- * donor report falling due within 45 days is flagged.
+ * gone by today. A scheduled tranche expected soon shows as due, and a donor report
+ * falling due soon is flagged — how soon is set in Settings → Terms and reminders.
  *
  * Recording an award (record()) writes it from the signed agreement in one
  * transaction: the fund it is held in — opened for it, or an existing one — its
@@ -20,11 +20,6 @@ final class GrantRepository extends Repository
 {
     /** Why an active award without its agreement is refused (Config\Documents::$requireGrantAgreement). */
     public const NEEDS_AGREEMENT = 'Attach the signed grant agreement. An award goes live only with the agreement it is held to — the donor audit starts from it.';
-
-    private const TRANCHE_DUE_DAYS = 30;
-
-    /** Donor reports and next reports are flagged this far out. */
-    public const REPORT_WARNING_DAYS = 45;
 
     /**
      * Budget lines in the administration and governance group — the indirect and
@@ -116,7 +111,7 @@ final class GrantRepository extends Repository
                         'status' => match (true) {
                             $t['status'] === 'received' => 'Received',
                             $t['status'] === 'cancelled' => 'Cancelled',
-                            $t['expected_on'] !== null && Clock::daysUntil($t['expected_on']) <= self::TRANCHE_DUE_DAYS => 'Due',
+                            $t['expected_on'] !== null && Clock::daysUntil($t['expected_on']) <= SettingsRepository::day('trancheWarningDays') => 'Due',
                             default => 'Scheduled',
                         },
                     ], $grantTranches),
@@ -151,7 +146,7 @@ final class GrantRepository extends Repository
         }
         $days = Clock::daysUntil($r['due_on']);
 
-        return $days < 0 ? 'Overdue' : ($days <= self::REPORT_WARNING_DAYS ? 'Due' : 'Scheduled');
+        return $days < 0 ? 'Overdue' : ($days <= SettingsRepository::day('reportWarningDays') ? 'Due' : 'Scheduled');
     }
 
     public function find(string $ref): ?array

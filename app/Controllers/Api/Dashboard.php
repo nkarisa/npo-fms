@@ -7,6 +7,7 @@ use App\Libraries\Ledger;
 use App\Libraries\Prototype;
 use App\Repositories\BankRepository;
 use App\Repositories\FundRepository;
+use App\Repositories\Lookups;
 use App\Repositories\SettingsRepository;
 
 class Dashboard extends BaseApiController
@@ -360,7 +361,7 @@ class Dashboard extends BaseApiController
 
         return $this->json([
             'title'    => 'Board pack',
-            'meta'     => 'Elections Observation Group · prepared for the Board of Trustees · KES',
+            'meta'     => (new Lookups())->organisationNames()['registered'] . ' · prepared for the Board of Trustees · KES',
             'intro'    => "A governance summary of the position, the funds held and the matters needing the board's attention. Account-level detail sits in the monthly close pack.",
             'headline' => [
                 ['label' => 'Cash held', 'value' => Prototype::fmt($cash), 'note' => 'across bank, M-Pesa and petty cash'],

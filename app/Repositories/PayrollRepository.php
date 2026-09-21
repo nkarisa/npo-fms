@@ -26,7 +26,6 @@ final class PayrollRepository extends Repository
         'sacco' => 'sacco', 'advance_recovery' => 'advance'];
 
     /** Net pay leaves the operating current account. */
-    public const BANK = '1110';
 
     /** The pay components a run's journal is written against; each needs an account. */
     public const POSTING_COMPONENTS = ['basic_salary', 'nssf_employer', 'paye', 'nssf_employee', 'shif',
@@ -478,7 +477,7 @@ final class PayrollRepository extends Repository
                 $line($shared, $codeOf('housing_levy_employee'), 'Housing levy and NITA', 0, $totals['housingLevy'] * 2 + $totals['nita']),
                 $line($shared, $codeOf('sacco'), 'Staff sacco deductions', 0, $totals['sacco']),
                 $line($shared, $codeOf('advance_recovery'), 'Salary advances recovered', 0, $totals['advance']),
-                $line($shared, self::BANK, 'Net pay to staff bank accounts', 0, $totals['net']),
+                $line($shared, PostingAccounts::of('payrollBank'), 'Net pay to staff bank accounts', 0, $totals['net']),
             ],
         );
 
@@ -503,8 +502,8 @@ final class PayrollRepository extends Repository
                     $missing[] = ($components[$key]['name'] ?? $key) . ' has no account to post to';
                 }
             }
-            if (($this->lookups->accounts()[self::BANK] ?? null) === null) {
-                $missing[] = 'Net pay is paid from account ' . self::BANK . ', which is not in the chart of accounts';
+            if (($this->lookups->accounts()[PostingAccounts::of('payrollBank')] ?? null) === null) {
+                $missing[] = 'Net pay is paid from account ' . PostingAccounts::of('payrollBank') . ', which is not in the chart of accounts';
             }
             if ($this->coreFundId() === 0) {
                 $missing[] = 'There is no active general fund for the statutory liabilities to be held against';
@@ -628,7 +627,7 @@ final class PayrollRepository extends Repository
                 $line($codeOf('nssf_employee'), 'NSSF Tier I and II remitted', $totals['nssf'], 0),
                 $line($codeOf('shif'), 'SHIF remitted', $totals['shif'], 0),
                 $line($codeOf('housing_levy_employee'), 'Housing levy and NITA remitted', $totals['housing'], 0),
-                $line(self::BANK, 'Paid from the operating account', 0, $totals['total']),
+                $line(PostingAccounts::of('payrollBank'), 'Paid from the operating account', 0, $totals['total']),
             ], (int) $run['prepared_by'], $actorId, 'Raised by payroll on remitting the ' . $period['name'] . ' statutory deductions');
 
             $this->db->table('payroll_runs')->where('id', $run['id'])->update([

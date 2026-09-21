@@ -21,18 +21,13 @@ use Config\Documents;
  */
 final class AdvancesRepository extends Repository
 {
-    public const CONTROL_ACCOUNT = '1220';
 
     /** Where the money leaves from, by the method it is paid out with. */
-    public const PAYING_ACCOUNTS = ['mpesa' => '1130', 'bank' => '1110', 'cash' => '1140'];
+    private const PAYING_ROLES = ['mpesa' => 'advanceMpesa', 'bank' => 'advanceBank', 'cash' => 'advanceCash'];
 
     /** An overspend is owed back to the holder, and sits with the other payables. */
-    private const PAYABLE = '2110';
 
     private const METHOD_LABELS = ['mpesa' => 'M-Pesa', 'bank' => 'Bank', 'cash' => 'Cash'];
-
-    /** The grace an advance policy allows before a balance is taken from pay. */
-    public const RECOVERY_AFTER_DAYS = 14;
 
     /** How a chase escalates when an advance stays unsurrendered. */
     private const REMINDERS = [
@@ -122,7 +117,7 @@ final class AdvancesRepository extends Repository
 
     public function controlBalance(): float
     {
-        return $this->lookups->balance(self::CONTROL_ACCOUNT);
+        return $this->lookups->balance(PostingAccounts::of('advances'));
     }
 
     /** Only an issued advance is outstanding; requested and cleared ones are not. */
@@ -250,7 +245,7 @@ final class AdvancesRepository extends Repository
 
         // Petty cash is in the chart but keeps no bank record, so the paying
         // account is resolved from the chart and the bank link left where there is one.
-        $code    = self::PAYING_ACCOUNTS[$key];
+        $code    = PostingAccounts::of(self::PAYING_ROLES[$key]);
         $account = $this->lookups->accounts()[$code]
             ?? throw new RuleViolation('There is no ' . $method . ' account to pay ' . $ref . ' from.');
         $bankId = isset($this->lookups->bankAccounts()[$code]) ? (int) $this->lookups->bankAccounts()[$code]['id'] : null;
@@ -270,7 +265,7 @@ final class AdvancesRepository extends Repository
                 'narration' => 'Advance to ' . $advance['holder_name'] . ' — ' . $advance['purpose'],
                 'memo' => 'Advance issued by ' . $method . '. A receivable from the holder, not expenditure.',
             ], [
-                $line(self::CONTROL_ACCOUNT, 'Advance to ' . $advance['holder_name'], $amount, 0),
+                $line(PostingAccounts::of('advances'), 'Advance to ' . $advance['holder_name'], $amount, 0),
                 $line($account['code'], $account['name'] . ' — ' . $ref, 0, $amount),
             ], $preparedBy, $preparedBy === (int) $advance['approved_by'] ? null : (int) $advance['approved_by'],
                 'Raised by advances on issuing ' . $ref);
@@ -364,11 +359,11 @@ final class AdvancesRepository extends Repository
 
         $lines = array_map(static fn ($r) => $line($r['code'], $r['desc'], $r['amount'], 0), $receipts);
         if (!$partial && $balance > 0) {
-            $lines[] = $line(self::PAYING_ACCOUNTS['bank'], 'Unspent advance refunded by ' . $holder, $balance, 0);
+            $lines[] = $line(PostingAccounts::of(self::PAYING_ROLES['bank']), 'Unspent advance refunded by ' . $holder, $balance, 0);
         }
-        $lines[] = $line(self::CONTROL_ACCOUNT, 'Advance cleared — ' . $holder, 0, $partial ? $accounted : $target);
+        $lines[] = $line(PostingAccounts::of('advances'), 'Advance cleared — ' . $holder, 0, $partial ? $accounted : $target);
         if ($balance < 0) {
-            $lines[] = $line(self::PAYABLE, 'Overspend owed to ' . $holder, 0, -$balance);
+            $lines[] = $line(PostingAccounts::of('payables'), 'Overspend owed to ' . $holder, 0, -$balance);
         }
 
         $note = match (true) {
@@ -432,8 +427,8 @@ final class AdvancesRepository extends Repository
         }
         // Recovery from pay is a last resort: the holder gets the grace period the
         // advance policy allows before their salary is touched.
-        if ($current['dueIn'] >= -self::RECOVERY_AFTER_DAYS) {
-            throw new RuleViolation($ref . ' is not yet ' . self::RECOVERY_AFTER_DAYS . ' days past its surrender date. '
+        if ($current['dueIn'] >= -SettingsRepository::day('advanceRecoveryDays')) {
+            throw new RuleViolation($ref . ' is not yet ' . SettingsRepository::day('advanceRecoveryDays') . ' days past its surrender date. '
                 . 'Chase the holder for receipts first.');
         }
         if ($advance['staff_id'] === null) {

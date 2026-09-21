@@ -7,6 +7,7 @@ use App\Libraries\Prototype;
 use App\Repositories\AssetAdditionRepository;
 use App\Repositories\AssetRepository;
 use App\Repositories\Lookups;
+use App\Repositories\PostingAccounts;
 use App\Repositories\RuleViolation;
 use App\Repositories\AttachmentRepository;
 
@@ -96,10 +97,10 @@ class Assets extends BaseApiController
                     : 'Bought with ' . $a['funder'] . ' money under ' . $a['grant'] . '. ELOG holds title, but the disposal must still be reported in the next donor report.'),
                 'costAccount' => $a['costAcct'] . ' · ' . $this->accountName($a['costAcct']),
                 'accounts' => [
-                    'accum' => AssetRepository::ACCUMULATED . ' · ' . $this->accountName(AssetRepository::ACCUMULATED),
-                    'bank' => AssetRepository::PROCEEDS_ACCOUNT . ' · ' . $this->accountName(AssetRepository::PROCEEDS_ACCOUNT),
-                    'gain' => AssetRepository::GAIN . ' · ' . $this->accountName(AssetRepository::GAIN),
-                    'loss' => AssetRepository::LOSS . ' · ' . $this->accountName(AssetRepository::LOSS),
+                    'accum' => PostingAccounts::of('accumulated') . ' · ' . $this->accountName(PostingAccounts::of('accumulated')),
+                    'bank' => PostingAccounts::of('disposalProceeds') . ' · ' . $this->accountName(PostingAccounts::of('disposalProceeds')),
+                    'gain' => PostingAccounts::of('disposalGain') . ' · ' . $this->accountName(PostingAccounts::of('disposalGain')),
+                    'loss' => PostingAccounts::of('disposalLoss') . ' · ' . $this->accountName(PostingAccounts::of('disposalLoss')),
                 ],
                 'periods' => array_map(static fn ($p) => ['name' => $p['name'], 'min' => $p['starts_on'], 'max' => $p['ends_on'], 'closed' => $p['status'] === 'closed'],
                     (new Lookups())->periods()),
@@ -190,7 +191,7 @@ class Assets extends BaseApiController
 
         return $this->json($this->register() + [
             'message' => $d['journal'] . ' posted — ' . $tag . ' is on the register at ' . Prototype::fmt($d['amount']) . ', credited to '
-                . ($d['credit'] === AssetAdditionRepository::DONATED ? $d['credit'] . ' donated assets.' : $d['credit'] . ' fund balance as a correction of the earlier omission.'),
+                . ($d['credit'] === PostingAccounts::of('donatedAssets') ? $d['credit'] . ' donated assets.' : $d['credit'] . ' fund balance as a correction of the earlier omission.'),
         ]);
     }
 
@@ -209,7 +210,7 @@ class Assets extends BaseApiController
 
         return $this->json($this->register() + [
             'message' => 'Depreciation of ' . Prototype::fmt($run['total']) . ' posted for ' . $run['period'] . ' — ' . $run['journal'] . ', debit '
-                . AssetRepository::EXPENSE . ', credit ' . AssetRepository::ACCUMULATED . ' across ' . $run['assets'] . ' assets.',
+                . PostingAccounts::of('depreciation') . ', credit ' . PostingAccounts::of('accumulated') . ' across ' . $run['assets'] . ' assets.',
         ]);
     }
 
@@ -270,8 +271,8 @@ class Assets extends BaseApiController
         return $this->json($this->register() + [
             'message' => $d['journal'] . ' posted — ' . $tag . ' derecognised at cost of ' . Prototype::fmt($d['cost']) . ' with ' . Prototype::fmt($d['accum'])
                 . ' of depreciation released, and a ' . ($d['result'] >= 0
-                    ? 'gain of ' . Prototype::fmt($d['result']) . ' to ' . AssetRepository::GAIN . '.'
-                    : 'loss of ' . Prototype::fmt(-$d['result']) . ' to ' . AssetRepository::LOSS . '.'),
+                    ? 'gain of ' . Prototype::fmt($d['result']) . ' to ' . PostingAccounts::of('disposalGain') . '.'
+                    : 'loss of ' . Prototype::fmt(-$d['result']) . ' to ' . PostingAccounts::of('disposalLoss') . '.'),
         ]);
     }
 
@@ -325,7 +326,7 @@ class Assets extends BaseApiController
 
         $tie = $repo->tie();
         $tied = $tie['registerCost'] == $tie['ledgerCost'] && $tie['registerAccum'] == $tie['ledgerAccum'];
-        $ytd = (new Lookups())->balance(AssetRepository::EXPENSE);
+        $ytd = (new Lookups())->balance(PostingAccounts::of('depreciation'));
         $diff = static fn (float $r, float $l) => round($r - $l, 2) == 0 ? 'nil' : $fmt($r - $l);
 
         return [
@@ -341,7 +342,7 @@ class Assets extends BaseApiController
                 ['label' => 'Cost of assets held', 'value' => $fmt($cost), 'note' => count($held) . ' items on the register'],
                 ['label' => 'Depreciation to date', 'value' => $fmt($accum), 'note' => ($cost > 0 ? round($accum / $cost * 100) : 0) . '% of cost written down'],
                 ['label' => 'Net book value', 'value' => $fmt($cost - $accum), 'note' => 'carried in the statement of financial position'],
-                ['label' => 'Charge for ' . $periodName, 'value' => $fmt($charge), 'note' => $run !== null ? 'posted to ' . AssetRepository::EXPENSE : 'not yet posted'],
+                ['label' => 'Charge for ' . $periodName, 'value' => $fmt($charge), 'note' => $run !== null ? 'posted to ' . PostingAccounts::of('depreciation') : 'not yet posted'],
                 ['label' => 'Donor-funded book value', 'value' => $fmt(array_sum(array_map(static fn ($a) => $a['cost'] - $a['accum'], $donors))), 'note' => count($donors) . ' items, title may revert'],
             ],
             'tabs' => array_map(static fn ($k) => [
@@ -387,7 +388,7 @@ class Assets extends BaseApiController
                 'rows' => [
                     ['label' => 'Cost of property and equipment', 'acct' => implode(' + ', $tie['costAccounts']), 'register' => $fmt($tie['registerCost']), 'ledger' => $fmt($tie['ledgerCost']),
                         'diff' => $diff($tie['registerCost'], $tie['ledgerCost']), 'agrees' => round($tie['registerCost'] - $tie['ledgerCost'], 2) == 0],
-                    ['label' => 'Accumulated depreciation', 'acct' => AssetRepository::ACCUMULATED, 'register' => $fmt($tie['registerAccum']), 'ledger' => $fmt($tie['ledgerAccum']),
+                    ['label' => 'Accumulated depreciation', 'acct' => PostingAccounts::of('accumulated'), 'register' => $fmt($tie['registerAccum']), 'ledger' => $fmt($tie['ledgerAccum']),
                         'diff' => $diff($tie['registerAccum'], $tie['ledgerAccum']), 'agrees' => round($tie['registerAccum'] - $tie['ledgerAccum'], 2) == 0],
                     ['label' => 'Net book value', 'acct' => 'derived', 'register' => $fmt($tie['registerCost'] - $tie['registerAccum']), 'ledger' => $fmt($tie['ledgerCost'] - $tie['ledgerAccum']),
                         'diff' => $diff($tie['registerCost'] - $tie['registerAccum'], $tie['ledgerCost'] - $tie['ledgerAccum']),
@@ -397,7 +398,7 @@ class Assets extends BaseApiController
                 'awaiting' => $awaiting === [] ? '' : $fmt(array_sum(array_column($awaiting, 'remaining'))) . ' on ' . count($awaiting)
                     . (count($awaiting) === 1 ? ' purchase is' : ' purchases are') . ' in the ledger but not yet capitalised — capitalise ' . (count($awaiting) === 1 ? 'it' : 'them') . ' to bring the register into agreement.',
                 'note' => $tied && $ytd > $charge
-                    ? 'The ' . $fmt($ytd) . ' charged to ' . AssetRepository::EXPENSE . ' so far this year also covers assets now fully written down or disposed of, so it is higher than the current monthly run rate.'
+                    ? 'The ' . $fmt($ytd) . ' charged to ' . PostingAccounts::of('depreciation') . ' so far this year also covers assets now fully written down or disposed of, so it is higher than the current monthly run rate.'
                     : '',
             ],
             'capitalise' => [
@@ -426,8 +427,8 @@ class Assets extends BaseApiController
                 'today' => $this->workingDate($period),
                 'bases' => AssetAdditionRepository::BASES,
                 'credits' => [
-                    'donation' => AssetAdditionRepository::DONATED . ' · ' . $this->accountName(AssetAdditionRepository::DONATED),
-                    'found' => AssetAdditionRepository::FUND_BALANCE . ' · ' . $this->accountName(AssetAdditionRepository::FUND_BALANCE),
+                    'donation' => PostingAccounts::of('donatedAssets') . ' · ' . $this->accountName(PostingAccounts::of('donatedAssets')),
+                    'found' => PostingAccounts::of('foundAssets') . ' · ' . $this->accountName(PostingAccounts::of('foundAssets')),
                 ],
                 'round' => (string) ((new AssetRepository())->round()['reference'] ?? ''),
             ],
@@ -459,7 +460,7 @@ class Assets extends BaseApiController
     private static function result(float $result): string
     {
         return $result >= 0
-            ? 'gain of ' . Prototype::fmt($result) . ' to ' . AssetRepository::GAIN
-            : 'loss of ' . Prototype::fmt(-$result) . ' to ' . AssetRepository::LOSS;
+            ? 'gain of ' . Prototype::fmt($result) . ' to ' . PostingAccounts::of('disposalGain')
+            : 'loss of ' . Prototype::fmt(-$result) . ' to ' . PostingAccounts::of('disposalLoss');
     }
 }

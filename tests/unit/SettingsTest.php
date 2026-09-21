@@ -47,7 +47,7 @@ final class SettingsTest extends CIUnitTestCase
     {
         $s = $this->api('api/settings');
 
-        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Approvals', 'Bank statements', 'Opening balances', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Roles', 'Audit log'], array_column($s['sections'], 'key'));
+        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Taxes', 'Terms and reminders', 'Approvals', 'Bank statements', 'Opening balances', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Roles', 'Audit log'], array_column($s['sections'], 'key'));
         $this->assertTrue($s['canManage']);
         $this->assertSame(['registeredName' => 'Elections Observation Group', 'shortName' => 'ELOG', 'taxPin' => 'P051290384H', 'ngoReg' => 'OP/218/051/2010/0142'], $s['organisation']);
         $this->assertSame(['framework' => 'IFRS', 'currency' => 'KES', 'yearEnd' => '31 December', 'codeLength' => '4 digits'], $s['ledger']);
@@ -181,6 +181,39 @@ final class SettingsTest extends CIUnitTestCase
      * reads the shell in it, and the shell paints it server-side so no page flashes
      * the old palette first.
      */
+    public function testTermsAndReminderWindowsAreSetInSettingsAndFollowedByEachModule(): void
+    {
+        $days = array_column($this->api('api/settings')['days'], 'value', 'key');
+        $this->assertSame(['14, 30, 45, 60', '30', '14', '30', '45', '30'], array_values(array_map('strval', $days)));
+        $this->assertSame([14, 30, 45, 60], $this->api('api/payables/form')['terms']);
+        $save = fn (array $days) => $this->withBodyFormat('json')->post('api/settings', ['days' => $days]);
+
+        $refused = static function ($response): string {
+            $response->assertStatus(422);
+
+            return json_decode($response->getJSON(), true)['error'];
+        };
+        $this->assertStringContainsString('whole number of days between 1 and 365', $refused($save(['advanceRecoveryDays' => '0'])));
+        $this->assertStringContainsString('separated by commas', $refused($save(['supplierTerms' => '30 days or 60'])));
+
+        $saved = $save(['supplierTerms' => '60, 7,30', 'claimTermsDays' => '45', 'reportWarningDays' => '60', 'trancheWarningDays' => '30']);
+        $saved->assertStatus(200);
+        $this->assertSame([
+            'Supplier payment terms offered changed from 14, 30, 45, 60 to 7, 30, 60 days',
+            'A donor claim falls due after changed from 30 to 45 days',
+            'A donor report is flagged as due changed from 45 to 60 days',
+        ], array_column($this->json($saved)['changes'], 'what'));
+
+        $form = $this->api('api/payables/form');
+        $this->assertSame([[7, 30, 60], 30], [$form['terms'], $form['defaultTerms']]);
+        $this->assertSame(45, $this->api('api/receivables/form')['termsDays']);
+        $this->assertSame(60, $this->api('api/grants/calendar')['warningDays']);
+        $this->assertStringContainsString('due within 60 days', $this->api('api/grants/calendar')['summary']);
+
+        $this->actAs('s.njeri@elog.or.ke');
+        $save(['claimTermsDays' => '60'])->assertStatus(403);
+    }
+
     public function testTheThemeIsHeldForTheOrganisationAndPaintedByTheShell(): void
     {
         $this->assertSame('evergreen', Theme::current());

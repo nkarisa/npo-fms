@@ -36,16 +36,11 @@ final class AssetRepository extends Repository
         'Write-off — beyond repair' => ['write_off', null],
     ];
 
-    public const ACCUMULATED = '1390';
 
-    public const EXPENSE = '5350';
 
-    public const GAIN = '4250';
 
-    public const LOSS = '5360';
 
     /** Where disposal proceeds are banked. */
-    public const PROCEEDS_ACCOUNT = '1110';
 
     private Lookups $lookups;
 
@@ -240,8 +235,8 @@ final class AssetRepository extends Repository
                 'code' => $code, 'fund_id' => $g['fund_id'], 'programme_id' => $g['programme_id'], 'grant_id' => $g['grant_id'], 'desc' => $desc, 'dr' => $dr, 'cr' => $cr,
             ];
             $lines = array_merge(
-                array_map(static fn ($g) => $line($g, self::EXPENSE, 'Depreciation charge — ' . $g['program'], $g['amount'], 0), array_values($groups)),
-                array_map(static fn ($g) => $line($g, self::ACCUMULATED, 'Accumulated depreciation — ' . $g['program'], 0, $g['amount']), array_values($groups)),
+                array_map(static fn ($g) => $line($g, PostingAccounts::of('depreciation'), 'Depreciation charge — ' . $g['program'], $g['amount'], 0), array_values($groups)),
+                array_map(static fn ($g) => $line($g, PostingAccounts::of('accumulated'), 'Accumulated depreciation — ' . $g['program'], 0, $g['amount']), array_values($groups)),
             );
             $journal = (new JournalRepository())->postFromSource([
                 'date' => $period['ends_on'], 'sourceType' => 'depreciation_run', 'sourceId' => $runId, 'docRef' => 'Depreciation run ' . $period['name'], 'series' => 'JV',
@@ -443,12 +438,12 @@ final class AssetRepository extends Repository
                 'narration' => 'Disposal of ' . $a['name'] . ' (' . $tag . ')',
                 'memo' => 'Disposal by ' . strtolower($d['methodLabel']) . ', board minute ' . $d['board_minute'] . '.',
             ], [
-                $line(self::PROCEEDS_ACCOUNT, 'Disposal proceeds banked — ' . ($d['buyer'] ?? $tag), $proceeds, 0),
-                $line(self::ACCUMULATED, 'Accumulated depreciation released on disposal', $accum, 0),
+                $line(PostingAccounts::of('disposalProceeds'), 'Disposal proceeds banked — ' . ($d['buyer'] ?? $tag), $proceeds, 0),
+                $line(PostingAccounts::of('accumulated'), 'Accumulated depreciation released on disposal', $accum, 0),
                 $line($a['costAcct'], 'Asset cost derecognised — ' . $tag, 0, $a['cost']),
                 $result >= 0
-                    ? $line(self::GAIN, 'Gain on disposal of ' . $tag, 0, $result)
-                    : $line(self::LOSS, 'Loss on disposal of ' . $tag, -$result, 0),
+                    ? $line(PostingAccounts::of('disposalGain'), 'Gain on disposal of ' . $tag, 0, $result)
+                    : $line(PostingAccounts::of('disposalLoss'), 'Loss on disposal of ' . $tag, -$result, 0),
             ], (int) $d['requested_by'], $actorId, 'Raised by the asset register on the disposal of ' . $tag);
 
             $now = Clock::timestamp();
@@ -458,7 +453,7 @@ final class AssetRepository extends Repository
             ]);
             $this->db->table('assets')->where('id', $a['id'])->update(['status' => 'disposed', 'updated_at' => $now]);
             $this->audit('asset', $a['id'], $tag, 'Disposal approved by ' . $who . ' and posted as ' . $journal . ' — derecognised, '
-                . ($result >= 0 ? 'gain of ' . Prototype::fmt($result) . ' to ' . self::GAIN : 'loss of ' . Prototype::fmt(-$result) . ' to ' . self::LOSS), $actorId);
+                . ($result >= 0 ? 'gain of ' . Prototype::fmt($result) . ' to ' . PostingAccounts::of('disposalGain') : 'loss of ' . Prototype::fmt(-$result) . ' to ' . PostingAccounts::of('disposalLoss')), $actorId);
 
             return ['journal' => $journal, 'cost' => (float) $a['cost'], 'accum' => $accum, 'proceeds' => $proceeds, 'result' => $result];
         });
@@ -486,7 +481,7 @@ final class AssetRepository extends Repository
             'ledgerCost'    => round(array_sum(array_map(fn ($c) => $this->lookups->balance($c), $costAccounts)), 2),
             // A contra account reads negative on its asset side.
             'registerAccum' => round(array_sum(array_column($held, 'accum')), 2),
-            'ledgerAccum'   => round(-$this->lookups->balance(self::ACCUMULATED), 2),
+            'ledgerAccum'   => round(-$this->lookups->balance(PostingAccounts::of('accumulated')), 2),
         ];
     }
 

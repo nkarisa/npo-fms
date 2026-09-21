@@ -25,7 +25,6 @@ final class DonorReportRepository extends Repository
         'awardWord' => 'Award',
         'labels'    => ['Award ceiling', 'Expenditure this period', 'Cumulative expenditure', 'Balance on the award'],
         'foot'      => 'Prepared from posted ledger actuals. Figures in KES.',
-        'org'       => 'ELOG Kenya · Elections Observation Group',
     ];
 
     private Lookups $lookups;
@@ -199,7 +198,19 @@ final class DonorReportRepository extends Repository
             'period'    => $format($start) . ' ' . (self::PERIOD_CONNECTORS[$locale] ?? 'to') . ' ' . $format($end),
             'labels'    => array_map($t, self::COVER['labels']),
             'foot'      => $t(self::COVER['foot']),
-            'org'       => $t(self::COVER['org']),
+            'org'       => $this->organisation(),
         ];
+    }
+
+    /**
+     * The name on a report's cover, as Settings → Organisation holds it: the short
+     * name and the registered one, or just one when they are the same. A proper
+     * name, so it is never run through the catalogue.
+     */
+    private function organisation(): string
+    {
+        ['registered' => $registered, 'short' => $short] = $this->lookups->organisationNames();
+
+        return $short === $registered ? $registered : $short . ' · ' . $registered;
     }
 }

@@ -32,18 +32,11 @@ final class ReceivablesRepository extends Repository
         return (new SettingsRepository())->activeRates();
     }
 
-    private const RECEIVABLE   = '1210';
-    private const GRANT_INCOME = '4110';
-    private const BAD_DEBTS    = '5370';
-    private const ALLOWANCE    = '1215';
 
     /** Ageing on the outstanding balance, by days past the due date. */
     public const BUCKETS = ['Current', '1–30 days', '31–60 days', '61–90 days', 'Over 90 days'];
 
     private const BASIS_LABELS = ['specific' => 'Set on the claim', 'ageing' => 'By age'];
-
-    /** A claim falls due this many days after it is issued. */
-    private const TERMS_DAYS = 30;
 
     private Lookups $lookups;
 
@@ -247,7 +240,7 @@ final class ReceivablesRepository extends Repository
         return array_values(array_map(
             static fn ($a) => ['code' => $a['code'], 'name' => $a['name']],
             array_filter($this->lookups->accounts(), static fn ($a) => $a['type'] === 'income' && (int) $a['is_leaf'] === 1
-                && $a['status'] === 'active' && str_starts_with($a['code'], '42') && $a['code'] !== '4240' && $a['code'] !== '4250')
+                && $a['status'] === 'active' && str_starts_with($a['code'], '42') && !in_array($a['code'], [PostingAccounts::of('fxGain'), PostingAccounts::of('disposalGain')], true))
         ));
     }
 
@@ -332,7 +325,7 @@ final class ReceivablesRepository extends Repository
                     throw new RuleViolation('The ' . $b['name'] . ' line claims ' . Prototype::fmt($claim) . ' against ' . Prototype::fmt($b['actual'])
                         . ' spent. A claim above actual expenditure is what triggers a donor disallowance.');
                 }
-                $lines[] = ['code' => self::GRANT_INCOME, 'desc' => mb_substr($b['name'] . ' — ' . $period, 0, 255), 'amount' => $claim];
+                $lines[] = ['code' => PostingAccounts::of('grantIncome'), 'desc' => mb_substr($b['name'] . ' — ' . $period, 0, 255), 'amount' => $claim];
             }
             if ($lines === []) {
                 throw new RuleViolation('Claim at least one line. The builder only lets you claim expenditure already in the ledger.');
@@ -341,7 +334,7 @@ final class ReceivablesRepository extends Repository
             if (!empty($f['indirect']) && $grant['indirect'] !== null) {
                 $indirect = min(round($direct * $grant['indirect']['pct'] / 100), (float) $grant['indirect']['cap']);
                 if ($indirect > 0) {
-                    $lines[] = ['code' => self::GRANT_INCOME, 'desc' => 'Indirect cost recovery at ' . self::num($grant['indirect']['pct']) . '%', 'amount' => $indirect];
+                    $lines[] = ['code' => PostingAccounts::of('grantIncome'), 'desc' => 'Indirect cost recovery at ' . self::num($grant['indirect']['pct']) . '%', 'amount' => $indirect];
                 }
             }
             $total = $direct + $indirect;
@@ -372,7 +365,7 @@ final class ReceivablesRepository extends Repository
                 'bill_to' => $other ? trim((string) $f['payer']) : null, 'grant_id' => $grantId,
                 'programme_id' => $grantId === null ? $this->lookups->programmeId('Shared services') : $this->grantProgramme($grantId),
                 'fund_id' => $grantId === null ? $this->generalFund() : $this->grantFund($grantId),
-                'issue_date' => $today, 'due_date' => date('Y-m-d', strtotime($today . ' +' . self::TERMS_DAYS . ' days')),
+                'issue_date' => $today, 'due_date' => date('Y-m-d', strtotime($today . ' +' . SettingsRepository::day('claimTermsDays') . ' days')),
                 'currency' => $ccy, 'fx_rate' => $fx, 'amount_fc' => round($total / $fx, 2), 'amount' => $total, 'status' => 'draft',
                 'basis' => $basis !== '' ? $basis : self::TYPE_LABELS[$type] . ' for ' . $period . ', assembled from expenditure in the ledger.',
                 'prepared_by' => $actorId, 'created_at' => $now,
@@ -420,9 +413,9 @@ final class ReceivablesRepository extends Repository
             $journals = new JournalRepository();
             foreach ($invoices as $i) {
                 $today = Clock::date();
-                $term = max(0, (int) ((strtotime($i['due_date']) - strtotime($i['issue_date'])) / 86400)) ?: self::TERMS_DAYS;
+                $term = max(0, (int) ((strtotime($i['due_date']) - strtotime($i['issue_date'])) / 86400)) ?: SettingsRepository::day('claimTermsDays');
                 $lines = $this->rows('SELECT l.*, a.code, a.name FROM {invoice_lines} l JOIN {accounts} a ON a.id = l.account_id WHERE l.invoice_id = ? ORDER BY l.line_no', [$i['id']]);
-                $posting = [$this->posting(self::RECEIVABLE, $i, 'Receivable from ' . $i['customer'] . ' · ' . $i['reference'], (float) $i['amount'], 0)];
+                $posting = [$this->posting(PostingAccounts::of('receivables'), $i, 'Receivable from ' . $i['customer'] . ' · ' . $i['reference'], (float) $i['amount'], 0)];
                 foreach ($lines as $l) {
                     $posting[] = $this->posting($l['code'], $i, $l['description'], 0, (float) $l['amount']);
                 }
@@ -613,8 +606,8 @@ final class ReceivablesRepository extends Repository
                 'narration' => 'Write-off of ' . $invoice['reference'] . ' reversed on recovery — ' . $current['donor'],
                 'memo' => 'Money came in on a claim written off; the receivable is reinstated against the allowance.',
             ], [
-                $this->posting(self::RECEIVABLE, $invoice, 'Receivable reinstated on recovery — ' . $invoice['reference'], $amount, 0),
-                $this->posting(self::ALLOWANCE, $invoice, 'Allowance reinstated on recovery — ' . $invoice['reference'], 0, $amount),
+                $this->posting(PostingAccounts::of('receivables'), $invoice, 'Receivable reinstated on recovery — ' . $invoice['reference'], $amount, 0),
+                $this->posting(PostingAccounts::of('allowance'), $invoice, 'Allowance reinstated on recovery — ' . $invoice['reference'], 0, $amount),
             ], $actorId, null, 'Raised by Receivables on recovery of ' . $invoice['reference'] . ' by ' . $who);
             $this->insert('receivable_allowances', [
                 'entity_id' => $invoice['entity_id'], 'invoice_id' => $invoice['id'], 'basis' => 'write_off', 'amount' => $amount,
@@ -826,7 +819,7 @@ final class ReceivablesRepository extends Repository
             'memo' => 'Donor receipt applied against the claim.',
         ], [
             $this->posting($bank['code'], $invoice, 'Receipt banked — ' . $bank['short_name'] . ' · ' . $ref, $amount, 0),
-            $this->posting(self::RECEIVABLE, $invoice, 'Grants receivable settled — ' . $invoice['reference'], 0, $amount),
+            $this->posting(PostingAccounts::of('receivables'), $invoice, 'Grants receivable settled — ' . $invoice['reference'], 0, $amount),
         ], $actorId, null, 'Raised by Receivables on receipt ' . $ref . ' by ' . $this->lookups->shortName($actorId));
 
         $this->db->table('receipts')->where('id', $receiptId)->update(['journal_id' => $this->journalId($journal)]);
@@ -854,9 +847,9 @@ final class ReceivablesRepository extends Repository
             'narration' => 'Write-off of ' . $invoice['reference'] . ' — ' . $current['donor'] . $note,
             'memo' => mb_substr('Irrecoverable claim written off: ' . $reason, 0, 255),
         ], [
-            $this->posting(self::BAD_DEBTS, $invoice, 'Bad debt — ' . $current['donor'] . ' · ' . $invoice['reference'], max(0, $charged), max(0, -$charged)),
-            $this->posting(self::ALLOWANCE, $invoice, 'Allowance used on write-off — ' . $invoice['reference'], $held, 0),
-            $this->posting(self::RECEIVABLE, $invoice, 'Receivable derecognised — ' . $invoice['reference'], 0, $out),
+            $this->posting(PostingAccounts::of('badDebts'), $invoice, 'Bad debt — ' . $current['donor'] . ' · ' . $invoice['reference'], max(0, $charged), max(0, -$charged)),
+            $this->posting(PostingAccounts::of('allowance'), $invoice, 'Allowance used on write-off — ' . $invoice['reference'], $held, 0),
+            $this->posting(PostingAccounts::of('receivables'), $invoice, 'Receivable derecognised — ' . $invoice['reference'], 0, $out),
         ], $actorId, null, 'Raised by Receivables on write-off of ' . $invoice['reference'] . ' by ' . $who);
 
         if ($held > 0) {
@@ -886,8 +879,8 @@ final class ReceivablesRepository extends Repository
             'narration' => ($raise ? 'Allowance for doubtful debt raised on ' : 'Allowance for doubtful debt released on ') . $invoice['reference'] . ' — ' . $current['donor'] . $note,
             'memo' => mb_substr($reason, 0, 255),
         ], [
-            $this->posting(self::BAD_DEBTS, $invoice, ($raise ? 'Doubtful debt provided for — ' : 'Doubtful debt provision released — ') . $invoice['reference'], $raise ? $size : 0, $raise ? 0 : $size),
-            $this->posting(self::ALLOWANCE, $invoice, 'Allowance for doubtful debts — ' . $current['donor'] . ' · ' . $invoice['reference'], $raise ? 0 : $size, $raise ? $size : 0),
+            $this->posting(PostingAccounts::of('badDebts'), $invoice, ($raise ? 'Doubtful debt provided for — ' : 'Doubtful debt provision released — ') . $invoice['reference'], $raise ? $size : 0, $raise ? 0 : $size),
+            $this->posting(PostingAccounts::of('allowance'), $invoice, 'Allowance for doubtful debts — ' . $current['donor'] . ' · ' . $invoice['reference'], $raise ? 0 : $size, $raise ? $size : 0),
         ], $actorId, null, 'Raised by Receivables on the allowance for ' . $invoice['reference'] . ' by ' . $who);
 
         $this->insert('receivable_allowances', [
@@ -911,10 +904,10 @@ final class ReceivablesRepository extends Repository
     {
         $parts = [];
         if ($used > 0) {
-            $parts[] = Prototype::fmt($used) . ' met from the allowance (' . self::ALLOWANCE . ')';
+            $parts[] = Prototype::fmt($used) . ' met from the allowance (' . PostingAccounts::of('allowance') . ')';
         }
         if ($charged > 0 || $used <= 0) {
-            $parts[] = Prototype::fmt(max(0, $charged)) . ' charged to ' . self::BAD_DEBTS;
+            $parts[] = Prototype::fmt(max(0, $charged)) . ' charged to ' . PostingAccounts::of('badDebts');
         }
 
         return implode(' and ', $parts);

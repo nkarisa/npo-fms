@@ -6,6 +6,7 @@ use App\Libraries\Prototype;
 use App\Repositories\AdvancesRepository;
 use App\Repositories\ApprovalPolicy;
 use App\Repositories\RuleViolation;
+use App\Repositories\SettingsRepository;
 
 /**
  * Staff and observer advances — the float that sits on account 1220.
@@ -228,7 +229,7 @@ class Advances extends BaseApiController
             // The three things that change what should be done next.
             'overdueNote' => $out > 0 && $a['dueIn'] < 0
                 ? Prototype::fmt($out) . ' has been outstanding ' . (-$a['dueIn']) . ' days past the surrender date. Under the advance policy '
-                    . 'an unsurrendered balance is recovered from the next payroll run once it passes ' . AdvancesRepository::RECOVERY_AFTER_DAYS . ' days.'
+                    . 'an unsurrendered balance is recovered from the next payroll run once it passes ' . SettingsRepository::day('advanceRecoveryDays') . ' days.'
                 : '',
             'leaverNote' => $a['left']
                 ? 'The holder has left and final pay is already settled, so payroll recovery is no longer available. This balance needs '
@@ -246,7 +247,7 @@ class Advances extends BaseApiController
             'canSurrender' => $out > 0,
             'canAttach'    => $this->actor()['canPrepare'],
             'canRemind'    => $out > 0 && $a['dueIn'] < 0,
-            'canRecover'   => $out > 0 && $a['dueIn'] < -AdvancesRepository::RECOVERY_AFTER_DAYS && !$a['left'] && $a['staffId'] !== null,
+            'canRecover'   => $out > 0 && $a['dueIn'] < -SettingsRepository::day('advanceRecoveryDays') && !$a['left'] && $a['staffId'] !== null,
             'surrenderTarget' => $out,
             'surrenderText'   => Prototype::fmt($out),
         ]);

@@ -25,6 +25,7 @@
     fundForm: { code: '', name: '', restriction: 'Unrestricted', group: 'General Fund', funder: '' },
     benForm: { name: '', basis: 'flat', taxable: true },
     gradeForm: { grade: '', band: '', ben: {} },
+    taxFrom: null,
     newBenefits: 0,
   };
   const USERS_PER_PAGE = 8;
@@ -56,11 +57,14 @@
       organisation: d.organisation,
       entities: d.entities.map(e => ({ code: e.code, name: e.name, type: e.type, currency: e.currency, status: e.status })),
       ledger: d.ledger,
+      postingAccounts: Object.fromEntries(d.postingAccounts.map(p => [p.role, p.code])),
       toggles: Object.fromEntries(d.toggles.map(t => [t.key, t.on])),
       segments: Object.fromEntries(d.segments.map(s => [s.key, s.required])),
       currencies: d.currencies.map(c => ({ code: c.code, name: c.name, rate: c.rate, active: c.active })),
       approvals: Object.fromEntries(d.approvals.map(a => [a.key, { threshold: a.threshold, approver: a.approver }])),
       procurement: { quoteThreshold: d.procurement.quoteThreshold },
+      days: Object.fromEntries(d.days.map(r => [r.key, r.value])),
+      taxes: { vat: { ...(d.taxes.vat || { rate: '', label: 'Standard rate' }) }, wht: d.taxes.wht.map(r => ({ ...r })) },
       payroll: {
         benefits: d.benefits.map(b => ({ key: b.key, name: b.name, basis: b.basis, taxable: b.taxable, active: b.active })),
         grades: d.grades.map(g => ({ grade: g.grade, band: g.band, ben: { ...g.ben }, active: g.active })),
@@ -84,6 +88,7 @@
       return;
     }
     draft = toDraft(data);
+    view.taxFrom ??= data.taxes.today;
     if (!data.sections.some(s => s.key === view.section)) view.section = data.sections[0].key;
     shell();
     render();
@@ -170,7 +175,7 @@
   function renderSection() {
     const main = app.querySelector('#st-main');
     const renderers = {
-      Organisation: organisation, Ledger: ledger, Segments: segments, Currencies: currencies, Approvals: approvals,
+      Organisation: organisation, Ledger: ledger, Segments: segments, Currencies: currencies, Taxes: taxes, 'Terms and reminders': terms, Approvals: approvals,
       'Bank statements': bankStatements, 'Opening balances': openingBalances, Integrations: integrations,
       Payroll: payroll, Appearance: appearance,
       'Language and translation': language, Users: users, Roles: roles, 'Audit log': audit,
@@ -191,9 +196,11 @@
     const button = app.querySelector('#st-save');
     button.disabled = true;
     try {
-      const res = await UI.postJSON('/api/settings', draft);
+      // The date a tax change takes effect goes with it; on its own it changes nothing.
+      const res = await UI.postJSON('/api/settings', { ...draft, taxes: { ...draft.taxes, from: view.taxFrom } });
       data = res;
       draft = toDraft(data);
+      view.taxFrom = data.taxes.today;
       render();
       UI.toast(res.message);
     } catch (err) {
@@ -338,6 +345,8 @@
           </div>
         </div>
         ${rule}
+        ${postingAccounts()}
+        ${rule}
         <div class="st-block">
           <div class="st-kicker">Open periods</div>
           <div class="st-chips">${data.periods.map(p => `<span class="st-chip ${p.open ? 'open' : ''}">${esc(p.label)} · ${p.open ? 'open' : 'closed'}</span>`).join('')}</div>
@@ -444,6 +453,67 @@
       </div>`;
   }
 
+  function taxes(main) {
+    const t = data.taxes;
+    const next = (tax) => t.next[tax] ? `From ${t.next[tax].from}: ${t.next[tax].rates.map(r => r.rate + '%').join(', ')}` : '';
+    const cols = 'grid-template-columns:120px minmax(160px,1fr) 64px;';
+    const inUse = new Set(t.categories.filter(c => c.wht > 0).map(c => Number(c.wht)));
+    main.innerHTML = `
+      <div class="st-body wide">
+        ${head('VAT and withholding tax', 'The rates a bill is captured at, as the Finance Act sets them. A change takes effect from the date below: bills dated earlier keep the rates they were captured with, and nothing already on file is recalculated.')}
+        <div class="st-grid">
+          <label class="st-field">VAT rate (%)<input data-bind="taxes.vat.rate" value="${esc(draft.taxes.vat.rate)}" class="mono" inputmode="decimal"></label>
+          <label class="st-field">Changes take effect from<input type="date" data-bind="form.taxFrom" value="${esc(view.taxFrom)}" min="${esc(t.today)}" class="mono"></label>
+        </div>
+        <div class="st-sub" style="margin-top:6px;">${t.vat ? `${esc(t.vat.rate)}% in force since ${esc(t.since.vat)}` : 'No VAT rate in force today — bills cannot be captured until one is set.'}${next('vat') ? ' · ' + esc(next('vat')) : ''}</div>
+        <div style="margin-top:22px;">
+          ${head('Withholding rates', 'The rates a bill may withhold at, besides nil. Each spend category defaults to one of them; overriding the default on a bill needs a reason.')}
+          <div class="st-table"><div style="min-width:420px;">
+            <div class="st-tr st-th" style="${cols}"><div class="end">Rate (%)</div><div>Applies to</div><div></div></div>
+            ${draft.taxes.wht.map((r, i) => `
+            <div class="st-tr" style="${cols}">
+              <div><input class="st-cell mono end" data-bind="taxes.wht.${i}.rate" value="${esc(r.rate)}" inputmode="decimal" aria-label="Withholding rate"></div>
+              <div><input class="st-cell" data-bind="taxes.wht.${i}.label" value="${esc(r.label)}" maxlength="80" aria-label="What the rate applies to"></div>
+              <div class="end">${inUse.has(Number(r.rate)) ? '<span class="st-sub" title="A spend category defaults to this rate">in use</span>' : `<button type="button" class="jd-remove" data-act="wht-remove" data-id="${i}" data-manage aria-label="Remove rate">×</button>`}</div>
+            </div>`).join('')}
+          </div></div>
+          <div style="margin-top:8px;"><button type="button" class="btn" data-act="wht-add" data-manage>Add a rate</button></div>
+          <div class="st-sub" style="margin-top:6px;">In force since ${esc(t.since.wht)}${next('wht') ? ' · ' + esc(next('wht')) : ''}</div>
+        </div>
+        <div class="st-infobox">
+          <div class="st-kicker">Spend category defaults</div>
+          ${t.categories.map(c => `<div class="st-bullet"><span>·</span>${esc(c.name)} — ${esc(c.wht)}%</div>`).join('')}
+        </div>
+        <div style="margin-top:22px;">
+          ${head('Rate history', '')}
+          <div class="st-table"><div style="min-width:560px;">
+            <div class="st-tr st-th" style="grid-template-columns:140px 80px minmax(160px,1fr) 110px 110px;"><div>Tax</div><div class="end">Rate</div><div>Applies to</div><div>From</div><div>To</div></div>
+            ${t.history.map(h => `
+            <div class="st-tr" style="grid-template-columns:140px 80px minmax(160px,1fr) 110px 110px;">
+              <div>${esc(h.tax)}</div><div class="mono end">${esc(h.rate)}%</div><div class="st-muted st-ellipsis">${esc(h.label)}</div>
+              <div class="mono">${esc(h.from)}</div><div class="mono st-muted">${esc(h.to || '—')}</div>
+            </div>`).join('')}
+          </div></div>
+        </div>
+      </div>`;
+  }
+
+  function terms(main) {
+    const cols = 'grid-template-columns:minmax(200px,1.3fr) 150px;';
+    main.innerHTML = `
+      <div class="st-body wide">
+        ${head('Terms and reminders', 'Payment terms and how far ahead the system flags what is coming due. A change applies from now on: a bill or claim already raised keeps the due date it was given.')}
+        <div class="st-table"><div style="min-width:460px;">
+          <div class="st-tr st-th" style="${cols}"><div>Rule</div><div class="end">Days</div></div>
+          ${data.days.map(r => `
+          <div class="st-tr" style="${cols}min-height:52px;">
+            <div class="st-stack"><span>${esc(r.label)}</span><span class="st-sub">${esc(r.note)}${r.value !== r.standard ? ` · standard ${esc(r.standard)}` : ''}</span></div>
+            <div><input class="st-cell mono end" data-bind="days.${esc(r.key)}" value="${esc(draft.days[r.key])}" aria-label="${esc(r.label)}" ${r.key === 'supplierTerms' ? '' : 'inputmode="numeric"'}></div>
+          </div>`).join('')}
+        </div></div>
+      </div>`;
+  }
+
   function approvals(main) {
     main.innerHTML = `
       <div class="st-body wide">
@@ -501,6 +571,35 @@
    * reference data, so a newly installed instance has the components and nothing
    * mapped — until this is set, a run is worked out but has nowhere to go.
    */
+  /** The account each automatic posting goes to, by module. */
+  function postingAccounts() {
+    const cols = 'grid-template-columns:minmax(170px,1fr) minmax(200px,1.2fr);';
+    const short = (c) => c.length > 46 ? c.slice(0, 45) + '…' : c;
+    let module = '';
+    return `
+      <div class="st-block">
+        <div class="st-kicker">Posting accounts</div>
+        <div class="st-note">Where the postings the system makes itself go — a bill, a donor claim, a depreciation run, a bank charge. A change applies to postings from then on. An account that holds a balance to be cleared later, such as trade payables, can move only once that balance is nil.</div>
+        ${data.postingAccounts.some(p => p.missing) ? warn(`${data.postingAccounts.filter(p => p.missing).map(p => `${p.label} (${p.code})`).join(', ')} — not in the chart of accounts. Choose an account, or those postings will be refused.`) : ''}
+        <div class="st-table"><div style="min-width:440px;">
+          <div class="st-tr st-th" style="${cols}"><div>Posting</div><div>Account</div></div>
+          ${data.postingAccounts.map(p => {
+            const options = data.postingAccountOptions.filter(o => p.types.includes(o.type));
+            const current = draft.postingAccounts[p.role];
+            const heading = p.module !== module ? `<div class="st-tr" style="${cols}background:#FAF9F6;"><div class="st-sub" style="text-transform:uppercase;letter-spacing:.08em;">${esc(module = p.module)}</div><div></div></div>` : '';
+            return `${heading}
+            <div class="st-tr" style="${cols}">
+              <div class="st-stack"><span>${esc(p.label)}</span><span class="st-sub">${esc(p.what)}${p.control && p.balance ? ` · holds ${fmt(Math.abs(p.balance))}` : ''}</span></div>
+              <div><select class="st-cell" data-bind="postingAccounts.${esc(p.role)}" aria-label="Account for ${esc(p.label)}">
+                ${options.some(o => o.code === current) ? '' : `<option value="${esc(current)}" selected>${esc(current)} · not in the chart</option>`}
+                ${options.map(o => `<option value="${esc(o.code)}" ${o.code === current ? 'selected' : ''}>${esc(short(o.code + ' · ' + o.name))}</option>`).join('')}
+              </select></div>
+            </div>`;
+          }).join('')}
+        </div></div>
+      </div>`;
+  }
+
   function payAccounts() {
     const rows = data.payAccounts;
     const options = data.payAccountOptions;
@@ -1134,6 +1233,8 @@
       c.active = !c.active;
       UI.toast(c.code + (c.active ? ' enabled — it will be offered on new awards and donor claims once saved.' : ' disabled — it will no longer appear on new awards or claims once saved. Nothing already posted changes.'));
     }
+    if (act === 'wht-add') draft.taxes.wht.push({ rate: '', label: '' });
+    if (act === 'wht-remove') draft.taxes.wht.splice(Number(id), 1);
     if (act === 'cur-add') {
       const f = view.curForm;
       const code = f.code.trim().toUpperCase();

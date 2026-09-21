@@ -28,7 +28,6 @@ final class ProcurementRepository extends Repository
 
     public const UNRESTRICTED = 'Unrestricted — own income';
 
-    private const ACCRUED = '2120';
 
     /** Supplier register statuses, as stored → as the form offers them. */
     public const SUPPLIER_STATUSES = ['not_prequalified' => 'Not pre-qualified', 'prequalified' => 'Pre-qualified', 'blocked' => 'Blocked'];
@@ -37,9 +36,6 @@ final class ProcurementRepository extends Repository
 
     /** A KRA PIN: P0, eight digits and a letter. */
     private const PIN_PATTERN = '/^P0\d{8}[A-Z]$/';
-
-    /** Days before pre-qualification lapses that a supplier shows as expiring. */
-    private const EXPIRY_WARNING_DAYS = 30;
 
     /** Where quotation documents are kept, under writable/uploads. */
     private const ATTACHMENT_DIR = 'quotations';
@@ -262,7 +258,7 @@ final class ProcurementRepository extends Repository
         return match (true) {
             $days === null                     => 'Pre-qualified',
             $days < 0                          => 'Lapsed',
-            $days <= self::EXPIRY_WARNING_DAYS => 'Expiring',
+            $days <= SettingsRepository::day('prequalWarningDays') => 'Expiring',
             default                            => 'Pre-qualified',
         };
     }
@@ -644,7 +640,7 @@ final class ProcurementRepository extends Repository
                 $this->insert('goods_received_lines', ['goods_received_note_id' => $grn, 'purchase_order_line_id' => $l['id'], 'quantity' => $l['quantity']]);
                 $segments = ['fund_id' => (int) $l['fund_id'], 'programme_id' => (int) $l['programme_id'], 'grant_id' => $l['grant_id'] === null ? null : (int) $l['grant_id']];
                 $posting[] = $segments + ['code' => $l['code'], 'desc' => mb_substr($l['description'], 0, 200), 'dr' => (float) $l['amount'], 'cr' => 0];
-                $posting[] = $segments + ['code' => self::ACCRUED, 'desc' => 'Goods received not invoiced — ' . $supplier . ' · ' . $po['reference'], 'dr' => 0, 'cr' => (float) $l['amount']];
+                $posting[] = $segments + ['code' => PostingAccounts::of('accrued'), 'desc' => 'Goods received not invoiced — ' . $supplier . ' · ' . $po['reference'], 'dr' => 0, 'cr' => (float) $l['amount']];
             }
 
             $journal = (new JournalRepository())->postFromSource([

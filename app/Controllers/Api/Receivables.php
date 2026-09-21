@@ -6,6 +6,7 @@ use App\Libraries\Clock;
 use App\Libraries\Prototype;
 use App\Repositories\ReceivablesRepository as Repo;
 use App\Repositories\RuleViolation;
+use App\Repositories\SettingsRepository;
 
 /**
  * Receivables (v5): amounts due to ELOG — overwhelmingly grant tranches and
@@ -185,7 +186,8 @@ class Receivables extends BaseApiController
             'awards'       => $repo->awards(),
             'otherAccounts' => $repo->otherIncomeAccounts(),
             'currencies'   => Repo::currencies(),
-            'due'          => Clock::today()->modify('+30 days')->format('d M Y'),
+            'due'          => Clock::today()->modify('+' . SettingsRepository::day('claimTermsDays') . ' days')->format('d M Y'),
+            'termsDays'    => SettingsRepository::day('claimTermsDays'),
         ]);
     }
 
