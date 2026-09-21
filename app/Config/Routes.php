@@ -236,6 +236,9 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('mpesa', 'Api\Mpesa::index');
     $routes->post('mpesa', 'Api\Mpesa::save');
     $routes->post('mpesa/check', 'Api\Mpesa::check');
+    $routes->get('mail', 'Api\Mail::index');
+    $routes->post('mail', 'Api\Mail::save');
+    $routes->post('mail/test', 'Api\Mail::test');
     $routes->get('manual', 'Api\Manual::index');
     $routes->get('manual/image/(:segment)', 'Api\Manual::image/$1');
     $routes->get('i18n', 'Api\I18n::index');

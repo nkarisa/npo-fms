@@ -21,7 +21,7 @@ use App\Repositories\TaxRepository;
  * The screen edits a draft and saves it in one go (save), so a change reaches the
  * ledger only when it is saved and every saved change is in the audit log. Bank
  * statement formats save as they are made (Api\StatementFormats), so does the
- * M-Pesa integration (Api\Mpesa) — a credential cannot sit in a draft in the
+ * M-Pesa integration (Api\Mpesa) and the mail server (Api\Mail) — a credential cannot sit in a draft in the
  * browser. Carrying opening balances from a legacy system (Api\Conversion) reads a
  * file rather than a draft, and writes a journal for approval rather than settings.
  * "Language and translation" is served in detail by Api\I18n. Only a user holding

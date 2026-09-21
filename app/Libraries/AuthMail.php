@@ -2,15 +2,17 @@
 
 namespace App\Libraries;
 
+use App\Repositories\MailRepository;
 use Config\Auth;
-use Config\Email;
 
 /**
  * The messages signing in sends: an invitation, a password-reset link and a
  * six-digit sign-in code.
  *
- * They go through CodeIgniter's email service, configured in .env as `email.*`
- * (email.protocol = smtp, email.SMTPHost, …, email.fromEmail). Links are built on
+ * They go through CodeIgniter's email service, sent through the mail server set in
+ * Settings → Integrations → Email, or .env's `email.*` when none is set there — and
+ * always .env's outside production when it names a host, which is how development
+ * sends to Mailpit (MailRepository::transport()). Links are built on
  * app.baseURL rather than on the address the request came in on, so a request with
  * a forged Host header cannot have a reset link point somewhere else.
  *
@@ -63,13 +65,26 @@ final class AuthMail
         ], 'sign-in code for ' . $user['email'] . ': ' . $code);
     }
 
+    /** Settings → Integrations → Email: proves the server takes mail, to the person asking. */
+    public static function test(array $user): bool
+    {
+        $app = Brand::current()['name'];
+
+        return self::send($user['email'], 'Test message from ' . $app, [
+            'Hello ' . $user['name'] . ',',
+            'This is the test message you sent from Settings → Integrations → Email. ' . $app . ' can send invitations, password resets and sign-in codes.',
+        ], 'test message for ' . $user['email']);
+    }
+
     /** @param list<string> $paragraphs */
     private static function send(string $to, string $subject, array $paragraphs, string $fallback): bool
     {
-        $config = config(Email::class);
+        // The server set in Settings → Integrations → Email, or .env's (MailRepository::transport()).
+        $config = (new MailRepository())->transport()['config'];
         $email = service('email');
-        $email->setFrom($config->fromEmail !== '' ? $config->fromEmail : 'no-reply@' . (parse_url(site_url(), PHP_URL_HOST) ?: 'localhost'),
-            $config->fromName !== '' ? $config->fromName : Brand::current()['name']);
+        $email->initialize($config);
+        $email->setFrom($config['fromEmail'] !== '' ? $config['fromEmail'] : 'no-reply@' . (parse_url(site_url(), PHP_URL_HOST) ?: 'localhost'),
+            $config['fromName'] !== '' ? $config['fromName'] : Brand::current()['name']);
         $email->setTo($to);
         $email->setSubject($subject);
         $email->setMailType('text');

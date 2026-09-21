@@ -84,3 +84,21 @@
 # documents.lockMode = COMPLIANCE
 # documents.retentionYears = 7
 # documents.linkSeconds = 120
+
+#--------------------------------------------------------------------
+# EMAIL
+#--------------------------------------------------------------------
+# Production sets its mail server in Settings → Integrations → Email and leaves
+# these out. While developing, point them at Mailpit (docker-compose.yml, started
+# by ./server.sh) and read what is sent at http://localhost:8025. Outside
+# production these win over Settings, so real mail is never sent from a copy of
+# a production database.
+
+# email.protocol = smtp
+# email.SMTPHost = localhost
+# email.SMTPPort = 1025
+# email.SMTPUser =
+# email.SMTPPass =
+# email.SMTPCrypto =
+# email.fromEmail = no-reply@fms.test
+# email.fromName = 'ELOG Finance'

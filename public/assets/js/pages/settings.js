@@ -562,8 +562,9 @@
   }
 
   function integrations(main) {
-    main.innerHTML = `<div class="st-body wide">${head('Integrations', 'Services outside the ledger that money moves through. Changes in this section are saved as you make them, and credentials are never shown again once entered.')}<div id="st-mpesa"></div></div>`;
+    main.innerHTML = `<div class="st-body wide">${head('Integrations', 'Services outside the ledger that money and mail move through. Changes in this section are saved as you make them, and credentials are never shown again once entered.')}<div id="st-mpesa"></div><div id="st-mail"></div></div>`;
     Mpesa.mount(main.querySelector('#st-mpesa'));
+    MailServer.mount(main.querySelector('#st-mail'));
   }
 
   /**
@@ -2113,6 +2114,196 @@ const Mpesa = (() => {
       const res = await UI.postJSON('/api/mpesa/check');
       data.mpesa = res.mpesa;
       render();
+      UI.toast(res.message);
+    } catch (err) {
+      UI.toast(err.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = was;
+    }
+  }
+
+  return { mount };
+})();
+
+/**
+ * Settings → Integrations → Email: the SMTP server invitations, password resets
+ * and sign-in codes go out through.
+ *
+ * Saved as it is made, like M-Pesa: the password is written and never read back —
+ * the panel shows whether it is set and its last four characters, and sends it only
+ * when something has been typed. The note at the top says which server mail is
+ * actually going through; outside production that is .env's (Mailpit while
+ * developing), whatever is set here. "Send a test message" mails the person asking.
+ */
+const MailServer = (() => {
+  const esc = UI.esc;
+  let root = null;
+  let data = null;
+  let form = null;
+  let password = '';
+  let clearPassword = false;
+
+  const FIELDS = ['host', 'port', 'crypto', 'username', 'fromEmail', 'fromName'];
+  const toForm = (m) => Object.fromEntries(FIELDS.map(k => [k, m[k]]));
+  const dirty = () => JSON.stringify(form) !== JSON.stringify(toForm(data.mail)) || password !== '' || clearPassword;
+
+  async function mount(container) {
+    const unsaved = data !== null && form !== null && dirty();
+    root = container;
+    if (unsaved) {
+      render();
+      return;
+    }
+    root.innerHTML = '<div class="coa-empty">Loading the mail server…</div>';
+    try {
+      data = await UI.fetchJSON('/api/mail');
+    } catch (err) {
+      root.innerHTML = `<div class="coa-empty">${esc(err.message)}</div>`;
+      return;
+    }
+    reset();
+    render();
+  }
+
+  function reset() {
+    form = toForm(data.mail);
+    password = '';
+    clearPassword = false;
+  }
+
+  function render() {
+    if (!root || !root.isConnected) return;
+    const m = data.mail;
+    const can = data.canManage;
+    const field = (label, key, hint, attrs) => `
+      <label class="bu-field"><span>${esc(label)}${hint ? ` <em>${esc(hint)}</em>` : ''}</span>
+        <input data-k="${key}" value="${esc(form[key] ?? '')}" autocomplete="off" ${attrs || ''}></label>`;
+    const pw = m.password;
+    const pwState = clearPassword ? 'Will be cleared when saved' : password ? 'Will be saved' : pw.set ? (pw.readable ? 'Set · ' + pw.hint : pw.hint) : 'Not set';
+
+    root.innerHTML = `
+      <div class="sf-cards" style="margin-top:28px;">
+        <div class="mp-status ${m.inUse.source === 'settings' ? 'live' : 'sandbox'}">
+          <div class="mp-status-head"><span class="mp-dot"></span>Email · ${m.inUse.source === 'settings' ? 'Mail server below' : 'Server from .env'}</div>
+          <div class="mp-status-note">${esc(m.inUse.note)}</div>
+          <div class="sf-btns"><button type="button" class="btn" data-test ${can ? '' : 'disabled'}>Send a test message</button></div>
+        </div>
+        ${can ? '' : '<p class="bu-intro">Only the Finance Manager can change the mail server.</p>'}
+        ${m.encryption ? '' : '<div class="st-warn">This installation has no encryption key, so the mail server password cannot be stored. Set encryption.key in .env (php spark key:generate) first.</div>'}
+
+        <div class="sf-section">Mail server</div>
+        <div class="bu-grid">
+          ${field('SMTP server', 'host', 'from your mail provider', 'class="mono" placeholder="smtp.office365.com" spellcheck="false"')}
+          ${field('Port', 'port', '587 for STARTTLS, 465 for SSL/TLS', 'class="mono" inputmode="numeric" maxlength="5"')}
+          <label class="bu-field"><span>Encryption</span>
+            <select data-k="crypto">${data.options.encryptions.map(x => `<option value="${esc(x.value)}" ${x.value === form.crypto ? 'selected' : ''}>${esc(x.text)}</option>`).join('')}</select></label>
+          ${field('Username', 'username', 'often the sending address', 'autocomplete="off" spellcheck="false"')}
+          ${field('Messages come from', 'fromEmail', 'an address the provider has verified', 'type="email" placeholder="no-reply@elog.or.ke" spellcheck="false"')}
+          ${field('Sender name', 'fromName', 'optional', 'maxlength="120" placeholder="ELOG Finance"')}
+        </div>
+        <div class="coa-card">
+          <div class="sf-row mp-cred">
+            <div>
+              <div class="sf-name">Password ${pw.set && !clearPassword ? '<span class="jr-pill posted">Set</span>' : ''}</div>
+              <div class="sf-sub">Held encrypted and never shown again. Enter it only to set or replace it — for Microsoft 365 or Google, an app password.</div>
+              <div class="sf-sub">${esc(pwState)}</div>
+            </div>
+            <div class="sf-btns">
+              <input type="password" data-password value="${esc(password)}" placeholder="${pw.set ? 'Enter to replace' : 'Enter the password'}" autocomplete="new-password" spellcheck="false">
+              ${pw.set && can ? `<button type="button" class="btn st-small" data-clear>${clearPassword ? 'Keep' : 'Clear'}</button>` : ''}
+            </div>
+          </div>
+        </div>
+
+        ${can ? `<div class="bu-actions">
+          <button type="button" class="btn" data-discard ${dirty() ? '' : 'hidden'}>Discard</button>
+          <button type="button" class="btn btn-primary" data-save ${dirty() ? '' : 'disabled'}>${dirty() ? 'Save changes' : 'Saved'}</button>
+        </div>` : ''}
+      </div>`;
+
+    if (!can) root.querySelectorAll('input, select').forEach(el => { el.disabled = true; });
+    wire();
+  }
+
+  function wire() {
+    root.oninput = (e) => {
+      const el = e.target;
+      if (el.dataset.password !== undefined) {
+        password = el.value;
+      } else if (el.dataset.k !== undefined) {
+        form[el.dataset.k] = el.value;
+      } else {
+        return;
+      }
+      refreshActions();
+    };
+    root.onchange = (e) => {
+      const el = e.target;
+      if (el.tagName === 'SELECT' && el.dataset.k !== undefined) {
+        form[el.dataset.k] = el.value;
+        // 465 is SSL/TLS and 587 STARTTLS almost everywhere; follow the choice when the port is one of the two.
+        if (el.value === 'ssl' && form.port === '587') form.port = '465';
+        if (el.value === 'tls' && form.port === '465') form.port = '587';
+        render();
+      }
+    };
+    root.onclick = async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      if (btn.dataset.clear !== undefined) {
+        clearPassword = !clearPassword;
+        password = '';
+        render();
+        return;
+      }
+      if (btn.dataset.discard !== undefined) {
+        reset();
+        render();
+        UI.toast('Unsaved mail server changes discarded.');
+        return;
+      }
+      if (btn.dataset.save !== undefined) await save(btn);
+      if (btn.dataset.test !== undefined) await test(btn);
+    };
+  }
+
+  function refreshActions() {
+    const save = root.querySelector('[data-save]');
+    if (!save) return;
+    const changed = dirty();
+    save.disabled = !changed;
+    save.textContent = changed ? 'Save changes' : 'Saved';
+    root.querySelector('[data-discard]').hidden = !changed;
+  }
+
+  async function save(button) {
+    button.disabled = true;
+    try {
+      const body = { ...form, clearPassword };
+      if (password !== '') body.password = password;
+      const res = await UI.postJSON('/api/mail', body);
+      data = { mail: res.mail, options: res.options, canManage: res.canManage };
+      reset();
+      render();
+      UI.toast(res.message);
+    } catch (err) {
+      button.disabled = false;
+      UI.toast(err.message);
+    }
+  }
+
+  async function test(button) {
+    if (dirty()) {
+      UI.toast('Save the mail server first — the test goes through what is saved.');
+      return;
+    }
+    const was = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Sending…';
+    try {
+      const res = await UI.postJSON('/api/mail/test');
+      data.mail = res.mail;
       UI.toast(res.message);
     } catch (err) {
       UI.toast(err.message);
