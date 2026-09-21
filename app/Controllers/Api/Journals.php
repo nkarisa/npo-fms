@@ -171,12 +171,7 @@ class Journals extends BaseApiController
     /** Downloads one of a journal's supporting documents. */
     public function attachment($ref, $id)
     {
-        $file = (new JournalRepository())->attachment((string) $ref, (int) $id);
-        if ($file === null || !is_file($file['path'])) {
-            return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
-        }
-
-        return $this->response->download($file['path'], null)->setFileName($file['filename'])->setContentType($file['mime_type']);
+        return $this->sendDocument((new JournalRepository())->attachment((string) $ref, (int) $id));
     }
 
     /**

@@ -68,6 +68,29 @@ abstract class BaseApiController extends BaseController
         return in_array($permission, $this->actor()['permissions'] ?? [], true);
     }
 
+    /**
+     * Serves a supporting document the caller has already been allowed to open
+     * (an attachments row). From S3, a redirect to a presigned link that expires
+     * in minutes — the file never passes through this server and no link is kept.
+     * From the server's disk, the file itself.
+     */
+    protected function sendDocument(?array $row, string $missing = 'not found')
+    {
+        if ($row !== null) {
+            $store = service('documents');
+            $link = $store->link($row['storage_key'], $row['filename'], $row['mime_type']);
+            if ($link !== null) {
+                return $this->response->redirect($link)->setHeader('Cache-Control', 'no-store')->setHeader('Referrer-Policy', 'no-referrer');
+            }
+            $path = $store->path($row['storage_key']);
+            if ($path !== null && is_file($path)) {
+                return $this->response->download($path, null)->setFileName($row['filename'])->setContentType($row['mime_type']);
+            }
+        }
+
+        return $this->response->setStatusCode(404)->setJSON(['error' => $missing]);
+    }
+
     /** A 403 in the refusal's own words. */
     protected function denied(string $message)
     {

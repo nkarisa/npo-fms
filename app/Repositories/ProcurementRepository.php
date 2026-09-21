@@ -290,7 +290,7 @@ final class ProcurementRepository extends Repository
             [$attachmentId, $no]
         );
 
-        return $row === null ? null : $row + ['path' => WRITEPATH . 'uploads/' . $row['storage_key']];
+        return $row;
     }
 
     // ------------------------------------------------------------------
@@ -382,9 +382,7 @@ final class ProcurementRepository extends Repository
                 return $no;
             });
         } catch (\Throwable $e) {
-            foreach ($stored as $path) {
-                @unlink($path);
-            }
+            (new AttachmentRepository($this->db))->removeFiles($stored);
 
             throw $e;
         }

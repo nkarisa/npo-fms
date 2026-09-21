@@ -247,8 +247,8 @@ final class StatementImportRepository extends Repository
                     . ($count('duplicate') > 0 ? ', ' . $count('duplicate') . ' already on the statement' : ''), $actorId);
             });
         } catch (\Throwable $e) {
-            if ($stored !== null && is_file($stored)) {
-                @unlink($stored);
+            if ($stored !== null) {
+                (new AttachmentRepository($this->db))->removeFiles([$stored]);
             }
             throw $e;
         }
@@ -281,28 +281,13 @@ final class StatementImportRepository extends Repository
     }
 
     /**
-     * Keeps the uploaded file with the statement, for the audit file.
+     * Keeps the uploaded file with the statement, for the audit file, locked in the
+     * document store.
      *
-     * @return string the stored path, so a failed import can remove it
+     * @return string the storage key, so a failed import can remove it
      */
     private function store(int $importId, array $file, int $actorId): string
     {
-        $key = self::STORAGE_DIR . '/' . bin2hex(random_bytes(16)) . '.csv';
-        $path = WRITEPATH . 'uploads/' . $key;
-        if (!is_dir(dirname($path)) && !mkdir(dirname($path), 0775, true) && !is_dir(dirname($path))) {
-            throw new RuleViolation('Statement files cannot be stored right now.');
-        }
-        $sha = hash_file('sha256', $file['path']);
-        if (!(is_uploaded_file($file['path']) ? move_uploaded_file($file['path'], $path) : copy($file['path'], $path))) {
-            throw new RuleViolation($file['name'] . ' could not be stored.');
-        }
-
-        $this->insert('attachments', [
-            'entity_id' => $this->lookups->entityId(), 'object_type' => 'bank_statement_import', 'object_id' => $importId,
-            'filename' => mb_substr($file['name'], 0, 255), 'mime_type' => mb_substr($file['mime'] ?: 'text/csv', 0, 100), 'size_bytes' => $file['size'],
-            'storage_key' => $key, 'sha256' => $sha, 'uploaded_by' => $actorId, 'uploaded_at' => Clock::timestamp(),
-        ]);
-
-        return $path;
+        return (new AttachmentRepository($this->db))->store('bank_statement_import', $importId, ['mime' => $file['mime'] ?: 'text/csv'] + $file, $actorId, self::STORAGE_DIR)[1];
     }
 }

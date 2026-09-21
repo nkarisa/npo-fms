@@ -67,3 +67,20 @@
 #--------------------------------------------------------------------
 
 # logger.threshold = 4
+
+#--------------------------------------------------------------------
+# SUPPORTING DOCUMENTS (docs/documents.md#storage)
+#--------------------------------------------------------------------
+# local keeps them under writable/uploads; s3 keeps them in a bucket with Object Lock.
+
+# documents.disk = local
+# documents.s3Bucket =
+# documents.s3Region = af-south-1
+# documents.s3Key =
+# documents.s3Secret =
+# For LocalStack on this machine (./server.sh starts it):
+# documents.s3Endpoint = http://localhost:4566
+# documents.s3PathStyle = true
+# documents.lockMode = COMPLIANCE
+# documents.retentionYears = 7
+# documents.linkSeconds = 120

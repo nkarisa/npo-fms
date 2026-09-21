@@ -280,9 +280,7 @@ final class AssetAdditionRepository extends Repository
             $this->db->table('asset_additions')->where('id', $d['id'])->delete();
             if ($d['basis'] === 'donation') {
                 // The asset proposed with it goes, and so do the documents filed against it.
-                foreach ($this->rows("SELECT storage_key FROM {attachments} WHERE object_type = 'asset' AND object_id = ?", [(int) $d['asset_id']]) as $a) {
-                    @unlink(WRITEPATH . 'uploads/' . $a['storage_key']);
-                }
+                (new AttachmentRepository($this->db))->removeFiles(array_column($this->rows("SELECT storage_key FROM {attachments} WHERE object_type = 'asset' AND object_id = ?", [(int) $d['asset_id']]), 'storage_key'));
                 $this->db->table('attachments')->where(['object_type' => 'asset', 'object_id' => (int) $d['asset_id']])->delete();
                 $this->db->table('assets')->where('id', $d['asset_id'])->delete();
             }

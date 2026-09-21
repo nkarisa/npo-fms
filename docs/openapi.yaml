@@ -1164,7 +1164,7 @@ paths:
     get:
       tags: [Documents]
       summary: Download a supporting document
-      description: For its uploader, or anyone holding a role at the entity it belongs to. A document still waiting to be attached opens only for its uploader.
+      description: For its uploader, or anyone holding a role at the entity it belongs to. A document still waiting to be attached opens only for its uploader. Served from the server's disk, or by redirect to a short-lived S3 link.
       parameters:
         - name: id
           in: path
@@ -1172,10 +1172,15 @@ paths:
           schema: { type: integer }
       responses:
         '200':
-          description: The file.
+          description: The file, when documents are kept on the server's disk.
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
+        '302':
+          description: When documents are kept in S3 (`documents.disk = s3`), a redirect to a presigned link for the file. The link expires after `documents.linkSeconds` (120 seconds) and is issued only after the check above; it is never stored.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /attachments/{id}/discard:
@@ -1259,6 +1264,11 @@ paths:
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
+        '302':
+          description: When documents are kept in S3 (`documents.disk = s3`), a redirect to a presigned link for the file. The link expires after `documents.linkSeconds` (120 seconds) and is issued only after the check above; it is never stored.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /journals/{ref}:
@@ -2096,6 +2106,11 @@ paths:
           content:
             application/octet-stream:
               schema: { type: string, format: binary }
+        '302':
+          description: When documents are kept in S3 (`documents.disk = s3`), a redirect to a presigned link for the file. The link expires after `documents.linkSeconds` (120 seconds) and is issued only after the check above; it is never stored.
+          headers:
+            Location:
+              schema: { type: string, format: uri }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /procurement/{no}:

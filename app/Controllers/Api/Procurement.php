@@ -314,12 +314,7 @@ class Procurement extends BaseApiController
 
     public function document($no, $id)
     {
-        $file = (new Repo())->document((string) $no, (int) $id);
-        if ($file === null || !is_file($file['path'])) {
-            return $this->response->setStatusCode(404)->setJSON(['error' => 'not found']);
-        }
-
-        return $this->response->download($file['path'], null)->setFileName($file['filename'])->setContentType($file['mime_type']);
+        return $this->sendDocument((new Repo())->document((string) $no, (int) $id));
     }
 
     private function act(callable $action)

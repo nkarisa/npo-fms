@@ -175,9 +175,7 @@ final class JournalRepository extends Repository
                 return $ref;
             });
         } catch (\Throwable $e) {
-            foreach ($stored as $path) {
-                @unlink($path);
-            }
+            (new AttachmentRepository($this->db))->removeFiles($stored);
 
             throw $e;
         }
@@ -271,7 +269,7 @@ final class JournalRepository extends Repository
                     $row = $this->row("SELECT id, storage_key FROM {attachments} WHERE object_type = 'journal' AND object_id = ? AND id = ?", [$id, (int) $attachmentId]);
                     if ($row !== null) {
                         $this->db->table('attachments')->where('id', $row['id'])->delete();
-                        $removed[] = WRITEPATH . 'uploads/' . $row['storage_key'];
+                        $removed[] = $row['storage_key'];
                     }
                 }
                 foreach ($files as $file) {
@@ -288,16 +286,12 @@ final class JournalRepository extends Repository
                 $this->syncRuns($id);
             });
         } catch (\Throwable $e) {
-            foreach ($stored as $path) {
-                @unlink($path);
-            }
+            (new AttachmentRepository($this->db))->removeFiles($stored);
 
             throw $e;
         }
 
-        foreach ($removed as $path) {
-            @unlink($path);
-        }
+        (new AttachmentRepository($this->db))->removeFiles($removed);
 
         return $this->find($ref);
     }
@@ -314,7 +308,7 @@ final class JournalRepository extends Repository
         $this->transaction(function () use ($journal, $ref, $actorId, &$files) {
             $id = (int) $journal['id'];
             foreach ($this->rows("SELECT id, storage_key FROM {attachments} WHERE object_type = 'journal' AND object_id = ?", [$id]) as $a) {
-                $files[] = WRITEPATH . 'uploads/' . $a['storage_key'];
+                $files[] = $a['storage_key'];
             }
             $this->db->table('attachments')->where('object_type', 'journal')->where('object_id', $id)->delete();
             // A template run keeps its place in the run history.
@@ -324,9 +318,7 @@ final class JournalRepository extends Repository
             $this->audit('journal', $id, $ref, 'Discarded by ' . $this->lookups->shortName($actorId), $actorId);
         });
 
-        foreach ($files as $path) {
-            @unlink($path);
-        }
+        (new AttachmentRepository($this->db))->removeFiles($files);
     }
 
     /**
@@ -455,7 +447,7 @@ final class JournalRepository extends Repository
         ];
     }
 
-    /** The stored file behind one of a journal's attachments, or null. */
+    /** One of a journal's attachments, for download, or null. */
     public function attachment(string $ref, int $attachmentId): ?array
     {
         $row = $this->row(
@@ -463,7 +455,7 @@ final class JournalRepository extends Repository
             [$ref, $attachmentId]
         );
 
-        return $row === null ? null : $row + ['path' => WRITEPATH . 'uploads/' . $row['storage_key']];
+        return $row;
     }
 
     /** Approves and posts. The actor must not be the preparer; the database enforces the rest. */

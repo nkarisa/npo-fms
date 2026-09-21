@@ -486,9 +486,18 @@ one. [documents.md](documents.md) has the full list and how it works.
   `documents.journalThreshold = 250000` lowers the amount above which a journal
   needs a document, and `documents.requireBillInvoice = false` turns off the invoice
   rule, though an auditor will expect it on.
-- **Files** are stored under `writable/uploads/`. The web server must be able to
-  write there. **Back it up with the database**; the database only records where
-  each file is.
+- **Files** are stored under `writable/uploads/` by default. The web server must
+  be able to write there. **Back it up with the database**; the database only
+  records where each file is.
+- **In production, keep them in S3 with Object Lock** so that no one can delete a
+  document before its retention ends. Set `documents.disk = s3` and the bucket
+  settings, then run `php spark documents:check`. `php spark documents:migrate`
+  moves the files already on disk. Downloads then go through short-lived
+  presigned links. [documents.md](documents.md#storage) has the bucket setup.
+- **To use S3 without an AWS account while developing**, point
+  `documents.s3Endpoint` at LocalStack (`http://localhost:4566`). `./server.sh`
+  then starts it in Docker and creates the bucket. See
+  [documents.md](documents.md#s3-on-a-development-machine-localstack).
 - **Upgrading** needs no migration. Bills, surrenders and awards recorded before
   the rules keep working, and their panels offer **Attach a document** so the
   paperwork can be added.
@@ -514,12 +523,17 @@ Uploaded files — logos, journal attachments, bank statements, quotations — a
 kept on disk under `writable/uploads/`, not in the database, so clear them too:
 
 ```bash
-rm -rf writable/uploads/branding writable/uploads/journals \
+rm -rf writable/uploads/branding writable/uploads/journals writable/uploads/documents \
        writable/uploads/statements writable/uploads/quotations
 rm -rf writable/cache/* writable/session/*
 ```
 
 Keep `writable/uploads/index.html`. The folders are recreated on the next upload.
+
+With `documents.disk = s3`, the documents are in the bucket, and locked ones
+cannot be removed before their retention date. Give the reset database a new
+bucket or a new `documents.s3Prefix`, so its documents are kept apart from the
+old ones.
 
 Then follow either path from the seeding step:
 
