@@ -570,12 +570,13 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 [dir="rtl"] :is(.stat-value, .bp-cell-value) { text-align: right; }
 
 /* ---- New journal drawer (v5 journal editor) ---- */
-@keyframes jdIn { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Dialogs open in the middle of the screen: .jd, .rt, .pk and the shared record drawer (UI.drawer). */
+@keyframes jdIn { from { transform: translateY(8px) scale(.985); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes jdFade { from { opacity: 0; } to { opacity: 1; } }
-.jd { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: flex-end; }
+.jd { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .jd[hidden] { display: none; }
 .jd-backdrop { position: absolute; inset: 0; background: rgba(13,27,24,.3); animation: jdFade 140ms ease; }
-.jd-panel { position: relative; width: 920px; max-width: 100%; height: 100%; background: #FFF; border-inline-start: 1px solid #DDDAD2; box-shadow: -16px 0 40px rgba(13,27,24,.14); display: flex; flex-direction: column; animation: jdIn 180ms cubic-bezier(.2,.7,.3,1); }
+.jd-panel { position: relative; width: 920px; max-width: 100%; height: min(860px, 100%); background: #FFF; border: 1px solid #E4E2DB; border-radius: 11px; overflow: hidden; box-shadow: 0 24px 60px rgba(13,27,24,.24); display: flex; flex-direction: column; animation: jdIn 180ms cubic-bezier(.2,.7,.3,1); }
 .jd-head { flex: 0 0 auto; padding: 18px 24px 14px; border-bottom: 1px solid #EEEDE8; display: flex; align-items: flex-start; gap: 14px; }
 .jd-caps { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: #8B948F; }
 .jd-narration { border: none; outline: none; font-size: 17px; font-weight: 600; letter-spacing: -.015em; padding: 2px 0; width: 100%; border-bottom: 1px solid transparent; font-family: inherit; }
@@ -659,9 +660,9 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .jr-narration { font-size: 12.5px; color: #28352F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Recurring templates drawer */
-.rt { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: flex-end; }
+.rt { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .rt[hidden] { display: none; }
-.rt-panel { position: relative; width: 560px; max-width: 94vw; height: 100%; background: #FFF; border-inline-start: 1px solid #DDDAD2; box-shadow: -16px 0 40px rgba(13,27,24,.12); display: flex; flex-direction: column; animation: jdIn 180ms cubic-bezier(.2,.7,.3,1); }
+.rt-panel { position: relative; width: 560px; max-width: 100%; max-height: 100%; background: #FFF; border: 1px solid #E4E2DB; border-radius: 11px; overflow: hidden; box-shadow: 0 24px 60px rgba(13,27,24,.24); display: flex; flex-direction: column; animation: jdIn 180ms cubic-bezier(.2,.7,.3,1); }
 .rt-head { flex: 0 0 auto; padding: 18px 22px 14px; border-bottom: 1px solid #EEEDE8; display: flex; align-items: flex-start; gap: 12px; }
 .rt-close { margin-inline-start: auto; border: 1px solid #DDDAD2; background: #FBFAF7; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; color: #6E7873; font-size: 13px; line-height: 1; }
 .rt-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 22px 22px; display: flex; flex-direction: column; }
@@ -717,9 +718,9 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .pc-close-blocked { border: 1px solid #E4E2DB; background: #F1EFEA; color: #9AA39E; border-radius: 6px; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: not-allowed; font-family: inherit; }
 
 /* Close pack drawer */
-.pk { position: fixed; inset: 0; z-index: 1000; display: flex; justify-content: flex-end; }
+.pk { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .pk[hidden] { display: none; }
-.pk-panel { position: relative; width: 640px; max-width: 96vw; height: 100%; background: #FFF; border-inline-start: 1px solid #DDDAD2; box-shadow: -16px 0 40px rgba(13,27,24,.14); display: flex; flex-direction: column; animation: jdIn 180ms cubic-bezier(.22,1,.36,1); }
+.pk-panel { position: relative; width: 640px; max-width: 100%; max-height: 100%; background: #FFF; border: 1px solid #E4E2DB; border-radius: 11px; overflow: hidden; box-shadow: 0 24px 60px rgba(13,27,24,.24); display: flex; flex-direction: column; animation: jdIn 180ms cubic-bezier(.22,1,.36,1); }
 .pk-doc { display: grid; grid-template-columns: 26px minmax(0,1fr) auto; align-items: start; gap: 12px; padding: 12px 20px; border-bottom: 1px solid #F2F1EC; }
 
 /* Printable close pack: only the pack prints while it is being printed. */
@@ -1967,3 +1968,12 @@ select.st-cell { cursor: pointer; }
 .st-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
 .st-access-head select { flex: 1; border: 1px solid #DDDAD2; background: #FFF; border-radius: 6px; padding: 7px 10px; font-size: 12.5px; color: #28352F; font-family: inherit; min-width: 0; }
 .st-access-head select:disabled { background: #F6F5F1; color: #7A857F; }
+
+/* Shared record drawer (UI.drawer), centred like the other dialogs. */
+.rd { padding: 24px; }
+.rd-panel { animation: jdIn 180ms cubic-bezier(.2,.7,.3,1); }
+/* On a phone a dialog takes the whole screen. */
+@media (max-width: 600px) {
+  .jd, .rt, .pk, .rd { padding: 0; }
+  .jd-panel, .rt-panel, .pk-panel, .rd-panel { width: 100% !important; max-width: 100%; height: 100%; max-height: 100%; border: none; border-radius: 0; }
+}

@@ -742,9 +742,10 @@ const UI = (() => {
 
   function buildRecordDrawer() {
     recordDrawer = document.createElement('div');
-    recordDrawer.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(13,27,24,.28);z-index:1000;align-items:flex-start;justify-content:flex-end;';
+    recordDrawer.className = 'rd';
+    recordDrawer.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(13,27,24,.28);z-index:1000;align-items:center;justify-content:center;';
     recordDrawer.innerHTML = `
-      <div class="rd-panel" style="background:#fff;width:432px;max-width:92vw;height:100%;overflow-y:auto;box-shadow:-18px 0 40px rgba(13,27,24,.14);display:flex;flex-direction:column;">
+      <div class="rd-panel" role="dialog" aria-modal="true" style="background:#fff;width:432px;max-width:100%;max-height:100%;overflow-y:auto;border:1px solid #E4E2DB;border-radius:11px;box-shadow:0 24px 60px rgba(13,27,24,.24);display:flex;flex-direction:column;">
         <div style="display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid #E4E2DB;position:sticky;top:0;background:#fff;z-index:1;">
           <span class="rd-title" style="font-size:13px;font-weight:600;"></span>
           <button type="button" class="rd-close" style="margin-left:auto;border:1px solid #DDDAD2;background:#fff;border-radius:6px;width:26px;height:26px;cursor:pointer;color:#6E7873;font-size:14px;line-height:1;">&times;</button>

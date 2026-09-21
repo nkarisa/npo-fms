@@ -37,7 +37,7 @@ page is rendered in your browser and shows the same building blocks throughout:
 - **Stat cards** — a row of headline figures.
 - **Tabs** — status filters such as *All*, *Draft*, *Approved*.
 - **Tables** — the working list for each area, usually ten rows a page.
-- **Drawers** — side panels that slide in to show or edit one record.
+- **Drawers** — dialogs that open in the middle of the screen to show or edit one record.
 - **Modals** — centred dialogs for building a new record.
 - **Toasts** — brief confirmations after an action.
 
@@ -244,7 +244,7 @@ configuration changes, with **Open the full audit log →** linking to
 
 The board pack is a governance-level summary for the Board of Trustees.
 
-1. Click **Board pack** (top right). A drawer slides in from the right.
+1. Click **Board pack** (top right). A drawer opens in the middle of the screen.
 
 ![The Board pack drawer — headline cells, a numbered contents list, and matters for the board tagged In order or Attention](images/dashboard-board-pack.png)
 
@@ -433,7 +433,7 @@ The right-hand column gives you three at-a-glance cards.
 The close pack is the evidence bundle for the period — the statements and
 schedules an auditor or the board would expect.
 
-1. Click **Close pack** (top right). A drawer slides in from the right.
+1. Click **Close pack** (top right). A drawer opens in the middle of the screen.
 
 ![The Close pack drawer listing the eight documents with Ready / Outstanding status and the Print and Export PDF buttons](images/period-close-pack-drawer.png)
 

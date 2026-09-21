@@ -40,7 +40,7 @@ Common building blocks you will meet on most pages:
 - **Stat cards** — a row of headline figures (label, value, short note).
 - **Tabs** — status filters such as *All*, *Draft*, *Approved*.
 - **Tables** — the working list for each area, usually ten rows a page.
-- **Drawers** — side panels that slide in to show or edit one record.
+- **Drawers** — dialogs that open in the middle of the screen to show or edit one record.
 - **Modals** — centred dialogs for building a new record.
 - **Toasts** — brief confirmations after an action.
 
