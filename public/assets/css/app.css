@@ -1878,3 +1878,92 @@ select.st-cell { cursor: pointer; }
   .doc-toc { position: static; max-height: none; border-inline-start: none; border-bottom: 1px solid var(--border); padding: 0 0 12px; padding-inline-start: 0; margin-bottom: 8px; }
   .doc-toc-link { margin-inline-start: 0; padding-inline-start: 10px; }
 }
+
+/* ---- Signing in (views/auth.php) ---- */
+.auth-body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+.auth-wrap { max-width: 400px; margin: 0 auto; padding: 56px 16px 32px; display: flex; flex-direction: column; gap: 18px; }
+.auth-brand { display: flex; align-items: center; gap: 10px; }
+.auth-logo { max-height: 36px; max-width: 160px; }
+.auth-brand-text { display: flex; flex-direction: column; }
+.auth-brand-name { font-weight: 600; font-size: 15px; }
+.auth-brand-sub { font-size: 11px; color: var(--muted); }
+.auth-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 26px 26px 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 1px 2px rgba(13, 27, 24, .04); }
+.auth-title { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
+.auth-note { margin: 0; font-size: 12.5px; color: #55615B; line-height: 1.55; }
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth-field { display: flex; flex-direction: column; gap: 5px; }
+.auth-field > span { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+.auth-field input { border: 1px solid #DDDAD2; border-radius: 6px; padding: 9px 11px; font-size: 14px; font-family: inherit; color: var(--ink); background: #FFF; }
+.auth-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.auth-code { font-family: 'IBM Plex Mono', monospace; font-size: 18px !important; letter-spacing: .18em; }
+.auth-submit { padding: 10px 14px; font-size: 13px; }
+.auth-msg { margin: 0; font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 6px; background: var(--accent-wash); color: var(--accent-ink); }
+.auth-msg.error { background: #FBEFEC; color: var(--urgent); }
+.auth-msg.ok { background: var(--calm-wash); color: var(--calm-ink); }
+.auth-msg-slot:empty { display: none; }
+.auth-links { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.auth-link { background: none; border: 0; padding: 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: none; align-self: flex-start; }
+.auth-link:hover { text-decoration: underline; }
+.auth-foot { margin: 0; font-size: 11px; color: var(--faint); text-align: center; }
+
+/* ---- Second sign-in step: shared by signing in and My account (js/mfa.js) ---- */
+.mfa-choices { display: flex; flex-direction: column; gap: 8px; }
+.mfa-choice { text-align: start; border: 1px solid #DDDAD2; background: #FFF; border-radius: 8px; padding: 11px 13px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; font-family: inherit; }
+.mfa-choice:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-haze); }
+.mfa-choice:disabled { opacity: .55; cursor: not-allowed; }
+.mfa-choice-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.mfa-choice-title em { font-style: normal; font-weight: 500; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--calm-ink); background: var(--calm-tint); border-radius: 4px; padding: 1px 5px; margin-inline-start: 6px; }
+.mfa-choice-sub { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.mfa-steps { margin: 0; padding-inline-start: 18px; font-size: 12.5px; color: #3A4641; line-height: 1.55; display: flex; flex-direction: column; gap: 8px; }
+.mfa-qr { width: 176px; height: 176px; margin: 10px 0 4px; border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: #FFF; }
+.mfa-qr svg { width: 100%; height: 100%; display: block; }
+.mfa-manual { font-size: 11.5px; color: var(--muted); }
+.mfa-manual summary { cursor: pointer; color: var(--accent); }
+.mfa-key-row { display: flex; gap: 8px; margin-top: 6px; align-items: baseline; }
+.mfa-key-row > span { width: 56px; flex: none; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.mfa-key-row code { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--ink); word-break: break-all; }
+.mfa-key { font-size: 13px !important; letter-spacing: .04em; user-select: all; }
+.mfa-recovery { display: flex; flex-direction: column; gap: 12px; }
+.mfa-codes { margin: 0; padding: 12px 14px 12px 34px; background: #FAF9F6; border: 1px solid var(--border); border-radius: 8px; columns: 2; column-gap: 28px; }
+.mfa-codes li { font-size: 11px; color: var(--faint); padding: 2px 0; }
+.mfa-codes code { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: var(--ink); letter-spacing: .03em; }
+.mfa-code-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.mfa-saved { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+
+/* ---- My account (pages/account.js) ---- */
+.acct { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.acct .card-body { display: flex; flex-direction: column; gap: 12px; }
+.acct-id { display: flex; gap: 12px; align-items: center; }
+.acct-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--accent-tint); color: var(--accent-ink); display: grid; place-items: center; font-weight: 600; }
+.acct-row { display: flex; gap: 12px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #F4F2EE; }
+.acct-row:last-child { border-bottom: 0; }
+.acct-row > span:first-child { width: 132px; flex: none; color: var(--muted); }
+.acct-perms { display: flex; flex-wrap: wrap; gap: 5px; }
+.acct-perm { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; color: #3A4641; background: #FAF9F6; }
+.acct-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; }
+.acct-state.on { color: var(--calm-ink); }
+.acct-state.off { color: var(--urgent); }
+.acct-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 900px) { .acct { grid-template-columns: 1fr; } }
+
+/* ---- Settings → Users and Roles ---- */
+.st-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.st-chip { font-size: 10.5px; border: 1px solid var(--accent-line); background: var(--accent-wash); color: var(--accent-ink); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.st-chip.muted { border-color: var(--border); background: #FAF9F6; color: var(--muted); }
+.st-rowacts { display: flex; gap: 6px; justify-content: flex-end; }
+.st-rowacts .btn { padding: 4px 8px; font-size: 11px; }
+.st-access-row { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.st-access-head { display: flex; gap: 8px; align-items: center; }
+.st-access-head select { flex: 1; }
+.st-perm-group { display: flex; flex-direction: column; gap: 6px; }
+.st-perm-group > div:first-child { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+.st-perm { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.4; }
+.st-perm code { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--muted); }
+.st-role-card { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--card); }
+.st-role-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.st-role-name { font-size: 13px; font-weight: 600; }
+.st-role-meta { font-size: 11px; color: var(--muted); }
+.st-role-head .btn { margin-inline-start: auto; padding: 4px 9px; font-size: 11px; }
+.st-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.st-access-head select { flex: 1; border: 1px solid #DDDAD2; background: #FFF; border-radius: 6px; padding: 7px 10px; font-size: 12.5px; color: #28352F; font-family: inherit; min-width: 0; }
+.st-access-head select:disabled { background: #F6F5F1; color: #7A857F; }

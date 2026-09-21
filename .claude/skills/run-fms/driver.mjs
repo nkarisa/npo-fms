@@ -3,8 +3,11 @@
 //
 //   node driver.mjs [--port 8095] [--width 1440] step step ...
 //
-// Steps run in order in one browser page; the act-as cookie persists across them.
-//   as:<email>            act as this user (POST /api/me/act-as)
+// Steps run in order in one browser page; the session cookie persists across them.
+// Before the first step it signs in as the default user (w.kamau@elog.or.ke on
+// 8095, a.salim@cct.or.ke on 8096; --as <email> overrides, --as none starts signed out).
+//   as:<email>            sign in as this user (POST /api/auth/login with the demo password)
+//   logout                sign out
 //   goto:<path>           open a page, wait for its /api calls to settle
 //   click:<selector>      Playwright selector: `text=Approve and post`, `#id`, `role=button[name="Reject"]`
 //   fill:<selector>=<v>   type into an input
@@ -39,6 +42,9 @@ const opt = (name, dflt) => {
 const port = opt('port', process.env.PORT || '8095');
 const width = +opt('width', '1440');
 const base = `http://localhost:${port}`;
+// Every demo and skill-installed user has this password (OrganisationSeeder::DEMO_PASSWORD, install.json).
+const password = process.env.FMS_PASSWORD || 'elog-demo-password';
+const firstUser = opt('as', port === '8096' ? 'a.salim@cct.or.ke' : 'w.kamau@elog.or.ke');
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width, height: 900 }, baseURL: base });
@@ -56,19 +62,27 @@ const settle = async () => {
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 };
 
+// serve.sh exports auth_mfaRequired=optional, so a password alone completes the sign-in.
+const signIn = async (email) => {
+  const r = await page.request.post('/api/auth/login', { data: { email, password } });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok()) throw new Error(body.error || `sign-in ${r.status()}`);
+  if (body.stage !== 'done') throw new Error(`sign-in stopped at stage "${body.stage}" — start the server with serve.sh (it sets auth_mfaRequired=optional), or the user has a second step set up`);
+  console.log(`  signed in as ${body.user.name}`);
+};
+
 try {
+  if (firstUser !== 'none') {
+    console.log(`> as:${firstUser} (default)`);
+    await signIn(firstUser);
+  }
   for (const step of args) {
     const i = step.indexOf(':');
     const [cmd, arg] = i === -1 ? [step, ''] : [step.slice(0, i), step.slice(i + 1)];
     console.log(`> ${step}`);
     switch (cmd) {
-      case 'as': {
-        const r = await page.request.post('/api/me/act-as', { data: { email: arg } });
-        const body = await r.json();
-        if (!r.ok()) throw new Error(body.error || `act-as ${r.status()}`);
-        console.log(`  acting as ${body.me.name} (${body.me.role})`);
-        break;
-      }
+      case 'as': await signIn(arg); break;
+      case 'logout': await page.request.post('/api/auth/logout', { headers: { 'X-Requested-With': 'driver' } }); break;
       case 'goto': await page.goto(arg); await settle(); break;
       case 'click': await page.locator(arg).first().click(); await settle(); break;
       case 'fill': { const j = arg.lastIndexOf('='); await page.locator(arg.slice(0, j)).first().fill(arg.slice(j + 1)); break; }

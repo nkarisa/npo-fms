@@ -11,6 +11,7 @@ final class I18nTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use \Tests\Support\SignsIn;
 
     // The books are loaded into the test database once for this class.
     protected $namespace   = 'App';

@@ -11,5 +11,6 @@
     "codeLength": "4 digits",
     "firstYear": "2026",
     "userName": "Amina Salim",
-    "userEmail": "a.salim@cct.or.ke"
+    "userEmail": "a.salim@cct.or.ke",
+    "userPassword": "elog-demo-password"
 }

@@ -22,14 +22,26 @@ info:
     - **Money.** Display amounts are pre-formatted strings (for example
       `"1,234,567"` or `"—"`). Raw numeric amounts on record and row objects are
       numbers as stored.
-    - **Errors.** Errors use `{ "error": "<message>" }` with status `403`
-      (permission), `404` (not found) or `422` (validation / business-rule
-      violation). A `422` raised because an out-of-system authority is required
+    - **Errors.** Errors use `{ "error": "<message>" }` with status `401`
+      (not signed in), `403` (permission), `404` (not found), `409` (a sign-in
+      step out of order), `422` (validation / business-rule violation) or `429`
+      (too many sign-in attempts from one address). A `422` raised because an out-of-system authority is required
       also carries `"needsAuthority": true`.
-    - **Authorisation.** There is no bearer token. The acting user is resolved
-      from the `elog_actor` cookie (the "Act as" switch); `POST /me/act-as` sets
-      it. Permissions (prepare vs approve) follow the two-person rule, so an
-      action the acting role cannot take returns `403`.
+    - **Authentication.** A session cookie, set by signing in through `/auth/*`:
+      `POST /auth/login` with email and password, then a second factor at
+      `POST /auth/verify` (or enrolment at `/auth/enrol/*`, the first time),
+      until a response's `stage` is `done`. Every other endpoint answers `401`
+      with `{"error", "signIn": "/login"}` without a completed sign-in, or after
+      the idle timeout (30 minutes by default). There is no bearer token.
+    - **CSRF.** Any request other than `GET` must carry an `X-Requested-With`
+      header (any value), or it is refused with `403`. Browsers don't let another
+      site add it; the application's pages send it with every request.
+    - **Authorisation.** A user holds one or more roles, each at all entities or
+      at named ones, and may do whatever any of their roles permits. Permissions
+      are never granted to a user directly. Approvals also follow the two-person
+      rule, so an action the signed-in user cannot take returns `403`. On a
+      training instance with `auth.actAs` on, the `elog_actor` cookie
+      (`POST /me/act-as`) overrides who the signed-in user acts as.
 
   license:
     name: MIT
@@ -87,8 +99,14 @@ tags:
     description: The Safaricom short code the organisation collects and pays through.
   - name: Internationalisation
     description: Interface languages and translation requests.
+  - name: Sign in
+    description: Password, second factor (authenticator app or emailed code), enrolment, and invitation and reset links. Open without a session.
+  - name: Account
+    description: The signed-in user's own password, second factor and recovery codes.
+  - name: Roles and users
+    description: Roles and their permissions, and who holds which role where. Changes need `users.manage`.
   - name: Me
-    description: The acting user and the act-as switch.
+    description: The signed-in user, the menu, and (training instances only) the act-as switch.
   - name: Notifications
     description: The notifications feed.
   - name: Search
@@ -165,6 +183,52 @@ components:
         pages: { type: integer }
         pageSize: { type: integer, example: 10 }
 
+    SignInState:
+      type: object
+      description: |
+        Returned by every `/auth` endpoint (and merged into its errors). `stage` is
+        `signedOut`, `mfa` (password accepted, second factor due), `enrol` (password
+        accepted, a second factor must be set up first) or `done`.
+      properties:
+        stage: { type: string, enum: [signedOut, mfa, enrol, done] }
+        minLength: { type: integer, description: Minimum password length. }
+        message: { type: string }
+        error: { type: string }
+        pending: { type: string, nullable: true, enum: [totp, email], description: The method being set up, at `enrol`. }
+        user:
+          type: object
+          additionalProperties: true
+          description: |
+            At `mfa`/`enrol`: `name`, masked `email`, `method`, `required`, the
+            `methods` offered (`key`, `available`) and `recoveryLeft`. At `done`:
+            `name` and `email`.
+    Totp:
+      type: object
+      description: A new authenticator secret to scan. Held in the session until confirmed.
+      properties:
+        secret: { type: string, description: Base32. }
+        grouped: { type: string, description: The secret in groups of four, for typing. }
+        uri: { type: string, description: 'otpauth://totp/… for the QR code.' }
+        issuer: { type: string }
+        account: { type: string }
+    Role:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        builtIn: { type: boolean, description: Seeded roles keep their names and cannot be deleted. }
+        readOnly: { type: boolean, description: Holds only viewing permissions. }
+        permissions: { type: array, items: { type: string }, example: [ledger.view, journal.prepare] }
+        holders: { type: array, items: { type: string } }
+        activeHolders: { type: integer }
+    RoleInput:
+      type: object
+      required: [name, permissions]
+      properties:
+        name: { type: string, maxLength: 60 }
+        description: { type: string }
+        permissions: { type: array, items: { type: string }, description: Permission keys from the catalogue. }
     Message:
       type: object
       description: A write acknowledgement plus the refreshed view of the resource.
@@ -287,6 +351,20 @@ components:
               cr: { type: number }
 
   responses:
+    Unauthorised:
+      description: Not signed in, or the session has timed out.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+              signIn: { type: string, example: /login }
+    SignInState:
+      description: Where this browser is in signing in.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SignInState' }
     Forbidden:
       description: The acting role cannot perform this action.
       content:
@@ -3918,7 +3996,7 @@ paths:
     post:
       tags: [Settings]
       summary: Invite a user
-      description: Finance Manager only.
+      description: Needs `users.manage`. Emails a link to choose a password, which works for seven days.
       requestBody:
         required: true
         content:
@@ -3928,9 +4006,9 @@ paths:
               properties:
                 name: { type: string }
                 email: { type: string, format: email }
-                role: { type: string }
+                roles: { type: array, items: { type: string }, description: One or more role names. `role` (one name) is also accepted. }
                 entities:
-                  description: '"all" or an array of entity codes.'
+                  description: '"all" or an array of entity codes. Every role is held at these.'
                   oneOf:
                     - type: string
                     - type: array
@@ -3941,6 +4019,464 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  # ------------------------------------------------------------------ Sign in
+  /auth:
+    get:
+      tags: [Sign in]
+      summary: Where this browser is in signing in
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+
+  /auth/login:
+    post:
+      tags: [Sign in]
+      summary: Email and password
+      description: |
+        Starts a sign-in. The next `stage` is `done`, `mfa` (an emailed code is sent
+        straight away if that is the user's method) or `enrol`. A wrong password
+        gets the same refusal whether or not the email has an account; five in a
+        row lock the account for 15 minutes. Limited to ten a minute per address.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+        '422': { $ref: '#/components/responses/SignInState' }
+        '429':
+          description: Too many attempts from this address. Wait a minute.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/verify:
+    post:
+      tags: [Sign in]
+      summary: The second factor
+      description: |
+        At `stage: mfa`. A six-digit code from the authenticator app or email, or a
+        recovery code (`abcde-fghjk`, used once). Five wrong codes end the sign-in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: '123 456' }
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+        '409': { $ref: '#/components/responses/SignInState' }
+        '422': { $ref: '#/components/responses/SignInState' }
+
+  /auth/code:
+    post:
+      tags: [Sign in]
+      summary: Email a new sign-in code
+      description: At `mfa` for an email user, or while setting up email at `enrol`. At most one every 30 seconds.
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+        '409': { $ref: '#/components/responses/SignInState' }
+        '422': { $ref: '#/components/responses/SignInState' }
+
+  /auth/enrol/start:
+    post:
+      tags: [Sign in]
+      summary: Start setting up a second factor
+      description: 'At `stage: enrol`. `totp` returns a secret to scan (needs `encryption.key`); `email` sends a code.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: { type: string, enum: [totp, email] }
+      responses:
+        '200':
+          description: The secret, or confirmation a code was sent, with the sign-in state.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SignInState'
+                  - type: object
+                    properties:
+                      totp: { $ref: '#/components/schemas/Totp' }
+        '409': { $ref: '#/components/responses/SignInState' }
+        '422': { $ref: '#/components/responses/SignInState' }
+
+  /auth/enrol/confirm:
+    post:
+      tags: [Sign in]
+      summary: Confirm the factor being set up
+      description: Completes the sign-in and returns the recovery codes. They are shown only this once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SignInState'
+                  - type: object
+                    properties:
+                      recoveryCodes: { type: array, items: { type: string } }
+        '409': { $ref: '#/components/responses/SignInState' }
+        '422': { $ref: '#/components/responses/SignInState' }
+
+  /auth/logout:
+    post:
+      tags: [Sign in]
+      summary: Sign out
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+
+  /auth/forgot:
+    post:
+      tags: [Sign in]
+      summary: Email a password-reset link
+      description: Answers the same whether or not the address has an account. The link works for an hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+
+  /auth/{purpose}:
+    parameters:
+      - name: purpose
+        in: path
+        required: true
+        schema: { type: string, enum: [invite, reset] }
+    get:
+      tags: [Sign in]
+      summary: Check an invitation or reset link
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Whose link it is.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  link:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      email: { type: string }
+                      purpose: { type: string }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [Sign in]
+      summary: Choose a password with an invitation or reset link
+      description: Uses the link up and begins a sign-in, which continues at `mfa` or `enrol` as the user's settings require.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, format: password, minLength: 12 }
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+        '422': { $ref: '#/components/responses/SignInState' }
+
+  # ------------------------------------------------------------------ Account
+  /account:
+    get:
+      tags: [Account]
+      summary: The signed-in user's account page
+      responses:
+        '200':
+          description: The user, the roles they hold and where, their combined permissions, second-factor state and recent sign-ins.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  me: { type: object, additionalProperties: true }
+                  access:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        role: { type: string }
+                        entities: { type: string, example: All entities }
+                  permissions: { type: array, items: { type: string } }
+                  mfa: { type: object, additionalProperties: true }
+                  activity:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        when: { type: string }
+                        what: { type: string }
+                        from: { type: string }
+                  minLength: { type: integer }
+                  locale: { $ref: '#/components/schemas/Locale' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+
+  /account/password:
+    post:
+      tags: [Account]
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current, password]
+              properties:
+                current: { type: string, format: password }
+                password: { type: string, format: password, minLength: 12 }
+      responses:
+        '200': { description: The account page with a message. }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /account/mfa/start:
+    post:
+      tags: [Account]
+      summary: Start setting up or switching the second factor
+      description: Needs the current password. Returns a `totp` secret to scan, or sends an emailed code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, method]
+              properties:
+                password: { type: string, format: password }
+                method: { type: string, enum: [totp, email] }
+      responses:
+        '200':
+          description: The secret or a message.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totp: { $ref: '#/components/schemas/Totp' }
+                  message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /account/mfa/confirm:
+    post:
+      tags: [Account]
+      summary: Confirm the new second factor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200': { description: The account page with a message and `recoveryCodes`. }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /account/mfa/remove:
+    post:
+      tags: [Account]
+      summary: Turn the second factor off
+      description: Needs the current password. Refused where the instance requires a second factor of this user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password }
+      responses:
+        '200': { description: The account page with a message. }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /account/recovery-codes:
+    post:
+      tags: [Account]
+      summary: Issue new recovery codes
+      description: Needs the current password. The old codes stop working.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password }
+      responses:
+        '200': { description: The account page with a message and `recoveryCodes`. }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  # ----------------------------------------------------------- Roles and users
+  /roles:
+    get:
+      tags: [Roles and users]
+      summary: The roles, the permission catalogue, and who holds each role
+      responses:
+        '200':
+          description: Roles and catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles: { type: array, items: { $ref: '#/components/schemas/Role' } }
+                  catalogue:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        label: { type: string }
+                        group: { type: string }
+                  canManage: { type: boolean }
+                  locale: { $ref: '#/components/schemas/Locale' }
+        '401': { $ref: '#/components/responses/Unauthorised' }
+    post:
+      tags: [Roles and users]
+      summary: Add a role
+      description: There is no limit on how many. Names are unique, ignoring case.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleInput' }
+      responses:
+        '200': { description: The roles with a message. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /roles/{id}:
+    post:
+      tags: [Roles and users]
+      summary: Change a role's name, description or permissions
+      description: |
+        Applies at once to everyone holding it. A built-in role keeps its name.
+        Refused if it would leave nobody active who can manage users.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RoleInput' }
+      responses:
+        '200': { description: The roles with a message. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /roles/{id}/delete:
+    post:
+      tags: [Roles and users]
+      summary: Delete a role
+      description: Refused for built-in roles, and for a role anyone holds or an approval rule or translation lock names.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: The roles with a message. }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /users/{id}/access:
+    post:
+      tags: [Roles and users]
+      summary: Set every role a user holds, and where
+      description: |
+        Replaces the user's roles. At least one is required. Refused if it would
+        leave nobody active who can manage users.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [access]
+              properties:
+                access:
+                  type: array
+                  items:
+                    type: object
+                    required: [role]
+                    properties:
+                      role: { type: string }
+                      entities:
+                        description: '"all" (the default) or an array of entity codes.'
+                        oneOf:
+                          - type: string
+                          - type: array
+                            items: { type: string }
+            example:
+              access:
+                - { role: Accountant, entities: all }
+                - { role: Payroll Reviewer, entities: [ELOG-NS] }
+      responses:
+        '200': { description: 'The users, roles and audit with a message.' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /users/{id}/{action}:
+    post:
+      tags: [Roles and users]
+      summary: Suspend, reinstate, email a set-password link, or reset the second factor
+      description: |
+        - `suspend`: signs them out and stops them signing in. Not yourself.
+        - `reinstate`
+        - `invite`: emails a new link to choose a password, to someone who has none yet. Earlier links stop working.
+        - `reset-mfa`: removes a lost second factor; they set up a new one at their next sign-in.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: action, in: path, required: true, schema: { type: string, enum: [suspend, reinstate, invite, reset-mfa] } }
+      responses:
+        '200': { description: 'The users, roles and audit with a message.' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
@@ -4172,10 +4708,10 @@ paths:
   /me:
     get:
       tags: [Me]
-      summary: The acting user and the act-as list
+      summary: The signed-in user and the menu
       responses:
         '200':
-          description: The current actor, the actors that can be switched to, and the menu.
+          description: The current user and the menu. `actors`, the people who can be acted as, only when `auth.actAs` is on.
           content:
             application/json:
               schema:
@@ -4191,8 +4727,8 @@ paths:
   /me/act-as:
     post:
       tags: [Me]
-      summary: Switch the acting user
-      description: Sets the `elog_actor` cookie for 30 days.
+      summary: Switch the acting user (training instances only)
+      description: Sets the `elog_actor` cookie for 30 days. Refused with `403` unless `auth.actAs` is on.
       requestBody:
         required: true
         content:

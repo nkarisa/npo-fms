@@ -20,6 +20,7 @@ final class StatementImportTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use \Tests\Support\SignsIn;
 
     protected $namespace = 'App';
     protected $refresh   = true;

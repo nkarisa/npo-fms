@@ -3,6 +3,7 @@
 namespace App\Libraries;
 
 use App\Database\Seeds\BaselineSeeder;
+use App\Repositories\AuthRepository;
 use App\Repositories\Repository;
 use App\Repositories\RuleViolation;
 use CodeIgniter\Database\BaseConnection;
@@ -20,7 +21,12 @@ use CodeIgniter\Database\BaseConnection;
  * What is written here is the smallest set that lets the ledger be posted to at
  * all: a journal needs an entity, an open period inside a fiscal year, and a
  * preparer; approving one needs a second person and an approval rule. The first
- * user therefore holds settings.manage and can invite that second person.
+ * user therefore holds settings.manage and users.manage, and can invite that
+ * second person.
+ *
+ * The first user's password comes from the answers file (userPassword) for an
+ * unattended install, or is chosen in the browser from a one-time link the install
+ * prints — never typed at an interactive prompt, where it would echo.
  *
  * It runs once. An instance that already has an entity is refused rather than
  * added to, because a second head office would break the consolidation every
@@ -65,7 +71,8 @@ final class Installer
             'codeLength'     => ['Account code length', 'One of ' . implode(', ', \App\Repositories\SettingsRepository::CODE_LENGTHS), '4 digits'],
             'firstYear'      => ['First financial year to keep', 'The year the ledger starts; its months are created open', (string) date('Y')],
             'userName'       => ['Your full name', 'The first user, who holds the Finance Manager role', null],
-            'userEmail'      => ['Your email address', 'How you are identified; there is no password yet', null],
+            'userEmail'      => ['Your email address', 'What you sign in with', null],
+            'userPassword'   => ['Your password', 'Answers file only. Left blank, the install prints a one-time link to choose it in the browser', ''],
         ];
     }
 
@@ -89,7 +96,7 @@ final class Installer
      * and the first user, in one transaction.
      *
      * @param array<string, string> $answers keyed as questions()
-     * @return array{entity: string, year: string, periods: int, user: string, role: string}
+     * @return array{entity: string, year: string, periods: int, user: string, role: string, link: string|null}
      */
     public function install(array $answers): array
     {
@@ -132,6 +139,7 @@ final class Installer
         }
 
         Repository::forget();
+        $link = $in['userPassword'] === '' ? (new AuthRepository($this->db))->setPasswordLink($userId) : null;
 
         return [
             'entity' => $in['entityCode'] . ' · ' . $in['entityName'],
@@ -139,6 +147,8 @@ final class Installer
             'periods' => count($periods),
             'user'   => $in['userName'] . ' <' . $in['userEmail'] . '>',
             'role'   => self::FIRST_ROLE,
+            // Where the first user chooses a password, when the answers did not give one.
+            'link'   => $link,
         ];
     }
 
@@ -189,6 +199,9 @@ final class Installer
         }
         if (!str_contains(trim($in['userName']), ' ')) {
             throw new RuleViolation('Give the first user\'s full name, so the ledger can show who prepared and who approved each entry.');
+        }
+        if ($in['userPassword'] !== '') {
+            (new AuthRepository($this->db))->assertStrong($in['userPassword'], ['email' => $in['userEmail']]);
         }
 
         if (preg_match('/^\d{4}$/', $in['firstYear']) !== 1) {
@@ -291,6 +304,8 @@ final class Installer
             'short_name' => mb_substr($first, 0, 1) . '. ' . $last,
             'initials' => mb_strtoupper(mb_substr($first, 0, 1) . mb_substr($last, 0, 1)),
             'locale_id' => $localeId, 'status' => 'active', 'created_at' => $now,
+            'password_hash' => $in['userPassword'] === '' ? null : password_hash($in['userPassword'], PASSWORD_DEFAULT),
+            'password_changed_at' => $in['userPassword'] === '' ? null : $now,
         ]);
         $this->insert('user_entity_roles', [
             'user_id' => $userId, 'entity_id' => $entityId, 'role_id' => $this->roleId(self::FIRST_ROLE), 'created_at' => $now,

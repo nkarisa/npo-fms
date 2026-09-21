@@ -12,7 +12,7 @@
 #
 # DATA=demo (default) seeds the ELOG demonstration organisation, port 8095.
 # DATA=blank is a brand-new instance: BaselineSeeder + `spark install` with
-#   install.json (Coast Community Trust, acting as a.salim@cct.or.ke), port 8096.
+#   install.json (Coast Community Trust, a.salim@cct.or.ke), port 8096.
 # PORT and PHP_BIN (default /opt/homebrew/bin/php, else php) override.
 
 set -euo pipefail
@@ -42,6 +42,9 @@ mkdir -p "$DIR"
 # group instead. Tables get its `db_` prefix.
 export database_defaultGroup=tests
 export database_tests_database="$DB"
+# Sign-in needs only the password here, so the driver and curl can sign in
+# without an authenticator. Config\Auth::$mfaRequired defaults to 'all'.
+export auth_mfaRequired="${auth_mfaRequired:-optional}" # auth_mfaRequired=all serve.sh up, to try the second step
 
 spark() {
   # `spark migrate` ignores defaultGroup and uses `default` (MySQL) unless told.
@@ -81,10 +84,10 @@ up() {
   echo $! >"$PIDFILE"
   echo "$PORT" >"$PORTFILE"
   for _ in $(seq 1 50); do
-    curl -sf -o /dev/null "http://localhost:$PORT/api/me" && break
+    curl -sf -o /dev/null "http://localhost:$PORT/api/auth" && break
     sleep 0.2
   done
-  curl -sf -o /dev/null "http://localhost:$PORT/api/me" || { echo "Server did not come up; see $LOG" >&2; exit 1; }
+  curl -sf -o /dev/null "http://localhost:$PORT/api/auth" || { echo "Server did not come up; see $LOG" >&2; exit 1; }
   echo "Up: $(url) (pid $(cat "$PIDFILE"), db $DB)"
 }
 

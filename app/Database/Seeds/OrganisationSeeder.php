@@ -21,6 +21,16 @@ use CodeIgniter\Database\Seeder;
  */
 class OrganisationSeeder extends Seeder
 {
+    /**
+     * Every active demonstration user signs in with this password, and has no
+     * second step until they set one up — the demonstration instance runs with
+     * auth.mfaRequired = optional. It is published in docs/setup.md: this data is
+     * for looking at, never for real books.
+     */
+    public const DEMO_PASSWORD = 'elog-demo-password';
+
+    private static ?string $demoHash = null;
+
     /** Entity codes, and the word each is referred to by in user access ("Secretariat, Coast"). */
     private const ENTITIES = [
         'ELOG National Secretariat'    => ['code' => 'ELOG-NS', 'word' => 'Secretariat'],
@@ -178,6 +188,8 @@ class OrganisationSeeder extends Seeder
                 'email' => $u['email'], 'name' => $u['name'], 'short_name' => $short, 'initials' => $initials,
                 'locale_id' => $ctx->require('locales', 'en-GB'), 'status' => strtolower($u['status']),
                 'last_sign_in_at' => $signedInAt, 'last_sign_in_from' => $from, 'created_at' => $now,
+                // Invited people have not chosen a password yet. Hashed once: the tests seed for every test.
+                'password_hash' => strtolower($u['status']) === 'invited' ? null : (self::$demoHash ??= password_hash(self::DEMO_PASSWORD, PASSWORD_DEFAULT)),
             ]);
 
             $ctx->remember('users', mb_strtolower($short), $id);

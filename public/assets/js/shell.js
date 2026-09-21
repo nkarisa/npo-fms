@@ -210,9 +210,11 @@
         <div class="tb-user-id">
           <div class="tb-user-name">${UI.esc(me.name)}</div>
           <div class="tb-user-email">${UI.esc(me.email)}</div>
-          <div class="tb-user-role">${UI.esc(me.role)}</div>
+          <div class="tb-user-role">${UI.esc((me.roles && me.roles.length ? me.roles : [me.role]).join(' · '))}</div>
+          ${data.signedInAs ? `<div class="tb-menu-sub">Acting as — signed in as ${UI.esc(data.signedInAs)}</div>` : ''}
         </div>
       </div>
+      ${data.actAs ? `
       <div class="tb-actas">
         <div class="tb-menu-label">Act as</div>
         <div class="tb-menu-sub">${UI.esc(data.note)}</div>
@@ -220,9 +222,9 @@
           <button type="button" class="tb-actor ${a.current ? 'is-current' : ''}" data-email="${UI.esc(a.email)}">
             <span class="tb-actor-dot">${UI.esc(a.initials)}</span>
             <span class="tb-actor-names"><span class="tb-actor-short">${UI.esc(a.short)}</span><span class="tb-actor-role">${UI.esc(a.role)}</span></span>
-            <span class="tb-actor-right">${a.current ? 'Signed in' : a.canApprove ? 'Approves' : a.canPrepare ? 'Prepares' : 'Read only'}</span>
+            <span class="tb-actor-right">${a.current ? 'Acting' : a.canApprove ? 'Approves' : a.canPrepare ? 'Prepares' : 'Read only'}</span>
           </button>`).join('')}
-      </div>
+      </div>` : ''}
       <div class="tb-menu-list">
         ${data.menu.map((m) => (m.href
           ? `<a class="tb-menu-item" href="${UI.esc(m.href)}"><span class="tb-menu-icon">${UI.esc(m.icon)}</span>${UI.esc(m.label)}</a>`
@@ -237,15 +239,16 @@
       await UI.postJSON('/api/me/act-as', { email: b.dataset.email });
       window.location.reload();
     }));
-    // No profile, entity switching or help pages exist yet — say so plainly
+    // Entity switching does not exist yet — say so plainly
     // rather than opening a dead end.
     menu.querySelectorAll('[data-soon]').forEach((b) => b.addEventListener('click', () => {
       closeMenus();
       UI.toast(`${b.dataset.soon} is not built yet.`);
     }));
-    menu.querySelector('#sign-out').addEventListener('click', () => {
+    menu.querySelector('#sign-out').addEventListener('click', async () => {
       closeMenus();
-      UI.toast('Sign-in is not built yet, so there is no session to end.');
+      try { await UI.postJSON('/api/auth/logout', {}); } catch (e) { /* signed out either way */ }
+      window.location.href = '/login';
     });
   }));
 

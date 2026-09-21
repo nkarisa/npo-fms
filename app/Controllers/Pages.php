@@ -2,6 +2,8 @@
 
 namespace App\Controllers;
 
+use App\Libraries\SignIn;
+
 /**
  * Renders the ELOG shell for each functional area. Each view fetches its own
  * data from the /api/* endpoints (see App\Controllers\Api) which serve the
@@ -180,5 +182,39 @@ class Pages extends BaseController
     public function userManual()
     {
         return $this->render('pages/user_manual', 'manual', 'user_manual', 'User manual', 'Insight');
+    }
+
+    /** My account: password, second sign-in step, roles held. */
+    public function account()
+    {
+        return $this->render('pages/account', 'account', 'account', 'My account', 'Account');
+    }
+
+    // ---- Signing in: outside the shell, and open without a session ----
+
+    public function login()
+    {
+        // Already signed in: go where the sign-in would have taken them.
+        if (SignIn::signedIn() && !SignIn::expired()) {
+            return $this->response->setStatusCode(302)->setHeader('Location', self::next((string) $this->request->getGet('next')));
+        }
+
+        return view('auth', ['mode' => 'login', 'title' => 'Sign in', 'next' => self::next((string) $this->request->getGet('next'))]);
+    }
+
+    public function acceptInvite()
+    {
+        return view('auth', ['mode' => 'invite', 'title' => 'Set up your account', 'next' => '/']);
+    }
+
+    public function resetPassword()
+    {
+        return view('auth', ['mode' => 'reset', 'title' => 'Reset your password', 'next' => '/']);
+    }
+
+    /** Where to go after signing in — only ever a path on this site, never another host. */
+    private static function next(string $next): string
+    {
+        return preg_match('#^/(?![/\\\\])[^\s]*$#', $next) === 1 ? $next : '/';
     }
 }

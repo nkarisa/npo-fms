@@ -46,11 +46,17 @@ final class UserRepository extends Repository
                 $canApprove = in_array('journal.approve', $permissions, true);
 
                 $out[] = [
+                    'id'         => $id,
                     'email'      => $u['email'],
                     'name'       => $u['name'],
                     'short'      => $u['short_name'],
                     'initials'   => $u['initials'],
                     'role'       => $role,
+                    // Every role held; `role` is the one named on approvals and in messages.
+                    'roles'      => array_column($this->rows(
+                        'SELECT DISTINCT r.id, r.name FROM {user_entity_roles} ur JOIN {roles} r ON r.id = ur.role_id WHERE ur.user_id = ? ORDER BY r.id',
+                        [$id]
+                    ), 'name'),
                     'entities'   => count($entities) === $entityCount ? 'All entities (' . $entityCount . ')' : implode(', ', array_map([self::class, 'entityWord'], $entities)),
                     'rights'     => match (true) {
                         $canPrepare && $canApprove => 'Prepare, approve and post',
@@ -71,6 +77,18 @@ final class UserRepository extends Repository
 
             return $out;
         });
+    }
+
+    /** An active user with a role, by id — who a signed-in session is. */
+    public function actorById(int $id): ?array
+    {
+        foreach ($this->actors() as $a) {
+            if ($a['id'] === $id) {
+                return $a;
+            }
+        }
+
+        return null;
     }
 
     public function actor(string $email): ?array

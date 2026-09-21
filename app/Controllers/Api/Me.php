@@ -3,15 +3,16 @@
 namespace App\Controllers\Api;
 
 use App\Repositories\UserRepository;
+use Config\Auth;
 
 /**
  * Who is signed in, for the user menu.
  *
- * There is no authentication yet, so "Act as" stands in for it the way the
- * prototype uses it: it lets one person walk an entry through preparation and
+ * On a training or demonstration instance (auth.actAs in .env), the menu also
+ * offers "Act as": it lets one person walk an entry through preparation and
  * approval as different people, which is the only way to exercise segregation of
- * duties without real accounts. It is a testing aid and says so — nothing here is
- * an access control.
+ * duties with one pair of hands. What is done is recorded against the person
+ * acted as. Everywhere else the list is not served and switching is refused.
  */
 class Me extends BaseApiController
 {
@@ -19,25 +20,32 @@ class Me extends BaseApiController
 
     public function index()
     {
-        $actors  = (new UserRepository())->actors();
+        $actAs   = config(Auth::class)->actAs;
         $current = $this->actor();
+        $self    = $this->signedInUser();
 
         return $this->json([
             'me'     => $current,
-            'actors' => array_map(static fn ($a) => $a + ['current' => $a['email'] === $current['email']], $actors),
+            'signedInAs' => $self === null || $self['email'] === $current['email'] ? null : $self['name'],
+            'actAs'  => $actAs,
+            'actors' => $actAs ? array_map(static fn ($a) => $a + ['current' => $a['email'] === $current['email']], (new UserRepository())->actors()) : [],
             'menu'   => [
-                ['icon' => '◍', 'label' => 'My profile'],
+                ['icon' => '◍', 'label' => 'My account', 'href' => '/account'],
                 ['icon' => '⚙', 'label' => 'Preferences', 'href' => '/settings'],
                 ['icon' => '⌘', 'label' => 'Switch entity'],
                 ['icon' => '?', 'label' => 'User manual', 'href' => '/user-manual'],
             ],
-            'note'   => 'Walk an entry through preparation and approval as different people.',
+            'note'   => 'Training instance: walk an entry through preparation and approval as different people.',
         ]);
     }
 
-    /** Switches the acting user. Testing aid only — see the class docblock. */
+    /** Switches the acting user, on a training instance only. */
     public function actAs()
     {
+        if (!config(Auth::class)->actAs) {
+            return $this->denied('Acting as someone else is only available on a training instance. Sign in as that person instead.');
+        }
+
         $body  = $this->request->getJSON(true) ?? [];
         $email = (string) ($body['email'] ?? '');
 

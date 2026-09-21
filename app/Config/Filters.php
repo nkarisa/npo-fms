@@ -12,6 +12,7 @@ use CodeIgniter\Filters\InvalidChars;
 use CodeIgniter\Filters\PageCache;
 use CodeIgniter\Filters\PerformanceMetrics;
 use CodeIgniter\Filters\SecureHeaders;
+use App\Filters\SignedIn;
 
 class Filters extends BaseFilters
 {
@@ -34,6 +35,7 @@ class Filters extends BaseFilters
         'forcehttps'    => ForceHTTPS::class,
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
+        'signedin'      => SignedIn::class,
     ];
 
     /**
@@ -72,6 +74,10 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
+            // Everything is behind a sign-in except the screens that do the signing in.
+            'signedin' => ['except' => [
+                'login', 'accept-invite', 'reset-password', 'api/auth', 'api/auth/*',
+            ]],
             // 'honeypot',
             // 'csrf',
             // 'invalidchars',

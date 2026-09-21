@@ -4,12 +4,14 @@ namespace App\Controllers\Api;
 
 use App\Controllers\BaseController;
 use App\Libraries\I18n;
+use App\Libraries\SignIn;
 use App\Repositories\Lookups;
 use App\Repositories\AuthorityRequired;
 use App\Repositories\RuleViolation;
 use App\Repositories\UserRepository;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
+use Config\Auth;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -33,27 +35,43 @@ abstract class BaseApiController extends BaseController
     }
 
     /**
-     * The acting user. There is no authentication yet; "Act as" in the user menu
-     * sets this cookie so one person can play preparer and approver in turn.
+     * The acting user: whoever is signed in. The SignedIn filter has already turned
+     * away any request without a completed sign-in.
      *
-     * With no cookie the instance falls back to whoever can change settings — on a
-     * freshly installed instance that is the only person there is.
+     * On a training instance (auth.actAs), "Act as" in the user menu sets a cookie
+     * naming someone else, so one person can play preparer and approver in turn.
      */
     protected function actor(): array
     {
         $users = new UserRepository();
-        $email = $this->request->getCookie('elog_actor');
+        $self = $this->signedInUser()
+            ?? throw new \RuntimeException('No one is signed in. The SignedIn filter should have refused this request.');
 
-        return ($email ? $users->actor($email) : null) ?? $users->actor($this->defaultActor()) ?? $users->actors()[0];
+        if (config(Auth::class)->actAs && ($email = $this->request->getCookie('elog_actor'))) {
+            return $users->actor($email) ?? $self;
+        }
+
+        return $self;
     }
 
-    /** The first active user who can change settings, whatever this organisation calls them. */
-    private function defaultActor(): string
+    /** The person actually signed in, whoever they are acting as. */
+    protected function signedInUser(): ?array
     {
-        $lookups = new Lookups();
-        $manager = $lookups->settingsManagerId();
+        $id = SignIn::userId();
 
-        return $manager === null ? '' : (string) ($lookups->users()[$manager]['email'] ?? '');
+        return $id === null ? null : (new UserRepository())->actorById($id);
+    }
+
+    /** Whether the acting user holds a permission through any of their roles. */
+    protected function can(string $permission): bool
+    {
+        return in_array($permission, $this->actor()['permissions'] ?? [], true);
+    }
+
+    /** A 403 in the refusal's own words. */
+    protected function denied(string $message)
+    {
+        return $this->response->setStatusCode(403)->setJSON(['error' => $message]);
     }
 
     /** The acting user's id, for recording who did what. */

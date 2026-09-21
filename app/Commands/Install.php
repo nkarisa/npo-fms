@@ -88,6 +88,13 @@ class Install extends BaseCommand
             CLI::write('  ' . str_pad($label, 16) . $value);
         }
 
+        if ($done['link'] !== null) {
+            CLI::newLine();
+            CLI::write('Choose your password here (the link works once, for seven days):', 'yellow');
+            CLI::write('  ' . $done['link']);
+            CLI::write('  ' . CLI::color('Lost it? `php spark user:link ' . explode('<', rtrim($done['user'], '>'))[1] . '` prints a new one.', 'dark_gray'));
+        }
+
         CLI::newLine();
         CLI::write('Next:', 'yellow');
         foreach (Installer::nextSteps() as $i => $step) {
@@ -110,6 +117,10 @@ class Install extends BaseCommand
 
         $answers = [];
         foreach (Installer::questions() as $key => [$prompt, $note, $default]) {
+            // A password typed here would echo; the install prints a link to choose it instead.
+            if ($key === 'userPassword') {
+                continue;
+            }
             CLI::write('  ' . CLI::color($note, 'dark_gray'));
             $answers[$key] = $default === null
                 ? CLI::prompt($prompt, null, 'required')

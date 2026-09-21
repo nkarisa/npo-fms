@@ -22,6 +22,7 @@ final class SettingsTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use \Tests\Support\SignsIn;
 
     protected $namespace = 'App';
     protected $refresh   = true;
@@ -46,7 +47,7 @@ final class SettingsTest extends CIUnitTestCase
     {
         $s = $this->api('api/settings');
 
-        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Approvals', 'Bank statements', 'Opening balances', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Audit log'], array_column($s['sections'], 'key'));
+        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Approvals', 'Bank statements', 'Opening balances', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Roles', 'Audit log'], array_column($s['sections'], 'key'));
         $this->assertTrue($s['canManage']);
         $this->assertSame(['registeredName' => 'Elections Observation Group', 'shortName' => 'ELOG', 'taxPin' => 'P051290384H', 'ngoReg' => 'OP/218/051/2010/0142'], $s['organisation']);
         $this->assertSame(['framework' => 'IFRS', 'currency' => 'KES', 'yearEnd' => '31 December', 'codeLength' => '4 digits'], $s['ledger']);

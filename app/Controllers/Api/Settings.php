@@ -5,6 +5,8 @@ namespace App\Controllers\Api;
 use App\Libraries\Brand;
 use App\Libraries\I18n as I18nLib;
 use App\Libraries\Theme;
+use App\Repositories\AuthRepository;
+use App\Repositories\RoleRepository;
 use App\Repositories\RuleViolation;
 use App\Repositories\SettingsRepository;
 
@@ -20,7 +22,8 @@ use App\Repositories\SettingsRepository;
  * browser. Carrying opening balances from a legacy system (Api\Conversion) reads a
  * file rather than a draft, and writes a journal for approval rather than settings.
  * "Language and translation" is served in detail by Api\I18n. Only a user holding
- * settings.manage (the Finance Manager) can save; everyone else can look.
+ * settings.manage (the Finance Manager) can save; everyone else can look. Users and
+ * roles are users.manage, and save as they are made (Api\Users, Api\Roles).
  */
 class Settings extends BaseApiController
 {
@@ -38,6 +41,7 @@ class Settings extends BaseApiController
         ['label' => 'Appearance', 'icon' => '◐'],
         ['label' => 'Language and translation', 'icon' => '⌾'],
         ['label' => 'Users', 'icon' => '◉'],
+        ['label' => 'Roles', 'icon' => '◎'],
         ['label' => 'Audit log', 'icon' => '◷'],
     ];
 
@@ -72,25 +76,32 @@ class Settings extends BaseApiController
         ] + $this->payload(new SettingsRepository()));
     }
 
-    /** Body: {name, email, role, entities: 'all' | [entity codes]}. */
+    /**
+     * Body: {name, email, roles: [role names] (or role: one name), entities: 'all' | [entity codes]}.
+     * Creates the account and emails the link to choose a password.
+     */
     public function invite()
     {
-        if ($refusal = $this->cannotManage()) {
-            return $refusal;
+        if (!$this->can('users.manage')) {
+            return $this->denied($this->actor()['role'] . ' cannot invite users. That needs a role with users.manage — every change is recorded in the audit log.');
         }
 
         $body = $this->request->getJSON(true) ?? [];
         try {
             $user = (new SettingsRepository())->invite(
-                (string) ($body['name'] ?? ''), (string) ($body['email'] ?? ''), (string) ($body['role'] ?? ''),
+                (string) ($body['name'] ?? ''), (string) ($body['email'] ?? ''), array_map('strval', (array) ($body['roles'] ?? $body['role'] ?? [])),
                 ($body['entities'] ?? 'all') === 'all' ? 'all' : array_map('strval', (array) $body['entities']), $this->actorId()
             );
+            $sent = (new AuthRepository())->invite($user['id'], $this->actorId());
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }
 
         return $this->json([
-            'message' => 'Invitation sent to ' . $user['email'] . '. It expires after seven days; they appear as Invited until they accept.',
+            'message' => $sent
+                ? 'Invitation sent to ' . $user['email'] . '. It expires after seven days; they appear as Invited until they accept.'
+                : 'The account for ' . $user['email'] . ' is created, but the invitation could not be emailed. Send it again from their row once mail is set up'
+                    . (ENVIRONMENT === 'production' ? '.' : ' — for now the link is in the application log, writable/logs.'),
         ] + $this->payload(new SettingsRepository()));
     }
 
@@ -190,6 +201,8 @@ class Settings extends BaseApiController
             // The key is what the screen switches on; the label is translated for display.
             'sections'     => array_map(static fn ($s) => ['key' => $s['label']] + $s, self::SECTIONS),
             'canManage'    => in_array('settings.manage', $this->actor()['permissions'] ?? [], true),
+            'canManageUsers' => $this->can('users.manage'),
+            'me'           => $this->actor()['email'],
             'organisation' => $settings->organisation(),
             'entities'     => $settings->entities(),
             'funds'        => $settings->funds(),
@@ -213,6 +226,8 @@ class Settings extends BaseApiController
             'benefits'     => $settings->benefits(),
             'grades'       => $settings->grades(),
             'roles'        => $settings->roles(),
+            'roleDetail'   => (new RoleRepository())->roles(),
+            'permissionCatalogue' => (new RoleRepository())->catalogue(),
             'users'        => $settings->users(),
             'entityOptions' => $settings->entityOptions(),
             'appearance'   => $this->appearance($settings),

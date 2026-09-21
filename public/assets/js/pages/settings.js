@@ -3,6 +3,9 @@
  * statements, integrations, payroll, appearance, language and translation, users and
  * the audit log.
  *
+ * Users and Roles save as they are made (Api\Users, Api\Roles) and need users.manage:
+ * a person's access is never left half-changed in a draft.
+ *
  * The sections edit one draft, saved together with "Save changes" (or thrown away
  * with "Discard"), so nothing reaches the ledger half-configured and every saved
  * change lands in the audit log. Bank statement formats and the M-Pesa integration
@@ -62,7 +65,6 @@
         grades: d.grades.map(g => ({ grade: g.grade, band: g.band, ben: { ...g.ben }, active: g.active })),
       },
       payAccounts: Object.fromEntries(d.payAccounts.map(c => [c.key, c.code])),
-      users: Object.fromEntries(d.users.map(u => [u.email, u.role])),
       appearance: {
         theme: d.appearance.theme, appName: d.appearance.appName, appTagline: d.appearance.appTagline,
         custom: { ...d.appearance.custom },
@@ -98,7 +100,7 @@
           <button type="button" class="btn btn-primary" id="st-save"></button>
         </div>
       </div>
-      <div class="st-readonly" id="st-readonly" hidden>You can look through the settings. Only the Finance Manager can change them — switch user in the account menu to make a change.</div>
+      <div class="st-readonly" id="st-readonly" hidden>You can look through the settings. Changing them needs a role with settings.manage, such as the Finance Manager.</div>
       <div class="st-wrap">
         <nav class="st-nav" id="st-nav" aria-label="Settings sections"></nav>
         <div class="st-main" id="st-main"></div>
@@ -170,10 +172,11 @@
       Organisation: organisation, Ledger: ledger, Segments: segments, Currencies: currencies, Approvals: approvals,
       'Bank statements': bankStatements, 'Opening balances': openingBalances, Integrations: integrations,
       Payroll: payroll, Appearance: appearance,
-      'Language and translation': language, Users: users, 'Audit log': audit,
+      'Language and translation': language, Users: users, Roles: roles, 'Audit log': audit,
     };
     (renderers[view.section] || organisation)(main);
-    if (!data.canManage && !['Bank statements', 'Opening balances', 'Integrations', 'Language and translation'].includes(view.section)) {
+    if (!data.canManageUsers) main.querySelectorAll('[data-manage-users]').forEach(el => { el.disabled = true; });
+    if (!data.canManage && !['Bank statements', 'Opening balances', 'Integrations', 'Language and translation', 'Users', 'Roles'].includes(view.section)) {
       main.querySelectorAll('input:not([data-free]), select:not([data-free]), textarea').forEach(el => { el.disabled = true; });
       main.querySelectorAll('[data-manage]').forEach(el => { el.disabled = true; });
     }
@@ -579,42 +582,72 @@
 
   function users(main) {
     const q = view.userQuery.trim().toLowerCase();
-    const list = data.users.filter(u => !q || [u.name, u.email, draft.users[u.email], u.entities].join(' ').toLowerCase().includes(q));
+    const list = data.users.filter(u => !q || [u.name, u.email, u.roles.join(' '), u.entities, u.status].join(' ').toLowerCase().includes(q));
     const pages = Math.max(1, Math.ceil(list.length / USERS_PER_PAGE));
     view.userPage = Math.min(view.userPage, pages - 1);
     const shown = list.slice(view.userPage * USERS_PER_PAGE, (view.userPage + 1) * USERS_PER_PAGE);
     const count = (s) => data.users.filter(u => u.status === s).length;
-    const holders = (role) => data.users.filter(u => u.status === 'Active' && draft.users[u.email] === role);
+    const holders = (role) => data.users.filter(u => u.status === 'Active' && u.roles.includes(role));
     const fm = holders('Finance Manager').length;
     const ed = holders('Executive Director').length;
     const warning = fm === 0 ? 'No active Finance Manager. Journal and bill approvals above their thresholds cannot be actioned until one is assigned.'
       : ed === 0 ? 'No active Executive Director. Payment runs, sub-grants and inter-fund transfers will queue without an approver.'
       : fm > 2 ? `${fm} users hold the Finance Manager role. Auditors normally expect this to be limited to one or two.` : '';
+    const noMfa = data.users.filter(u => u.status === 'Active' && !u.mfa).length;
+    const cols = 'grid-template-columns:minmax(170px,1fr) 210px 130px 96px 96px 84px;';
+    const status = (u) => u.locked ? '<span class="st-invited">⊘ Locked</span>'
+      : u.status === 'Active' ? '<span class="st-live">● Active</span>' : u.status === 'Invited' ? '<span class="st-invited">◐ Invited</span>' : '<span class="st-dormant">○ Suspended</span>';
 
     main.innerHTML = `
       <div class="st-body wide">
         <div class="st-head">
-          <div><div class="st-kicker">Users and roles</div><div class="st-note">${count('Active')} active users · ${count('Invited')} invited · ${count('Suspended')} suspended</div></div>
+          <div><div class="st-kicker">Users</div><div class="st-note">${count('Active')} active users · ${count('Invited')} invited · ${count('Suspended')} suspended. People get permissions only through their roles — a person can hold several, each at the entities named.</div></div>
           <label class="st-search">⌕<input data-free data-query="user" value="${esc(view.userQuery)}" placeholder="Name, email or role"></label>
-          <button type="button" class="btn" data-act="invite" data-manage>Invite user</button>
+          <button type="button" class="btn" data-act="invite" data-manage-users>Invite user</button>
         </div>
-        <div class="st-table"><div style="min-width:700px;">
-          <div class="st-tr st-th" style="grid-template-columns:minmax(170px,1fr) 178px 150px 120px 96px;"><div>User</div><div>Role</div><div>Entity access</div><div>Last active</div><div>Status</div></div>
+        <div class="st-table"><div style="min-width:780px;">
+          <div class="st-tr st-th" style="${cols}"><div>User</div><div>Roles</div><div>Entity access</div><div>Second step</div><div>Status</div><div></div></div>
           ${shown.map(u => `
-            <div class="st-tr" style="grid-template-columns:minmax(170px,1fr) 178px 150px 120px 96px;min-height:44px;">
+            <div class="st-tr" style="${cols}min-height:48px;">
               <div class="st-user"><span class="st-avatar">${esc(u.initials)}</span><span class="st-stack"><span class="st-ellipsis">${esc(u.name)}</span><span class="st-sub st-ellipsis">${esc(u.email)}</span></span></div>
-              <div><select class="st-cell" data-bind="users.${esc(u.email)}" aria-label="Role for ${esc(u.name)}">${data.roles.map(r => `<option ${r === draft.users[u.email] ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></div>
+              <div class="st-chips">${u.roles.map(r => `<span class="st-chip">${esc(r)}</span>`).join('')}</div>
               <div class="st-ellipsis">${esc(u.entities)}</div>
-              <div class="st-muted">${esc(u.lastActive)}</div>
-              <div>${u.status === 'Active' ? '<span class="st-live">● Active</span>' : u.status === 'Invited' ? '<span class="st-invited">◐ Invited</span>' : '<span class="st-dormant">○ Suspended</span>'}</div>
+              <div class="st-muted">${u.mfa === 'totp' ? 'App' : u.mfa === 'email' ? 'Email' : '—'}</div>
+              <div>${status(u)}</div>
+              <div class="st-rowacts"><button type="button" class="btn" data-act="user-access" data-id="${u.id}">Manage</button></div>
             </div>`).join('') || '<div class="coa-empty">No users match.</div>'}
           ${pager('user', list.length, USERS_PER_PAGE, view.userPage, 'users')}
         </div></div>
         ${warn(warning)}
+        ${noMfa ? `<div class="st-note">${noMfa === 1 ? '1 active user has' : noMfa + ' active users have'} no second sign-in step yet. Where the instance requires one, they are asked to set it up at their next sign-in.</div>` : ''}
       </div>`;
     wireQuery(main, 'user');
   }
 
+  function roles(main) {
+    const catalogue = data.permissionCatalogue;
+    const described = (key) => (catalogue.find(p => p.key === key) || { description: key }).description;
+    main.innerHTML = `
+      <div class="st-body wide">
+        <div class="st-head">
+          <div><div class="st-kicker">Roles</div><div class="st-note">${data.roleDetail.length} roles. A role is a named set of permissions; people hold roles, never permissions directly. Add as many as the organisation needs. The roles the application starts with keep their names because the approval policy and close checklist refer to them.</div></div>
+          <button type="button" class="btn" data-act="role-new" data-manage-users>New role</button>
+        </div>
+        <div class="st-roles">
+          ${data.roleDetail.map(r => `
+            <div class="st-role-card">
+              <div class="st-role-head">
+                <span class="st-role-name">${esc(r.name)}</span>
+                ${r.builtIn ? '<span class="st-chip muted">Built-in</span>' : ''}
+                <button type="button" class="btn" data-act="role-edit" data-id="${r.id}">${data.canManageUsers ? 'Edit' : 'View'}</button>
+              </div>
+              <div class="st-role-meta">${r.holders.length ? `${r.holders.length === 1 ? '1 person' : r.holders.length + ' people'} · ${esc(r.holders.slice(0, 4).join(', '))}${r.holders.length > 4 ? '…' : ''}` : 'Nobody holds it yet'}</div>
+              ${r.description ? `<div class="st-note">${esc(r.description)}</div>` : ''}
+              <div class="st-chips">${r.permissions.map(p => `<span class="st-chip" title="${esc(described(p))}">${esc(p)}</span>`).join('') || '<span class="st-chip muted">No permissions</span>'}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  }
   function audit(main) {
     const q = view.auditQuery.trim().toLowerCase();
     const list = data.audit.filter(a => !q || [a.when, a.who, a.what, a.area].join(' ').toLowerCase().includes(q));
@@ -1147,6 +1180,14 @@
       openInvite();
       return;
     }
+    if (act === 'user-access') {
+      openAccess(Number(id));
+      return;
+    }
+    if (act === 'role-new' || act === 'role-edit') {
+      openRole(act === 'role-new' ? null : data.roleDetail.find(r => r.id === Number(id)));
+      return;
+    }
     renderHead();
     renderSection();
   }
@@ -1154,10 +1195,12 @@
   function openInvite() {
     UI.drawer('Invite user', `
       <div class="bu" id="st-invite">
-        <p class="bu-intro">The invitation is sent by email and expires after seven days. The person appears as Invited until they accept, and cannot act until then.</p>
+        <p class="bu-intro">The invitation is sent by email and expires after seven days. The person chooses a password and sets up a second sign-in step, and appears as Invited until they do. Each role applies at the entities chosen below; give different roles at different entities afterwards with Manage.</p>
         <label class="bu-field"><span>Full name</span><input id="iv-name" maxlength="120" autocomplete="off"></label>
         <label class="bu-field"><span>Email</span><input id="iv-email" type="email" maxlength="190" autocomplete="off"></label>
-        <label class="bu-field"><span>Role</span><select id="iv-role">${data.roles.map(r => `<option>${esc(r)}</option>`).join('')}</select></label>
+        <div class="bu-field"><span>Roles <em>one or more</em></span>
+          <div class="st-invite-entities" id="iv-roles">${data.roles.map(r => `<label class="st-inline"><input type="checkbox" value="${esc(r)}">${esc(r)}</label>`).join('')}</div>
+        </div>
         <div class="bu-field"><span>Entity access</span>
           <label class="st-inline"><input type="checkbox" id="iv-all" checked>All entities</label>
           <div id="iv-entities" class="st-invite-entities" hidden>${data.entityOptions.map(e => `<label class="st-inline"><input type="checkbox" value="${esc(e.code)}">${esc(e.name)}</label>`).join('')}</div>
@@ -1171,16 +1214,155 @@
       const all = box.querySelector('#iv-all').checked;
       try {
         const res = await UI.postJSON('/api/settings/invite', {
-          name: box.querySelector('#iv-name').value, email: box.querySelector('#iv-email').value, role: box.querySelector('#iv-role').value,
+          name: box.querySelector('#iv-name').value, email: box.querySelector('#iv-email').value,
+          roles: [...box.querySelectorAll('#iv-roles input:checked')].map(i => i.value),
           entities: all ? 'all' : [...box.querySelectorAll('#iv-entities input:checked')].map(i => i.value),
         });
         UI.closeDrawer();
         // Keep unsaved edits; take the new user list from the server.
         const pending = draft;
         data = res;
-        draft = toDraft(data);
-        Object.assign(draft, { ...pending, users: { ...draft.users, ...pending.users } });
+        draft = pending;
         render();
+        UI.toast(res.message);
+      } catch (err) {
+        UI.toast(err.message);
+      }
+    });
+  }
+
+  /** Merges what a user or role change returns into the screen, keeping any unsaved draft. */
+  function absorb(res) {
+    for (const key of ['users', 'roles', 'audit']) if (res[key]) data[key] = res[key];
+    if (res.roles && res.roles[0] && typeof res.roles[0] === 'object') {
+      data.roleDetail = res.roles;
+      data.roles = res.roles.map(r => r.name);
+    }
+    if (res.roleDetail) data.roleDetail = res.roleDetail;
+    if (res.catalogue) data.permissionCatalogue = res.catalogue;
+    renderSection();
+  }
+
+  /** Manage: a user's roles (any number, each at its own entities) and the account itself. */
+  function openAccess(userId) {
+    const u = data.users.find(x => x.id === userId);
+    if (!u) return;
+    const rows = u.access.map(a => ({ role: a.role, all: a.entities === 'all', codes: a.entities === 'all' ? [] : [...a.entities] }));
+    const can = data.canManageUsers;
+    const self = u.email === data.me;
+
+    function draw() {
+      UI.drawer(u.name, `
+        <div class="bu" id="st-access">
+          <p class="bu-intro">${esc(u.email)} · ${esc(u.status)}${u.mfa ? ' · second step: ' + (u.mfa === 'totp' ? 'authenticator app' : 'email') : ' · no second step yet'}${u.locked ? ' · locked after wrong passwords' : ''}</p>
+          <div class="st-kicker">Roles</div>
+          ${rows.map((r, i) => `
+            <div class="st-access-row" data-row="${i}">
+              <div class="st-access-head">
+                <select data-f="role" aria-label="Role" ${can ? '' : 'disabled'}>${data.roles.map(n => `<option ${n === r.role ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+                <button type="button" class="btn" data-f="remove" title="Remove this role" ${can ? '' : 'disabled'}>✕</button>
+              </div>
+              <label class="st-inline"><input type="checkbox" data-f="all" ${r.all ? 'checked' : ''} ${can ? '' : 'disabled'}>All entities</label>
+              <div class="st-invite-entities" ${r.all ? 'hidden' : ''}>${data.entityOptions.map(e => `<label class="st-inline"><input type="checkbox" data-f="entity" value="${esc(e.code)}" ${r.codes.includes(e.code) ? 'checked' : ''} ${can ? '' : 'disabled'}>${esc(e.name)}</label>`).join('')}</div>
+            </div>`).join('') || '<p class="bu-intro">No roles. Add at least one.</p>'}
+          <div class="bu-actions" style="justify-content:space-between;">
+            <button type="button" class="btn" id="ac-add" ${can ? '' : 'disabled'}>+ Add a role</button>
+            <button type="button" class="btn btn-primary" id="ac-save" ${can ? '' : 'disabled'}>Save roles</button>
+          </div>
+          <div class="st-kicker" style="margin-top:8px;">Account</div>
+          <div class="bu-actions" style="justify-content:flex-start;">
+            ${!u.hasPassword && u.status !== 'Suspended' ? `<button type="button" class="btn" data-acct="invite" ${can ? '' : 'disabled'}>${u.status === 'Invited' ? 'Send the invitation again' : 'Email a link to set a password'}</button>` : ''}
+            ${u.mfa ? `<button type="button" class="btn" data-acct="reset-mfa" ${can ? '' : 'disabled'}>Reset second step</button>` : ''}
+            ${u.status === 'Suspended'
+              ? `<button type="button" class="btn" data-acct="reinstate" ${can ? '' : 'disabled'}>Reinstate</button>`
+              : `<button type="button" class="btn" data-acct="suspend" ${can && !self ? '' : 'disabled'}>Suspend</button>`}
+          </div>
+          <p class="bu-intro">${can ? (u.mfa ? 'Reset the second step for someone who has lost their phone and their recovery codes — they set up a new one at their next sign-in. ' : '') + 'A suspended user is signed out and cannot sign in.' : 'Changing access needs a role with users.manage.'}</p>
+        </div>`);
+      const box = document.getElementById('st-access');
+      box.querySelectorAll('[data-row]').forEach(el => {
+        const r = rows[Number(el.dataset.row)];
+        el.querySelector('[data-f="role"]').addEventListener('change', e => { r.role = e.target.value; });
+        el.querySelector('[data-f="all"]').addEventListener('change', e => { r.all = e.target.checked; draw(); });
+        el.querySelectorAll('[data-f="entity"]').forEach(c => c.addEventListener('change', () => {
+          r.codes = [...el.querySelectorAll('[data-f="entity"]:checked')].map(x => x.value);
+        }));
+        el.querySelector('[data-f="remove"]').addEventListener('click', () => { rows.splice(Number(el.dataset.row), 1); draw(); });
+      });
+      box.querySelector('#ac-add').addEventListener('click', () => {
+        const unused = data.roles.find(n => !rows.some(r => r.role === n)) || data.roles[0];
+        rows.push({ role: unused, all: true, codes: [] });
+        draw();
+      });
+      box.querySelector('#ac-save').addEventListener('click', () => act(`/api/users/${u.id}/access`, {
+        access: rows.map(r => ({ role: r.role, entities: r.all ? 'all' : r.codes })),
+      }));
+      box.querySelectorAll('[data-acct]').forEach(b => b.addEventListener('click', () => {
+        const what = b.dataset.acct;
+        if (what === 'suspend' && !confirm(`Suspend ${u.name}? They are signed out and cannot sign in until reinstated.`)) return;
+        if (what === 'reset-mfa' && !confirm(`Reset ${u.name}'s second sign-in step? Their authenticator and recovery codes stop working.`)) return;
+        act(`/api/users/${u.id}/${what}`, {});
+      }));
+    }
+
+    async function act(url, body) {
+      try {
+        const res = await UI.postJSON(url, body);
+        absorb(res);
+        UI.closeDrawer();
+        UI.toast(res.message);
+      } catch (err) {
+        UI.toast(err.message);
+      }
+    }
+
+    draw();
+  }
+
+  /** A role: its name, what it is for, and its permissions. `role` null for a new one. */
+  function openRole(role) {
+    const can = data.canManageUsers;
+    const held = new Set(role ? role.permissions : []);
+    const groups = [...new Set(data.permissionCatalogue.map(p => p.group))];
+    UI.drawer(role ? role.name : 'New role', `
+      <div class="bu" id="st-role">
+        ${role ? `<p class="bu-intro">${role.holders.length ? `Held by ${esc(role.holders.join(', '))}. A change applies to all of them from their next request.` : 'Nobody holds this role yet.'}</p>` : '<p class="bu-intro">Name the role as people would say it, then tick what it lets its holders do. Give it to people under Users → Manage.</p>'}
+        <label class="bu-field"><span>Name${role && role.builtIn ? ' <em>built-in — kept as it is</em>' : ''}</span><input id="rl-name" maxlength="60" value="${esc(role ? role.name : '')}" ${can && !(role && role.builtIn) ? '' : 'disabled'}></label>
+        <label class="bu-field"><span>What it is for <em>optional</em></span><textarea id="rl-desc" rows="2" maxlength="500" ${can ? '' : 'disabled'}>${esc(role ? role.description : '')}</textarea></label>
+        ${groups.map(g => `
+          <div class="st-perm-group">
+            <div>${esc(g)}</div>
+            ${data.permissionCatalogue.filter(p => p.group === g).map(p => `
+              <label class="st-perm"><input type="checkbox" value="${esc(p.key)}" ${held.has(p.key) ? 'checked' : ''} ${can ? '' : 'disabled'}><span>${esc(p.description)} <code>${esc(p.key)}</code></span></label>`).join('')}
+          </div>`).join('')}
+        <div class="bu-actions" style="justify-content:space-between;">
+          <span>${role && !role.builtIn ? `<button type="button" class="btn" id="rl-delete" ${can ? '' : 'disabled'}>Delete role</button>` : ''}</span>
+          <span style="display:flex;gap:8px;"><button type="button" class="btn" id="rl-cancel">Cancel</button><button type="button" class="btn btn-primary" id="rl-save" ${can ? '' : 'disabled'}>${role ? 'Save role' : 'Add role'}</button></span>
+        </div>
+      </div>`);
+    const box = document.getElementById('st-role');
+    box.querySelector('#rl-cancel').addEventListener('click', UI.closeDrawer);
+    box.querySelector('#rl-save').addEventListener('click', async () => {
+      try {
+        const res = await UI.postJSON(role ? `/api/roles/${role.id}` : '/api/roles', {
+          name: box.querySelector('#rl-name').value, description: box.querySelector('#rl-desc').value,
+          permissions: [...box.querySelectorAll('.st-perm input:checked')].map(i => i.value),
+        });
+        absorb(res);
+        // Users show role names; take them fresh too.
+        absorb(await UI.fetchJSON('/api/settings').then(s => ({ users: s.users, audit: s.audit })));
+        UI.closeDrawer();
+        UI.toast(res.message);
+      } catch (err) {
+        UI.toast(err.message);
+      }
+    });
+    box.querySelector('#rl-delete')?.addEventListener('click', async () => {
+      if (!confirm(`Delete the ${role.name} role?`)) return;
+      try {
+        const res = await UI.postJSON(`/api/roles/${role.id}/delete`, {});
+        absorb(res);
+        UI.closeDrawer();
         UI.toast(res.message);
       } catch (err) {
         UI.toast(err.message);

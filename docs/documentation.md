@@ -86,9 +86,49 @@ Running left to right across the top of every page:
 - **Notifications (◎)** — a bell with an unread badge. The panel lists items by
   day, can be filtered to unread only, supports *Mark all read*, and each item
   links to the relevant record.
-- **User menu** — the signed-in user with an **Act as** switcher for changing the
-  acting role (used to demonstrate the two-person rule), plus account links and
-  sign-out.
+- **User menu** — the signed-in user and every role they hold, **My account**, and
+  **Sign out**. On a training instance with `auth.actAs` on, it also has an
+  **Act as** switcher for demonstrating the two-person rule without signing out.
+
+---
+
+## Signing in
+
+**Purpose:** let only the people the organisation has given access in, and prove
+each one is who they say.
+
+**On screen:** a standalone page at `/login`, outside the shell. Opening any page
+while signed out lands here and returns to that page afterwards.
+
+1. **Email and password.** A wrong password gets the same answer whether or not
+   the email has an account. Five in a row lock an account for 15 minutes.
+2. **Second step.** A six-digit code from an authenticator app (Google
+   Authenticator, Microsoft Authenticator, Okta Verify…) or one emailed for this
+   sign-in. A one-time recovery code works in place of either.
+3. **Setting one up**, the first time, if the instance requires a second step
+   (the default is everyone). Choose the app, which means scanning a QR code or
+   typing the key, or email, then confirm with a code. Ten recovery codes follow,
+   shown once, with copy, download and print. **Continue** stays off until you
+   tick *I have saved these codes*.
+
+**Also here:** **Forgot your password?** emails a link that works for an hour.
+**Accept invite** (`/accept-invite`) and **Reset password** (`/reset-password`)
+are the pages those emailed links open, where you choose a password (at least 12
+characters). Being idle for 30 minutes signs you out.
+
+### My account
+
+**Purpose:** your own sign-in settings, and what your roles let you do.
+
+**On screen:** *You* (name, email, last sign-in and where from, what you can do,
+approval limit); *Roles* (each role you hold and at which entities, then every
+permission they give you together); *Second sign-in step* (on or off, the method,
+recovery codes left); *Password*; and *Recent sign-in activity*.
+
+**What you can do:** change your password (needs the current one); set up, switch
+or remove your second step; make a new set of recovery codes, which cancels the
+old ones. Removing the second step and new codes both ask for your password.
+Where the instance requires a second step, it can be switched but not removed.
 
 ---
 
@@ -594,8 +634,8 @@ appearance, language/translation, users and the audit log. Changes are edited in
 
 **On screen:** a left navigation of sections and a content pane on the right. The
 top-right shows **Discard** (when there are unsaved changes) and a save button that
-reads **Save changes** when dirty or **Saved** when clean. Only the Finance Manager
-can save; everyone else sees a read-only view and a banner explaining why. A
+reads **Save changes** when dirty or **Saved** when clean. Only someone whose roles
+include `settings.manage` (the Finance Manager, out of the box) can save; everyone else sees a read-only view and a banner explaining why. A
 warning appears if you try to leave with unsaved changes.
 
 **Sections:**
@@ -722,8 +762,22 @@ warning appears if you try to leave with unsaved changes.
 - **Language and translation** — interface languages and coverage, fallback
   behaviour, raising wording for review, approving/declining translation requests,
   the locked reporting locale and terminology.
-- **Users** — invite users, set roles and entity access, with warnings about
-  missing or excessive privileged roles.
+- **Users** — everyone with access: their roles (as chips), entity access, last
+  sign-in, status and whether they have a second step. **Invite user** takes a
+  name, an email, one or more roles and the entities; the person is emailed a
+  link to choose a password. **Manage** opens a drawer to give a person any number
+  of roles, each at all entities or only some, and to suspend or reinstate them,
+  reset a second step they have lost, or email a new link. Changing any of this
+  needs `users.manage`. Saves as you go.
+- **Roles** — the roles, as cards: each one's permissions and who holds it.
+  People get permissions only by holding roles, never directly. **New role** adds
+  one (a name, a description, and permissions ticked from the catalogue by area);
+  there is no limit to how many. Built-in roles keep their names, because the
+  approval policy and close checklist refer to them, but their permissions can
+  change. A role is deleted only when nobody holds it and no approval rule or
+  translation lock uses it. Any change that would leave nobody active who can
+  manage users is refused. Changes apply at once to everyone holding the role and
+  go in the audit log.
 - **Audit log** — a read-only, searchable log of configuration changes, retained
   seven years and not editable from within the application.
 

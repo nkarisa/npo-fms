@@ -38,7 +38,7 @@ Ask for what you want to see. The skill loads itself when a request matches:
 - *Screenshot the payroll page as m.otieno*
 - *Check that the person who prepared a journal can't approve it*
 - *Adopt the compact chart template on a new instance and show me the result*
-- *Reproduce this bug in the browser, acting as the Executive Director*
+- *Reproduce this bug in the browser, signed in as the Executive Director*
 
 Or name it: `/run-fms screenshot the payroll page as m.otieno`.
 
@@ -116,14 +116,22 @@ DATA=blank .claude/skills/run-fms/serve.sh spark install --show-config --no-head
 node .claude/skills/run-fms/driver.mjs as:m.otieno@elog.or.ke goto:/payroll ss:payroll
 ```
 
-That acts as Michael Otieno, opens the payroll page and saves
+That signs in as Michael Otieno, opens the payroll page and saves
 `writable/run-skill/shots/payroll.png`.
+
+Before the first step the driver signs in as the default user: w.kamau@elog.or.ke
+on port 8095, a.salim@cct.or.ke on 8096. `--as <email>` picks someone else;
+`--as none` starts signed out, to drive the sign-in page itself. Every demo user's
+password is `elog-demo-password`. `serve.sh` makes the second sign-in step optional,
+so the password is enough. Start it with `auth_mfaRequired=all` to try the
+second-step screens.
 
 ### Steps
 
 | Step | What it does |
 |---|---|
-| `as:<email>` | Act as this user — the same as choosing them from the **Act as** menu. Lasts until the next `as:` |
+| `as:<email>` | Sign in as this user, with the demo password. Lasts until the next `as:` |
+| `logout` | Sign out |
 | `goto:<path>` | Open a page, e.g. `goto:/journals`, and wait for its data to load |
 | `click:<selector>` | Click something, e.g. `'click:text=Approve and post'` |
 | `fill:<selector>=<value>` | Type into a field |
@@ -204,18 +212,21 @@ node .claude/skills/run-fms/driver.mjs goto:/coa 'click:text=Start from a templa
 The API and the database can be read directly:
 
 ```bash
-curl -s localhost:8095/api/journals/JV-26-0310
+curl -s -c writable/run-skill/cookies.txt localhost:8095/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"w.kamau@elog.or.ke","password":"elog-demo-password"}'
+curl -s -b writable/run-skill/cookies.txt localhost:8095/api/journals/JV-26-0310
 sqlite3 writable/run-skill/demo.sqlite "select code, name from db_entities"
 ```
 
-`curl` always acts as the default user, since it carries no **Act as** choice.
-Tables in the SQLite database are prefixed `db_`.
+`curl` must sign in first and keep the cookie; without it, `/api` answers 401. Any
+request that changes something also needs an `X-Requested-With` header, or it is
+refused with 403. Tables in the SQLite database are prefixed `db_`.
 
 ---
 
-## Who to act as
+## Who to sign in as
 
-On the demonstration instance, the people in [setup.md](setup.md#who-to-act-as).
+On the demonstration instance, the people in [setup.md](setup.md#who-to-sign-in-as).
 The ones most useful for checking permissions:
 
 | Email | Role | Useful for |
@@ -236,6 +247,10 @@ On the blank instance there is only a.salim@cct.or.ke.
   `.env`, like everything else there except the database.
 - **The debug toolbar logs a CORS error.** It calls `app.baseURL` (port 8090)
   from port 8095. The driver hides it; it is harmless.
+- **`text=Sign in` on the sign-in page finds the heading**, not the button. Use
+  `click:button[type=submit]`.
+- **A user who set up a second step can't be signed in by `as:` any more.**
+  Rebuild with `serve.sh up --fresh`.
 - **A button that is not there is often a rule, not a bug.** The preparer of a
   journal sees a note in place of **Approve and post**, not a greyed-out button.
   Look at `shots/_failure.png` when a `click:` or `wait:` times out.

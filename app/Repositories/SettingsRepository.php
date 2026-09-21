@@ -248,10 +248,10 @@ final class SettingsRepository extends Repository
         ));
     }
 
-    /** Roles a user can hold: those with at least one permission, in the order they were set up. */
+    /** Roles a user can hold — every role, in the order they were set up. Settings → Roles defines them. */
     public function roles(): array
     {
-        return array_column($this->rows('SELECT r.name FROM {roles} r WHERE EXISTS (SELECT 1 FROM {role_permissions} rp WHERE rp.role_id = r.id) ORDER BY r.id'), 'name');
+        return array_column($this->rows('SELECT r.name FROM {roles} r ORDER BY r.id'), 'name');
     }
 
     /** Roles that can approve, and so can be named as an approver. */
@@ -325,8 +325,9 @@ final class SettingsRepository extends Repository
     public function users(): array
     {
         $entityCount = (int) $this->value('SELECT COUNT(*) FROM {entities}');
+        $access = new RoleRepository($this->db);
 
-        return array_map(function ($u) use ($entityCount) {
+        return array_map(function ($u) use ($entityCount, $access) {
             $entities = explode('|', (string) $u['entity_names']);
             $words = array_map(static fn ($n) => match (true) {
                 str_contains($n, 'Secretariat') => 'Secretariat',
@@ -335,10 +336,18 @@ final class SettingsRepository extends Repository
             }, $entities);
             $signIn = UserRepository::lastSignIn($u);
 
+            $held = $access->access((int) $u['id']);
+
             return [
-                'name' => $u['name'], 'email' => $u['email'], 'initials' => $u['initials'], 'role' => $this->lookups->roleOf((int) $u['id']),
+                'id' => (int) $u['id'], 'name' => $u['name'], 'email' => $u['email'], 'initials' => $u['initials'], 'role' => $this->lookups->roleOf((int) $u['id']),
+                // Every role the person holds, and where; `role` above is the one named on their approvals.
+                'roles' => array_column($held, 'role'), 'access' => $held,
                 'entities' => count($entities) === $entityCount ? 'All entities' : implode(', ', $words),
                 'lastActive' => $signIn === '—' ? '—' : lcfirst(trim(explode('·', $signIn)[0])), 'status' => ucfirst($u['status']),
+                'mfa' => (bool) $u['mfa_enabled'] ? (string) $u['mfa_method'] : null,
+                'locked' => $u['locked_until'] !== null && strtotime($u['locked_until']) > time(),
+                // An active user can be without one too: someone added before sign-in existed.
+                'hasPassword' => ($u['password_hash'] ?? '') !== '',
             ];
         }, $this->withEntityNames());
     }
@@ -434,12 +443,13 @@ final class SettingsRepository extends Repository
     }
 
     /**
-     * Invites a user: they appear as Invited, with their role at the entities named,
-     * until they accept.
+     * Invites a user: they appear as Invited, with their roles at the entities named,
+     * until they accept. The invitation email itself is sent by AuthRepository::invite().
      *
+     * @param list<string>|string $roles    one role, or several
      * @param list<string>|string $entities entity codes, or 'all'
      */
-    public function invite(string $name, string $email, string $role, array|string $entities, int $actorId): array
+    public function invite(string $name, string $email, array|string $roles, array|string $entities, int $actorId): array
     {
         $name = trim($name);
         $email = mb_strtolower(trim($email));
@@ -452,7 +462,8 @@ final class SettingsRepository extends Repository
         if ($this->value('SELECT id FROM {users} WHERE LOWER(email) = ?', [$email]) !== null) {
             throw new RuleViolation($email . ' already has an account.');
         }
-        if (!in_array($role, $this->roles(), true)) {
+        $roles = array_values(array_filter(array_map('trim', (array) $roles), static fn ($r) => $r !== ''));
+        if ($roles === [] || array_diff($roles, $this->roles()) !== []) {
             throw new RuleViolation('Choose the role the person will hold.');
         }
         $all = $this->rows('SELECT id, code, name FROM {entities} ORDER BY id');
@@ -460,21 +471,20 @@ final class SettingsRepository extends Repository
         if ($chosen === []) {
             throw new RuleViolation('Choose at least one entity the person can work in.');
         }
+        $plan = (new RoleRepository($this->db))->planAccess(array_map(static fn ($r) => ['role' => $r, 'entities' => $entities === 'all' ? 'all' : (array) $entities], $roles));
+        $role = implode(', ', $roles);
 
         [$first, $last] = explode(' ', $name, 2) + [1 => ''];
         $short = mb_substr($first, 0, 1) . '. ' . ($last !== '' ? $last : $first);
         $initials = mb_strtoupper(mb_substr($first, 0, 1) . mb_substr($last !== '' ? $last : $first, 0, 1));
-        $roleId = (int) $this->value('SELECT id FROM {roles} WHERE name = ?', [$role]);
         $now = Clock::timestamp();
 
-        $this->transaction(function () use ($name, $email, $short, $initials, $chosen, $roleId, $role, $entities, $actorId, $now) {
+        $this->transaction(function () use ($name, $email, $short, $initials, $chosen, $plan, $role, $entities, $actorId, $now) {
             $userId = $this->insert('users', [
                 'email' => $email, 'name' => $name, 'short_name' => mb_substr($short, 0, 60), 'initials' => $initials,
                 'locale_id' => $this->value("SELECT id FROM {locales} WHERE code = 'en-GB'"), 'status' => 'invited', 'invited_at' => $now, 'created_at' => $now,
             ]);
-            foreach ($chosen as $e) {
-                $this->db->table('user_entity_roles')->insert(['user_id' => $userId, 'entity_id' => $e['id'], 'role_id' => $roleId, 'created_at' => $now]);
-            }
+            (new RoleRepository($this->db))->writeAccess($userId, $plan);
             $this->logChange('Users', $short . ' invited as ' . $role . ($entities === 'all' ? ' across all entities' : ' — ' . implode(', ', array_column($chosen, 'name'))), $actorId);
         });
 
@@ -1051,7 +1061,13 @@ final class SettingsRepository extends Repository
         }
     }
 
-    /** @param array<string, string> $in email → role */
+    /**
+     * Moves each user named to a single role, at every entity they reach — the
+     * draft's shorthand. Several roles per person are set in Users → Access
+     * (RoleRepository::setAccess), which saves as it is made.
+     *
+     * @param array<string, string> $in email → role
+     */
     private function planUsers(array $in, callable $plan): void
     {
         $roles = $this->roles();
@@ -1065,8 +1081,16 @@ final class SettingsRepository extends Repository
             }
             $roleId = (int) $this->value('SELECT id FROM {roles} WHERE name = ?', [$role]);
             $userId = (int) $this->lookups->userId($u['email']);
-            $plan('Users', $this->lookups->shortName($userId) . ' moved from ' . $u['role'] . ' to ' . $role,
-                fn () => $this->db->table('user_entity_roles')->where('user_id', $userId)->update(['role_id' => $roleId, 'updated_at' => Clock::timestamp()]));
+            if ($u['roles'] === [$role]) {
+                continue;
+            }
+            $plan('Users', $this->lookups->shortName($userId) . ' moved from ' . implode(', ', $u['roles']) . ' to ' . $role, function () use ($userId, $roleId) {
+                $entities = array_column($this->rows('SELECT DISTINCT entity_id FROM {user_entity_roles} WHERE user_id = ?', [$userId]), 'entity_id');
+                $this->db->table('user_entity_roles')->where('user_id', $userId)->delete();
+                foreach ($entities as $entityId) {
+                    $this->db->table('user_entity_roles')->insert(['user_id' => $userId, 'entity_id' => (int) $entityId, 'role_id' => $roleId, 'created_at' => Clock::timestamp()]);
+                }
+            });
         }
     }
 

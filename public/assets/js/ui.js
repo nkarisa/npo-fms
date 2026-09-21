@@ -1,3 +1,25 @@
+/**
+ * Every request to this site says it came from the application's own pages
+ * (X-Requested-With), which the server requires of any change — a form on another
+ * site cannot add the header. And a request refused because the session has ended
+ * goes back to the sign-in page, then returns here. Done once, around fetch, so
+ * uploads and downloads written with fetch directly get both too.
+ */
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+    if (url.origin !== location.origin) return nativeFetch(input, init);
+    const headers = new Headers(init.headers || (typeof input === 'string' ? {} : input.headers));
+    headers.set('X-Requested-With', 'fetch');
+    const res = await nativeFetch(input, { ...init, headers });
+    if (res.status === 401 && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth')) {
+      location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+    }
+    return res;
+  };
+})();
+
 /** Small render helpers shared by every page script. No framework — just fetch + DOM. */
 const UI = (() => {
   const fmtMoney = (n) => {

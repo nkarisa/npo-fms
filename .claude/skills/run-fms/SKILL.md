@@ -1,6 +1,6 @@
 ---
 name: run-fms
-description: Run, start, launch, screenshot, click through or smoke-test the FMS (ELOG finance suite) CodeIgniter app — spins up a throwaway SQLite instance (demo data or a blank new install) on its own port and drives it with a headless Playwright step-runner. Use to see a UI/API change working, reproduce a bug in the browser, act as a given user (preparer vs approver), or run the PHPUnit suite.
+description: Run, start, launch, screenshot, click through or smoke-test the FMS (ELOG finance suite) CodeIgniter app — spins up a throwaway SQLite instance (demo data or a blank new install) on its own port and drives it with a headless Playwright step-runner that signs in as any user. Use to see a UI/API change working, reproduce a bug in the browser, sign in as a given user (preparer vs approver), try the sign-in / second-step screens, or run the PHPUnit suite.
 ---
 
 # Run FMS
@@ -12,7 +12,7 @@ project root.
 - `serve.sh`: builds a **throwaway SQLite DB** under `writable/run-skill/` and
   serves it on its own port. It never touches the MySQL DB in `.env`, and never
   touches the dev server you may already have on `app.baseURL` (`:8090`).
-- `driver.mjs`: headless Chromium step runner. It acts as a user, opens pages,
+- `driver.mjs`: headless Chromium step runner. It signs in as a user, opens pages,
   clicks, reads text and takes screenshots.
 
 ## Prerequisites (macOS, as verified)
@@ -42,7 +42,9 @@ The first `up` builds the DB in about 1s (migrate + seed). Later `up`s reuse it,
 so **state persists between runs**. Use `serve.sh up --fresh` (or `reset`) to get
 the pristine data back. Stop with `serve.sh down` (and `DATA=blank … down`).
 
-Drive it. Steps run in order in one page, and the act-as cookie persists between steps:
+Drive it. The driver signs in as the default user before the first step
+(`w.kamau@elog.or.ke` on 8095, `a.salim@cct.or.ke` on 8096). Steps run in order
+in one page, and the session persists between steps:
 
 ```bash
 node .claude/skills/run-fms/driver.mjs \
@@ -52,10 +54,11 @@ node .claude/skills/run-fms/driver.mjs \
   goto:/journals 'text:.jr-row:has-text("JV-26-0310")'
 ```
 
-Steps: `as:<email>`, `goto:<path>`, `click:<sel>`, `fill:<sel>=<v>`, `select:<sel>=<label>`,
+Steps: `as:<email>` (sign in as them), `logout`, `goto:<path>`, `click:<sel>`, `fill:<sel>=<v>`, `select:<sel>=<label>`,
 `wait:<sel>`, `text:<sel>`, `eval:<js>`, `ss:<name>`, `ssfull:<name>`, `sleep:<ms>`.
 Selectors are Playwright's (`text=…`, CSS, `role=button[name="…"]`). `--port 8096`
-targets the blank instance.
+targets the blank instance. `--as <email>` changes the first user; `--as none`
+starts signed out (to drive `/login` itself).
 
 - Screenshots go to `writable/run-skill/shots/<name>.png`. **Read them.**
 - On failure it prints `FAILED: …`, saves `shots/_failure.png` and exits 1.
@@ -72,7 +75,24 @@ node .claude/skills/run-fms/driver.mjs --port 8096 goto:/coa 'click:text=Start f
   'click:text=Not-for-profit — compact' 'click:text=Review 44 accounts' 'click:text=Adopt 44 accounts' sleep:500 ss:14-adopted
 ```
 
-### Who to act as
+### Signing in
+
+Every page and `/api` call needs a signed-in session (`/login`, `/api/auth/*` and
+the invite/reset link pages are the exceptions). Every demo user's password is
+`elog-demo-password` (`OrganisationSeeder::DEMO_PASSWORD`); the blank instance's
+`a.salim` gets the same from `install.json`. `FMS_PASSWORD` overrides it in the driver.
+
+The app's default is a second step (authenticator app or emailed code) for
+**everyone**. `serve.sh` exports `auth_mfaRequired=optional` so a password alone
+signs in. To try the second-step screens, start it with
+`auth_mfaRequired=all .claude/skills/run-fms/serve.sh up` (after `down`) and drive
+`/login` with `--as none`. The authenticator key is on the page in `.mfa-key`, so
+an `eval:` can compute the current code with Web Crypto (HMAC-SHA1, 30 s step,
+RFC 6238) and fill `input[name=code]`. Emailed codes can't be read: mail isn't
+configured, so outside production the code goes to `writable/logs/` instead.
+A user who has set up a second step can't be signed in by `as:` any more. Use `up --fresh`.
+
+### Who to sign in as
 
 Demo (`:8095`): `w.kamau@elog.or.ke` Finance Manager (default, limit KES 5M, but
 journals over **KES 500,000** need the ED), `m.otieno@elog.or.ke` Senior Accountant,
@@ -83,24 +103,32 @@ journals over **KES 500,000** need the ED), `m.otieno@elog.or.ke` Senior Account
 ### API and DB directly
 
 ```bash
-curl -s localhost:8095/api/me
-curl -s localhost:8095/api/journals/JV-26-0310 | grep -m1 '"status"'
+J=writable/run-skill/cookies.txt
+curl -s -c $J localhost:8095/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"email":"w.kamau@elog.or.ke","password":"elog-demo-password"}' >/dev/null
+curl -s -b $J localhost:8095/api/journals/JV-26-0310 | grep -m1 '"status"'
+curl -s -b $J -H 'X-Requested-With: curl' -H 'Content-Type: application/json' -X POST localhost:8095/api/… -d '{…}'
 sqlite3 writable/run-skill/demo.sqlite "select code from db_entities"   # tables are prefixed db_
 .claude/skills/run-fms/serve.sh spark migrate:status                    # any spark command, against the SQLite DB
 ```
 
-`curl` has no act-as cookie, so it is always the default user. For POSTs as someone
-else, use the driver (`as:` then `eval:fetch(...)`).
+Without a session cookie `/api/*` answers 401. A POST (anything but GET) also needs an
+`X-Requested-With` header, or it gets 403. That header is the CSRF guard; the
+app's own pages add it to every fetch, so `eval:fetch(...)` in the driver needs nothing extra.
+Too many sign-ins from one address (10 a minute) get 429. Five wrong passwords lock
+the account for 15 minutes.
 
 ## Test
 
 ```bash
 export PATH=/opt/homebrew/bin:$PATH
 vendor/bin/phpunit --filter JournalLifecycleTest   # ~12s
-vendor/bin/phpunit                                 # 227 tests, ~2m20s
+vendor/bin/phpunit                                 # 263 tests, ~2m40s
 ```
 
-Tests use their own in-memory SQLite and need no server.
+Tests use their own in-memory SQLite and need no server. Feature tests start signed
+in as the settings manager (`tests/_support/SignsIn.php`; `signIn($email)` switches user).
+`phpunit.dist.xml` sets `auth.actAs=true`, so the older tests' act-as cookie still works there.
 
 ## Run (human path)
 
@@ -126,6 +154,8 @@ dev data.
 - Pages scroll inside `div.content`, not the window, so Playwright's own
   `fullPage` captures one screen only. `ssfull:` grows the viewport by what
   `.content` hides; use it, not a custom `page.screenshot({fullPage:true})`.
+- `text=Sign in` on `/login` matches the heading first. Click `button[type=submit]`.
+- There is no `/dashboard` route; the dashboard is `/`.
 - The journal "detail" route (`/journals/<ref>`) opens as a drawer over the
   register. The register rows are `div.jr-row`, not `<tr>`.
 - As the preparer, the Approve button is **absent** (a footer note replaces it),

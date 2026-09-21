@@ -31,6 +31,7 @@ final class InstallTest extends CIUnitTestCase
 {
     use DatabaseTestTrait;
     use FeatureTestTrait;
+    use \Tests\Support\SignsIn;
 
     protected $namespace = 'App';
     protected $refresh   = true;
@@ -94,6 +95,7 @@ final class InstallTest extends CIUnitTestCase
     public function testInstallingCreatesTheOrganisationItsYearAndItsFirstUser(): void
     {
         $done = (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         $this->assertStringContainsString('CCT-HQ', $done['entity']);
@@ -118,9 +120,28 @@ final class InstallTest extends CIUnitTestCase
         $this->seeInDatabase('audit_events', ['action' => 'installed', 'object_type' => 'entity', 'object_ref' => 'CCT-HQ']);
     }
 
+    public function testTheFirstUserChoosesAPasswordFromAOneTimeLinkUnlessTheAnswersGiveOne(): void
+    {
+        // No password in the answers: a link to choose one, and no way in until it is used.
+        $done = (new Installer())->install(self::ANSWERS);
+        $this->assertMatchesRegularExpression('#/accept-invite\?token=[A-Za-z0-9_-]{40,}$#', (string) $done['link']);
+        $this->assertNull(db_connect()->table('users')->where('email', 'a.salim@cct.or.ke')->get()->getRow()->password_hash);
+        $this->assertSame('Amina Salim', json_decode($this->get('api/auth/invite?token=' . substr(strrchr($done['link'], '='), 1))->getJSON(), true)['link']['name']);
+        $this->assertContains('users.manage', (new UserRepository())->actor('a.salim@cct.or.ke')['permissions']);
+    }
+
+    public function testAnUnattendedInstallCanSetTheFirstPassword(): void
+    {
+        $done = (new Installer())->install(['userPassword' => 'coast trust ledger 2026'] + self::ANSWERS);
+        $this->assertNull($done['link']);
+        $hash = db_connect()->table('users')->where('email', 'a.salim@cct.or.ke')->get()->getRow()->password_hash;
+        $this->assertTrue(password_verify('coast trust ledger 2026', $hash));
+    }
+
     public function testTheApplicationNamesItselfAfterTheOrganisationAndServesItsScreens(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         $settings = $this->api('api/settings');
@@ -137,6 +158,7 @@ final class InstallTest extends CIUnitTestCase
     public function testAJournalCanBePostedOnAFreshInstanceOnceTheChartIsImported(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
@@ -176,6 +198,7 @@ final class InstallTest extends CIUnitTestCase
     public function testAFundIsOpenedAndHeldToWhatItCanBe(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
         $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
         $funds = new FundRepository();
@@ -205,6 +228,7 @@ final class InstallTest extends CIUnitTestCase
     public function testACashAccountIsOpenedOnALedgerAccountAndOnlyOnce(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
         $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
 
@@ -245,6 +269,7 @@ final class InstallTest extends CIUnitTestCase
     public function testTheSettingsScreensOfferTheFundAndCashAccountPanels(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         // Segments lists the funds and what a new one may be.
@@ -272,6 +297,7 @@ final class InstallTest extends CIUnitTestCase
     public function testTheBankStatementsPanelOffersTheAccountsACashAccountCouldSitOn(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
         $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
 
@@ -304,6 +330,7 @@ final class InstallTest extends CIUnitTestCase
     public function testAConversionCanBeLoadedOnAFreshInstance(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         $options = (new ConversionRepository())->options();
@@ -319,6 +346,7 @@ final class InstallTest extends CIUnitTestCase
     public function testTheTrialBalanceTemplateIsJustItsColumnsUntilThereIsAChart(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         $template = (new ConversionRepository())->template('Jan 2026');
@@ -332,6 +360,7 @@ final class InstallTest extends CIUnitTestCase
     public function testPayrollDrawsOnAFreshInstanceAndSaysWhereItCannotPostYet(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         // The chart is imported after the reference data, so nothing is mapped yet.
@@ -358,6 +387,7 @@ final class InstallTest extends CIUnitTestCase
     public function testOnceTheChartIsImportedPayrollIsMappedAndPosts(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
         $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
 
@@ -396,6 +426,7 @@ final class InstallTest extends CIUnitTestCase
     public function testEveryReadEitherWorksOrRefusesWithAReasonOnAFreshInstance(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         $broken = [];
@@ -432,6 +463,7 @@ final class InstallTest extends CIUnitTestCase
     public function testAChartTemplateIsClonedIntoAnEmptyChartAndPayrollFollowsIt(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
         $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
 
@@ -486,6 +518,7 @@ final class InstallTest extends CIUnitTestCase
     public function testCloningOntoAPartBuiltChartFillsTheGapsAndLeavesWhatIsThere(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
         $amina = (int) (new Lookups())->userId('a.salim@cct.or.ke');
 
@@ -516,6 +549,7 @@ final class InstallTest extends CIUnitTestCase
     public function testATemplateCanBeAdjustedBeforeItIsAdopted(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         // The organisation renames one account, retypes and re-restricts another, and
@@ -550,6 +584,7 @@ final class InstallTest extends CIUnitTestCase
     public function testAnInstanceIsInstalledOnceAndTheAnswersAreChecked(): void
     {
         (new Installer())->install(self::ANSWERS);
+        $this->signIn();
         Repository::forget();
 
         try {
@@ -571,6 +606,7 @@ final class InstallTest extends CIUnitTestCase
             [['currency' => 'XYZ'], 'not a currency this instance holds'],
             [['firstYear' => 'next year'], 'four-digit year'],
             [['registeredName' => ''], 'Registered name is needed'],
+            [['userPassword' => 'short'], 'at least 12 characters'],
         ] as [$change, $expected]) {
             try {
                 (new Installer())->install(array_merge(self::ANSWERS, $change));
@@ -585,6 +621,7 @@ final class InstallTest extends CIUnitTestCase
     public function testAYearEndingMidYearOpensTheYearBeforeIt(): void
     {
         (new Installer())->install(['yearEnd' => '30 June'] + self::ANSWERS);
+        $this->signIn();
 
         $this->seeInDatabase('fiscal_years', ['code' => 'FY2026', 'starts_on' => '2025-07-01', 'ends_on' => '2026-06-30']);
         $this->seeInDatabase('periods', ['name' => 'Jul 2025']);
@@ -619,7 +656,8 @@ final class InstallTest extends CIUnitTestCase
     {
         $urls = [];
         foreach (file(ROOTPATH . 'app/Config/Routes.php') as $line) {
-            if (preg_match("/\\\$routes->get\('([^'(]+)',/", $line, $m) === 1 && !str_contains($m[1], '(')) {
+            // Not the sign-in link lookups: without the token from an email they refuse, as they should.
+            if (preg_match("/\\\$routes->get\('([^'(]+)',/", $line, $m) === 1 && !str_contains($m[1], '(') && !str_starts_with($m[1], 'auth/')) {
                 $urls[] = str_starts_with($line, '    ') ? 'api/' . $m[1] : $m[1];
             }
         }

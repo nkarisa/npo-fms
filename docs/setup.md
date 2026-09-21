@@ -13,9 +13,9 @@ two ways to set one up, and they share the same first steps:
 A database holds one or the other, never both. To switch, reset it first — see
 [Resetting](#resetting-a-database).
 
-> **There is no sign-in yet.** Anyone who can reach the application can use it,
-> and the **Act as** menu lets them act as any user. Keep an installation on a
-> private network until authentication is added.
+> **Everyone signs in** with their email, a password and, by default, a second
+> step: a code from an authenticator app (Google Authenticator, Microsoft
+> Authenticator, Okta Verify…) or a code sent by email. See [Signing in](#signing-in).
 
 ---
 
@@ -53,7 +53,9 @@ Then edit `.env`. These are the settings that matter:
 | `database.default.username` / `password` | A MySQL user with rights to create tables, triggers and views. |
 | `database.default.DBDriver` | `MySQLi`. |
 | `database.default.charset` / `DBCollat` | `utf8mb4` / `utf8mb4_unicode_ci`. |
-| `encryption.key` | Generate one with `php spark key:generate`. Without it, M-Pesa credentials cannot be stored; everything else works. |
+| `encryption.key` | Generate one with `php spark key:generate`. **Needed for authenticator apps**: their keys are stored encrypted. Without it, the second step can only be a code by email, and M-Pesa credentials can't be stored. |
+| `email.*` | How the application sends invitations, password resets and sign-in codes. See [Mail](#mail). |
+| `auth.*` | Optional sign-in settings. See [Signing in](#signing-in). |
 | `app.asOf` | **Demonstration data only** — see below. Leave it out for a real instance. |
 
 ### About `app.asOf`
@@ -138,10 +140,13 @@ then builds the organisation on top of it from the prototype data in
   advances, bank statements and reconciliations, the cashflow forecast, donor
   reports, translations and an audit trail.
 
-### Who to act as
+### Who to sign in as
 
-With no sign-in, you choose who you are from the **Act as** menu. The default is
-the Finance Manager.
+Every active demonstration user has the password **`elog-demo-password`**
+(`OrganisationSeeder::DEMO_PASSWORD`). It is public, so never load the
+demonstration data where the internet can reach it. At first sign-in each person
+is asked to set up a second step. To skip that on a laptop, set
+`auth.mfaRequired = optional` in `.env`.
 
 | Person | Email | Role | Useful for |
 |---|---|---|---|
@@ -156,7 +161,10 @@ the Finance Manager.
 | Brian Omondi | b.omondi@elog.or.ke | Accountant | Suspended |
 
 The person who prepares something can never approve it. To see an approval
-through, prepare it as one person and switch to another to approve.
+through, prepare it as one person, then sign out and sign in as another to approve.
+For training sessions, `auth.actAs = true` brings back an **Act as** menu that
+switches user without signing out. Everything is recorded against the person
+acted as. **Never turn it on for an instance holding real books.**
 
 ### Seeding again
 
@@ -231,7 +239,8 @@ brackets.
 | Account code length | `4 digits` | **Choose 4 digits.** The chart of accounts and its templates currently work with four-digit codes |
 | First financial year to keep | this year | Named by the year it ends in. A year ending 30 June 2027 is FY2027 and opens on 1 July 2026 |
 | Your full name | — | The first user. First and last name, so entries show who prepared them |
-| Your email address | — | How you are identified |
+| Your email address | — | What you sign in with |
+| Your password | — | **Answers file only** (`userPassword`), never asked on screen. Leave it out and the installer prints a one-time link for you to choose one |
 
 Nothing is written until every answer has been checked, and everything is
 written in one transaction — a refused answer leaves the database exactly as it
@@ -243,11 +252,13 @@ was.
 - The reporting settings, posting controls and appearance, all at their defaults
 - The approval policy (thresholds and who approves above them)
 - The first financial year and its twelve months, all open
-- You, as **Finance Manager** — the only role that can change settings
+- You, as **Finance Manager**, the role that can change settings and manage users
 - A system user that owns records nobody signed for; it can never sign in
 - An entry in the audit log recording the installation
 
-It then prints what to do next.
+It then prints what to do next, and, unless the answers file gave a password, a
+**one-time link** to choose your password. The link works once, for seven days.
+If it is lost, `php spark user:link <your email>` prints a new one.
 
 #### Installing without prompts
 
@@ -273,9 +284,13 @@ Fill it in:
     "codeLength": "4 digits",
     "firstYear": "2026",
     "userName": "Amina Salim",
-    "userEmail": "a.salim@cct.or.ke"
+    "userEmail": "a.salim@cct.or.ke",
+    "userPassword": ""
 }
 ```
+
+`userPassword` is optional. Give one (at least 12 characters) for an unattended
+install, or leave it empty and use the link the installer prints.
 
 And run it:
 
@@ -292,11 +307,12 @@ php spark install --config=install.json
 | *This instance already belongs to an organisation…* | The database already has an entity. A second head office would break the consolidation every report is built on | Use a new database, or [reset](#resetting-a-database) this one |
 | *The reference data is missing…* | `BaselineSeeder` has not run | Run `php spark db:seed BaselineSeeder` |
 | *… is not a currency this instance holds* | The currency is not seeded | Use a seeded currency; add others in Settings → Currencies afterwards |
+| *Use at least 12 characters…* (or a similar reason) | `userPassword` is too short, too obvious, or contains your email address | Choose a longer one, or leave it out and use the link |
 
 ### Step 3 — Finish setting up in the application
 
-Open the application. You are acting as the user you just created. Do these in
-order — each one is what the next depends on.
+Open the link the installer printed, choose your password and set up your second
+step. Then do these in order — each one is what the next depends on.
 
 #### 1. Check the defaults — Settings
 
@@ -368,6 +384,93 @@ other entry. The person who loaded it cannot approve it, so step 7 comes first.
 Invite at least one other person who can approve — typically the Executive
 Director. Every entry needs a second person, and the opening balances will usually
 be worth more than a Finance Manager may approve alone.
+
+Each invitation emails a link to choose a password. Give a person as many roles
+as their job needs, each at all entities or only some. Define new roles under
+**Settings → Roles** if the built-in ones don't fit.
+
+---
+
+## Signing in
+
+People sign in at `/login` with their email and password, then a second step:
+
+- **An authenticator app** (recommended): Google Authenticator, Microsoft
+  Authenticator, Okta Verify, 1Password or any app that shows six-digit codes
+  (TOTP, RFC 6238). Needs `encryption.key`.
+- **A code by email**, valid for 10 minutes. Needs [mail](#mail).
+
+Setting either up gives ten one-time **recovery codes** for when the phone or
+mailbox is lost. People manage their password, second step and recovery codes
+under **My account**, in the account menu.
+
+**Permissions come only from roles.** A role is a named set of permissions
+(Settings → Roles). A person holds one or more roles, each at all entities or at
+the entities named (Settings → Users → Manage). What they may do is everything
+their roles allow. Only someone with the `users.manage` permission (the Finance
+Manager, out of the box) changes roles or who holds them. The application refuses
+any change that would leave nobody active who can manage users.
+
+### Settings
+
+All optional. Set them in `.env` as `auth.<name>`:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `auth.mfaRequired` | `all` | Who must have a second step: `all`; `privileged` (anyone who can approve, post, authorise a close, or change settings or users); or `optional`. Anyone may set one up regardless |
+| `auth.mfaMethods` | `totp, email` | Which second steps are offered |
+| `auth.issuer` | the short name | The name shown against the account in authenticator apps |
+| `auth.minPasswordLength` | `12` | Passwords containing the person's email name, the handful anyone tries first, and ones of fewer than five different characters are refused whatever their length |
+| `auth.maxFailedSignIns` / `auth.lockMinutes` | `5` / `15` | Wrong passwords before an account is locked, and for how long |
+| `auth.idleMinutes` | `30` | Idle time before someone must sign in again |
+| `auth.inviteHours` / `auth.resetHours` | `168` / `1` | How long invitation and password-reset links work |
+| `auth.actAs` | `false` | Training only: the **Act as** menu. See [Who to sign in as](#who-to-sign-in-as) |
+
+Every sign-in, wrong password, lockout and change to a second step is in the
+audit log with the address it came from. Sign-in attempts are also limited to
+ten a minute from one address.
+
+### Mail
+
+Set CodeIgniter's email settings in `.env`, for example:
+
+```ini
+email.fromEmail = finance@example.org
+email.fromName = 'ELOG Finance'
+email.protocol = smtp
+email.SMTPHost = smtp.example.org
+email.SMTPUser = finance@example.org
+email.SMTPPass = '…'
+email.SMTPPort = 587
+email.SMTPCrypto = tls
+```
+
+Until mail works, outside `production`, an invitation link, reset link or sign-in
+code that could not be sent is written to `writable/logs/` instead, so a
+developer can still use it. In production it is not logged.
+
+### Locked out
+
+Someone who has lost both their phone and their recovery codes: anyone with
+`users.manage` opens **Settings → Users → Manage → Reset second step**, and the
+person sets up a new one at their next sign-in. A forgotten password is reset
+from **Forgot your password?** on the sign-in page.
+
+If nobody who manages users can sign in, run this on the server:
+
+```bash
+php spark user:link w.kamau@elog.or.ke              # a one-time link to choose a new password
+php spark user:link w.kamau@elog.or.ke --reset-mfa  # …and remove their second step
+```
+
+Both are recorded in the audit log.
+
+### Upgrading an existing database
+
+Sign-in comes with a migration. Run `php spark migrate` after updating. Existing
+users have no password yet, so give each a link: `php spark user:link <email>`,
+or, once one person is in, **Email a link to set a password** under Settings → Users → Manage. The migration
+also gives the new `users.manage` permission to every role that could change settings.
 
 ---
 

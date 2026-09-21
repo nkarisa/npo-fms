@@ -47,8 +47,46 @@ page is rendered in your browser and shows the same building blocks throughout:
 
 ### Signing in and the workspace
 
-1. Open `http://localhost:8090/` in your browser.
-2. The application opens on the **Dashboard** (Finance overview).
+1. Open the application's address in your browser (for example
+   `http://localhost:8090/`). You are taken to **Sign in**.
+2. Enter your email and password and choose **Sign in**.
+3. Give your **second step**: the six-digit code your authenticator app shows, or
+   the code just emailed to you.
+4. The application opens on the **Dashboard** (Finance overview), or on the page
+   you were trying to open.
+
+**Your first time.** Your invitation email has a link. Open it, choose a password
+of at least 12 characters (a few unrelated words are easy to remember), then set
+up a second step:
+
+- **Authenticator app** (recommended). Install Google Authenticator, Microsoft
+  Authenticator, Okta Verify or similar on your phone, add an account, scan the
+  QR code on screen (or type the key under it), and enter the code the app shows.
+- **Code by email.** A code is sent to you; enter it. You'll get a new one each
+  time you sign in.
+
+You are then shown ten **recovery codes**. Save them somewhere safe, away from
+your phone: copy them into a password manager, download them or print them. Each
+one gets you in once if you lose your phone or can't reach your email. They are
+not shown again.
+
+**Trouble signing in**
+
+| What happened | What to do |
+|---|---|
+| Forgot your password | **Forgot your password?** on the sign-in page emails a link that works for an hour |
+| Lost your phone | **Use a recovery code** on the second-step screen, then set up the app again under **My account** |
+| Lost your phone and your recovery codes | Ask whoever manages users to **Reset second step** for you |
+| *Too many wrong passwords* | The account is locked for 15 minutes. Wait, or reset your password |
+| Signed out while working | You're signed out after 30 minutes without using the application. Sign in again and you return to the same page |
+
+### My account
+
+Open the user menu (your initials, top right) and choose **My account**. Here you
+can see which roles you hold and what they let you do, change your password, set
+up or change your second step, make new recovery codes (the old ones stop
+working), and check your recent sign-ins. If one isn't you, change your password
+and tell whoever manages users. **Sign out** is in the same menu.
 
 ### The navigation sidebar
 
@@ -78,8 +116,8 @@ Running left to right across the top of every page:
 - **Financial-year pill** — the current FY and whether it is open.
 - **Notifications (◎)** — a bell with an unread badge; the panel links each item
   to its record.
-- **User menu** — the signed-in user, with an **Act as** switcher for changing the
-  acting role, plus account options.
+- **User menu** — who you are signed in as and your roles, **My account** and
+  **Sign out**.
 
 ---
 
@@ -115,7 +153,7 @@ is planned.
 | Funds and grants | Donor reports | Coming soon |
 | Insight | Cashflow forecast | Coming soon |
 | Insight | Reports | Coming soon |
-| Insight | Settings | Coming soon |
+| Insight | Settings | Coming soon ([Users and roles](#users-and-roles) ✅) |
 
 > For a page-by-page overview of the entire interface, see
 > [`documentation.md`](documentation.md).
@@ -649,3 +687,72 @@ Importing is limited to the Finance Manager.
   opposite side).
 - **Archiving preserves history.** Retire an account by archiving it rather than
   deleting, so past postings remain intact.
+
+---
+
+## Users and roles
+
+**Settings → Users** and **Settings → Roles**. Changing either needs a role with
+the `users.manage` permission, which the Finance Manager has out of the box.
+Everyone else can look but not change.
+
+### 1. How access works
+
+- A **role** is a named set of permissions, for example *Accountant*: view the
+  ledger, prepare journals, raise requisitions.
+- People never hold permissions directly. They hold **roles**, as many as their
+  job needs, and each role at **all entities** or only the ones named.
+- What someone can do is everything their roles allow, added together. Change a
+  role's permissions and it changes for everyone who holds it.
+
+### 2. Inviting someone
+
+1. **Settings → Users → Invite user.**
+2. Enter their name and work email, tick one or more **roles**, and choose the
+   entities they work in.
+3. **Send invitation.** They are emailed a link to choose a password. It works
+   for seven days. They show as *Invited* until they use it.
+
+### 3. Changing someone's roles
+
+1. **Settings → Users**, then **Manage** on their row.
+2. Under **Roles**, change a role in its drop-down, tick **All entities** or the
+   entities it applies to, **+ Add a role** for another, or ✕ to take one away.
+3. **Save roles.** It takes effect straight away.
+
+From the same drawer you can **Suspend** someone, which signs them out and stops
+them signing in, and **Reinstate** them later. You can also **Reset second step**
+for someone who has lost their phone and their recovery codes, or email a new
+link to someone who hasn't set a password yet.
+
+### 4. Defining roles
+
+1. **Settings → Roles → New role.**
+2. Give it a name and a short description, and tick its permissions. They are
+   grouped by area: Ledger, Journals and documents, Procurement, Payroll, Period
+   close, Chart of accounts and Administration.
+3. **Add role.** Add as many roles as the organisation needs.
+
+To change a role, choose **Edit** on its card, then **Save role**. The roles the application comes
+with keep their names, because approvals and the close checklist refer to them,
+but you can change their permissions. A role you added can be removed with
+**Delete role** once nobody holds it.
+
+### 5. Safeguards
+
+- There must always be someone active who can manage users. A change that would
+  leave nobody is refused, and so is suspending yourself.
+- Everyone must hold at least one role.
+- Every change is in **Settings → Audit log**: who changed what, when.
+
+### 6. Quick reference
+
+| Task | How |
+|---|---|
+| Add a person | Users → **Invite user** → name, email, roles, entities → **Send invitation** |
+| Give someone another role | Users → **Manage** → **+ Add a role** → **Save roles** |
+| Limit a role to some entities | Users → **Manage** → untick **All entities** → tick the entities |
+| Stop someone's access | Users → **Manage** → **Suspend** |
+| Someone lost their phone and codes | Users → **Manage** → **Reset second step** |
+| Create a role | Roles → **New role** → name, permissions → **Add role** |
+| Change what a role can do | Roles → **Edit** on its card → tick or untick permissions → **Save role** |

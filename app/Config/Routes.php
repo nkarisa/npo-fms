@@ -29,8 +29,41 @@ $routes->get('cashflow', 'Pages::cashflow');
 $routes->get('reports', 'Pages::reports');
 $routes->get('settings', 'Pages::settings');
 $routes->get('user-manual', 'Pages::userManual');
+$routes->get('account', 'Pages::account');
+
+// Signing in. These and /api/auth/* are the only routes open without a sign-in (Config\Filters).
+$routes->get('login', 'Pages::login');
+$routes->get('accept-invite', 'Pages::acceptInvite');
+$routes->get('reset-password', 'Pages::resetPassword');
 
 $routes->group('api', static function (RouteCollection $routes) {
+    $routes->get('auth', 'Api\Auth::status');
+    $routes->post('auth/login', 'Api\Auth::login');
+    $routes->post('auth/verify', 'Api\Auth::verify');
+    $routes->post('auth/code', 'Api\Auth::code');
+    $routes->post('auth/enrol/start', 'Api\Auth::enrolStart');
+    $routes->post('auth/enrol/confirm', 'Api\Auth::enrolConfirm');
+    $routes->post('auth/logout', 'Api\Auth::logout');
+    $routes->post('auth/forgot', 'Api\Auth::forgot');
+    $routes->get('auth/invite', 'Api\Auth::link/invite');
+    $routes->post('auth/invite', 'Api\Auth::redeem/invite');
+    $routes->get('auth/reset', 'Api\Auth::link/reset');
+    $routes->post('auth/reset', 'Api\Auth::redeem/reset');
+    $routes->get('account', 'Api\Account::index');
+    $routes->post('account/password', 'Api\Account::password');
+    $routes->post('account/mfa/start', 'Api\Account::mfaStart');
+    $routes->post('account/mfa/confirm', 'Api\Account::mfaConfirm');
+    $routes->post('account/mfa/remove', 'Api\Account::mfaRemove');
+    $routes->post('account/recovery-codes', 'Api\Account::recoveryCodes');
+    $routes->get('roles', 'Api\Roles::index');
+    $routes->post('roles', 'Api\Roles::create');
+    $routes->post('roles/(:num)', 'Api\Roles::update/$1');
+    $routes->post('roles/(:num)/delete', 'Api\Roles::delete/$1');
+    $routes->post('users/(:num)/access', 'Api\Users::access/$1');
+    $routes->post('users/(:num)/suspend', 'Api\Users::suspend/$1');
+    $routes->post('users/(:num)/reinstate', 'Api\Users::reinstate/$1');
+    $routes->post('users/(:num)/invite', 'Api\Users::invite/$1');
+    $routes->post('users/(:num)/reset-mfa', 'Api\Users::resetMfa/$1');
     $routes->get('dashboard', 'Api\Dashboard::index');
     $routes->get('dashboard/board-pack', 'Api\Dashboard::boardPack');
     $routes->get('notifications', 'Api\Notifications::index');

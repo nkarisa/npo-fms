@@ -52,10 +52,11 @@ class BaselineSeeder extends Seeder
         'period.close'      => 'Confirm the management review and close a period',
         'period.authorise'  => 'Authorise a period close and reopen a closed period',
         'chart.manage'      => 'Add, change, import and archive accounts in the chart',
+        'users.manage'      => 'Invite users, assign their roles and define roles',
     ];
 
     public const ROLE_PERMISSIONS = [
-        'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view', 'settings.manage', 'period.close', 'chart.manage'],
+        'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view', 'settings.manage', 'period.close', 'chart.manage', 'users.manage'],
         'Executive Director'  => ['ledger.view', 'journal.approve', 'journal.post', 'payroll.view', 'period.authorise'],
         'Senior Accountant'   => ['ledger.view', 'journal.prepare', 'requisition.raise'],
         'Accountant'          => ['ledger.view', 'journal.prepare', 'requisition.raise'],
