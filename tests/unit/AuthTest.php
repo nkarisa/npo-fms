@@ -247,6 +247,19 @@ final class AuthTest extends CIUnitTestCase
         $this->assertSame('done', $this->send('post', 'api/auth/login', ['email' => self::ACCOUNTANT, 'password' => 'a brand new pass phrase'])['stage']);
     }
 
+    public function testAfterAResetTheAuthenticatorAppStillGivesTheSecondStep(): void
+    {
+        $secret = $this->enrolTotp(self::FM)['secret'];
+        $this->send('post', 'api/auth/logout');
+
+        $this->send('post', 'api/auth/forgot', ['email' => self::FM]);
+        preg_match('#reset-password\?token=([A-Za-z0-9_-]+)#', $this->lastEmail()['body'], $m);
+        $after = $this->send('post', 'api/auth/reset', ['token' => $m[1], 'password' => 'a brand new pass phrase']);
+        $this->assertSame(['mfa', 'totp'], [$after['stage'], $after['user']['method']]);
+
+        $this->assertSame('done', $this->send('post', 'api/auth/verify', ['code' => Totp::code($secret, Totp::step() + 1)])['stage']);
+    }
+
     // ------------------------------------------------------------------
     // The session
     // ------------------------------------------------------------------
