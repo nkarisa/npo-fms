@@ -93,8 +93,9 @@ final class StatementFormatRepository extends Repository
 
     /**
      * Records that refer to a cash account, as "3 receipts", "1 bank statement": the
-     * documents that name it, and every journal line on the ledger account behind
-     * it, drafts included, since those post there.
+     * documents that name it, and every journal line the entity holding it has on the
+     * ledger account behind it, drafts included, since those post there. Other
+     * entities' lines on the same code of the shared chart are theirs, not this account's.
      *
      * @return list<string>
      */
@@ -102,7 +103,10 @@ final class StatementFormatRepository extends Repository
     {
         $id = (int) $bank['id'];
         $counts = EntityScope::across(fn () => [
-            'journal line'   => (int) $this->value('SELECT COUNT(*) FROM {journal_lines} WHERE account_id = ?', [(int) $bank['account_id']])
+            'journal line'   => (int) $this->value(
+                'SELECT COUNT(*) FROM {journal_lines} l JOIN {journals} j ON j.id = l.journal_id WHERE l.account_id = ? AND j.entity_id = ?',
+                [(int) $bank['account_id'], (int) $bank['entity_id']]
+            )
                 + (int) $this->value("SELECT COUNT(*) FROM {journals} WHERE source_type = 'cash_book' AND source_id = ?", [$id]),
             'receipt'        => (int) $this->value('SELECT COUNT(*) FROM {receipts} WHERE bank_account_id = ?', [$id]),
             'payment'        => (int) $this->value('SELECT COUNT(*) FROM {payments} WHERE bank_account_id = ?', [$id]),
@@ -122,7 +126,7 @@ final class StatementFormatRepository extends Repository
 
     /**
      * The ledger accounts a cash account could be opened on: postable asset accounts
-     * that do not already carry one.
+     * that do not already carry one, and that no other entity posts to.
      *
      * @return list<array{code: string, name: string}>
      */
@@ -132,12 +136,14 @@ final class StatementFormatRepository extends Repository
         // and PHP turns a numeric code like "1110" into an integer key.
         // One ledger account carries one cash account, whichever entity holds it.
         $taken = array_column(EntityScope::across(fn () => $this->lookups->bankAccounts()), 'code');
+        $others = $this->postedByOthers($this->lookups->entityId());
 
         return array_values(array_map(
             static fn ($a) => ['code' => $a['code'], 'name' => $a['name']],
             array_filter(
                 $this->lookups->accounts(),
                 static fn ($a) => $a['type'] === 'asset' && (int) $a['is_leaf'] === 1 && $a['status'] === 'active' && !in_array($a['code'], $taken, true)
+                    && !isset($others[(int) $a['id']])
             )
         ));
     }
@@ -230,6 +236,8 @@ final class StatementFormatRepository extends Repository
             $account['status'] !== 'active'      => $code . ' ' . $account['name'] . ' is archived.',
             isset($taken[$code]) => $code . ' already carries ' . $taken[$code]['name']
                 . '. One ledger account holds one cash account, or a reconciliation cannot say which balance it agreed.',
+            ($other = $this->postedByOthers($this->lookups->entityId())[(int) $account['id']] ?? null) !== null
+                                                 => self::othersRefusal($code, $account['name'], $other),
             $name === ''                         => 'Give the account the name it is known by — it is what the reconciliation and the cash book show.',
             !isset(self::KINDS[$kind])           => 'A cash account is a ' . implode(', a ', array_map('lcfirst', self::KINDS)) . '.',
             default                              => null,
@@ -298,6 +306,8 @@ final class StatementFormatRepository extends Repository
             $account['status'] !== 'active'      => $next['code'] . ' ' . $account['name'] . ' is archived.',
             $next['code'] !== $code && isset($taken[$next['code']]) => $next['code'] . ' already carries ' . $taken[$next['code']]['name']
                 . '. One ledger account holds one cash account, or a reconciliation cannot say which balance it agreed.',
+            $next['code'] !== $code && ($other = $this->postedByOthers((int) $bank['entity_id'])[(int) $account['id']] ?? null) !== null
+                                                 => self::othersRefusal($next['code'], $account['name'], $other),
             $next['name'] === ''                 => 'Give the account the name it is known by — it is what the reconciliation and the cash book show.',
             !isset(self::KINDS[$next['kind']])   => 'A cash account is a ' . implode(', a ', array_map('lcfirst', self::KINDS)) . '.',
             $mpesa > 0 && $next['kind'] !== 'mobile_money' => 'M-Pesa settles onto ' . $bank['name'] . ', so it stays a mobile money account. Choose another settlement account in Settings → Integrations first.',
@@ -350,6 +360,28 @@ final class StatementFormatRepository extends Repository
                 ->update(['statement_format_id' => $format['id'] ?? null, 'updated_at' => Clock::timestamp()]);
             $this->logChange($account['code'] . ' ' . $account['short'] . ' statements ' . ($format === null ? 'no longer have a format' : 'now read as ' . $format['name']), $actorId);
         });
+    }
+
+    /**
+     * Ledger accounts that an entity other than the one given posts to, with the first
+     * such entity's name. The chart is shared, so a code another entity already uses —
+     * its grants receivable, its own bank — is not free to become this entity's cash.
+     *
+     * @return array<int, string> account id => entity name
+     */
+    private function postedByOthers(int $entityId): array
+    {
+        return EntityScope::across(fn () => array_column($this->rows(
+            'SELECT l.account_id, MIN(e.name) AS entity FROM {journal_lines} l JOIN {journals} j ON j.id = l.journal_id
+             JOIN {entities} e ON e.id = j.entity_id WHERE j.entity_id <> ? GROUP BY l.account_id',
+            [$entityId]
+        ), 'entity', 'account_id'));
+    }
+
+    private static function othersRefusal(string $code, string $name, string $entity): string
+    {
+        return $code . ' ' . $name . ' already carries postings of ' . $entity
+            . '. A cash account needs a ledger account of its own: add one to the chart of accounts first.';
     }
 
     private static function andList(array $items): string
