@@ -1590,12 +1590,23 @@ const StatementFormats = (() => {
     }
   }
 
+  /**
+   * A ledger account already carrying another entity's cash account sets the kind
+   * and currency of one opened beside it: the balance on one code is of one kind.
+   */
+  function takeLedger(a, candidates) {
+    const c = candidates.find(x => x.code === a.code);
+    if (c && c.kind) Object.assign(a, { kind: c.kind, currency: c.currency });
+  }
+
   /** The fields of a cash account, for opening one (`data-a`) or correcting one (`data-e`). */
   function accountFields(attr, a, candidates) {
+    const chosen = candidates.find(c => c.code === a.code) || {};
+    const shared = (chosen.sharedWith || []).length;
     return `
         <div class="bu-grid" style="margin-top:12px;">
           <label class="bu-field"><span>Ledger account</span>
-            <select ${attr}="code">${candidates.map(c => `<option value="${esc(c.code)}" ${c.code === a.code ? 'selected' : ''}>${esc(c.code)} · ${esc(c.name)}</option>`).join('')}</select></label>
+            <select ${attr}="code">${candidates.map(c => `<option value="${esc(c.code)}" ${c.code === a.code ? 'selected' : ''}>${esc(c.code)} · ${esc(c.name)}${(c.sharedWith || []).length ? ' — also ' + esc(c.sharedWith.join(', ')) : ''}</option>`).join('')}</select></label>
           <label class="bu-field"><span>Account name</span>
             <input ${attr}="name" value="${esc(a.name)}" placeholder="KCB Current Account" maxlength="120"></label>
           <label class="bu-field"><span>Short name <em>on the reconciliation</em></span>
@@ -1608,8 +1619,10 @@ const StatementFormats = (() => {
             <label class="bu-field"><span>Account number</span>
               <input ${attr}="accountNumber" value="${esc(a.accountNumber)}" placeholder="1104578921" class="mono" maxlength="40"></label>`}
           <label class="bu-field"><span>Currency</span>
-            <input ${attr}="currency" value="${esc(a.currency)}" class="mono upper" maxlength="3"></label>
-        </div>`;
+            <input ${attr}="currency" value="${esc(a.currency)}" class="mono upper" maxlength="3" ${shared ? 'readonly' : ''}></label>
+        </div>
+        ${shared ? `<div class="bu-intro" style="margin-top:8px;">${esc(a.code)} also carries the cash account of ${esc(chosen.sharedWith.join(', '))}.
+          This one sits beside it as ${esc((KIND_LABEL[chosen.kind] || '').toLowerCase())} in ${esc(chosen.currency)}, and its balance is this entity's postings to ${esc(a.code)} only.</div>` : ''}`;
   }
 
   const KIND_LABEL = { bank: 'Bank', mobile_money: 'Mobile money', petty_cash: 'Petty cash' };
@@ -1664,14 +1677,20 @@ const StatementFormats = (() => {
   /**
    * Opening a cash account. The ledger account comes first: a reconciliation agrees
    * the statement of the account behind it, so only a postable asset account that
-   * does not already carry one is offered.
+   * does not already carry one of this entity's is offered: a bank ledger account
+   * another entity banks on, or one no other entity posts to.
    */
   function newAccount() {
     if (!data.canManage) return '';
     if (!data.candidates.length) {
-      return `<p class="bu-intro">Every postable asset account already carries a cash account. Add one to the chart of accounts to open another.</p>`;
+      return `<p class="bu-intro">No ledger account is free to open a cash account on: every postable asset account either carries one of this entity's already or holds another entity's receivables, advances or assets.
+        Add an asset account for it in the <a href="/coa">chart of accounts</a>, such as “1150 Bank — Ecobank”, and it is offered here.</p>`;
     }
     const a = form.account;
+    if (!data.candidates.some(c => c.code === a.code)) {
+      a.code = data.candidates[0].code;
+      takeLedger(a, data.candidates);
+    }
 
     return `
       <details class="sf-new" ${form.open ? 'open' : ''}>
@@ -1730,14 +1749,16 @@ const StatementFormats = (() => {
       const fix = e.target.closest('[data-e]');
       if (fix && editing) {
         editing[fix.dataset.e] = fix.value;
-        if (fix.dataset.e === 'kind') render();
+        if (fix.dataset.e === 'code') takeLedger(editing, data.candidates);
+        if (fix.dataset.e === 'kind' || fix.dataset.e === 'code') render();
         return;
       }
       // The kind decides which fields the panel shows, so it redraws; the rest do not.
       const field = e.target.closest('[data-a]');
       if (field) {
         form.account[field.dataset.a] = field.value;
-        if (field.dataset.a === 'kind') {
+        if (field.dataset.a === 'code') takeLedger(form.account, data.candidates);
+        if (field.dataset.a === 'kind' || field.dataset.a === 'code') {
           form.open = true;
           render();
         }

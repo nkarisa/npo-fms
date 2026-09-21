@@ -248,7 +248,8 @@ final class AdvancesRepository extends Repository
         $code    = PostingAccounts::of(self::PAYING_ROLES[$key]);
         $account = $this->lookups->accounts()[$code]
             ?? throw new RuleViolation('There is no ' . $method . ' account to pay ' . $ref . ' from.');
-        $bankId = isset($this->lookups->bankAccounts()[$code]) ? (int) $this->lookups->bankAccounts()[$code]['id'] : null;
+        $bank   = $this->lookups->bankAccount($code);
+        $bankId = $bank === null ? null : (int) $bank['id'];
 
         $amount = self::num($advance['amount']);
         $who    = $this->lookups->shortName($actorId);

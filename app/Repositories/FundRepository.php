@@ -435,9 +435,9 @@ final class FundRepository extends Repository
     /** The head office's operating bank account, where a fund's cash is held. */
     private function transferBank(): string
     {
-        foreach ($this->lookups->bankAccounts() as $code => $b) {
-            if ($b['kind'] === 'bank' && $b['currency'] === 'KES') {
-                return (string) $code;
+        foreach ($this->lookups->bankAccounts() as $b) {
+            if ($b['kind'] === 'bank' && $b['currency'] === 'KES' && (int) $b['entity_id'] === $this->lookups->entityId()) {
+                return (string) $b['code'];
             }
         }
 

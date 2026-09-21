@@ -447,7 +447,7 @@ final class ReceivablesRepository extends Repository
     {
         $invoice = $this->header($no);
         $current = $this->find($no);
-        $bank = $this->lookups->bankAccounts()[$accountCode] ?? null;
+        $bank = $this->lookups->bankAccount($accountCode);
         $amount = round($amount, 2);
 
         $error = match (true) {
@@ -580,7 +580,7 @@ final class ReceivablesRepository extends Repository
     {
         $invoice = $this->header($no);
         $current = $this->find($no);
-        $bank = $this->lookups->bankAccounts()[$accountCode] ?? null;
+        $bank = $this->lookups->bankAccount($accountCode);
         $amount = round($amount, 2);
         $writtenOff = self::outstanding($current);
 

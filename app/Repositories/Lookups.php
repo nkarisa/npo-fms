@@ -429,12 +429,35 @@ final class Lookups extends Repository
 
     // ---- Bank accounts ----
 
-    /** @return array<string, array> bank and cash accounts by GL code */
+    /**
+     * The bank and cash accounts of the entities in scope, by id, each with the code
+     * of its ledger account. A ledger account carries a cash account of each entity,
+     * so a code is unique only within one entity: in the consolidated view, or read
+     * across entities, two rows can share it.
+     *
+     * @return array<int, array>
+     */
     public function bankAccounts(): array
     {
         return $this->cached('bank-accounts', fn () => array_column($this->rows(
-            'SELECT b.*, a.code FROM {bank_accounts} b JOIN {accounts} a ON a.id = b.account_id ORDER BY a.code'
-        ), null, 'code'));
+            'SELECT b.*, a.code FROM {bank_accounts} b JOIN {accounts} a ON a.id = b.account_id ORDER BY a.code, b.entity_id'
+        ), null, 'id'));
+    }
+
+    /**
+     * The entity's cash account on a ledger account, or null: the entity being worked
+     * in unless another is named (the head office in the consolidated view).
+     */
+    public function bankAccount(string $code, ?int $entityId = null): ?array
+    {
+        $entityId ??= $this->entityId();
+        foreach ($this->bankAccounts() as $b) {
+            if ((string) $b['code'] === $code && (int) $b['entity_id'] === $entityId) {
+                return $b;
+            }
+        }
+
+        return null;
     }
 
     /** How the payables screens name the account a payment leaves from. */

@@ -19,7 +19,9 @@ use App\Libraries\Prototype;
  * A role that pays out of a bank or cash account (ENTITY_ROLES) is each entity's
  * own, because bank accounts are: an entity that has chosen none follows the head
  * office, and a posting is refused rather than paid out of a bank account that
- * belongs to another entity.
+ * belongs to another entity. A ledger account carries a cash account of each
+ * entity, so a branch that opens its own on the head office's bank code (1110)
+ * follows the head office and pays out of its own bank.
  */
 final class PostingAccounts extends Repository
 {
@@ -89,8 +91,9 @@ final class PostingAccounts extends Repository
         $code = $this->code($role);
         $owner = $this->otherEntitysBank($role, $code);
 
-        return $owner === null ? null : self::ROLES[$role][0] . ' is ' . $code . ', a bank account of ' . $owner . '. Choose '
-            . $this->entityName() . "'s own account for it in Settings → Ledger → Posting accounts.";
+        return $owner === null ? null : self::ROLES[$role][0] . ' is ' . $code . ', a bank account of ' . $owner . ' that '
+            . $this->entityName() . ' holds no cash account on. Open ' . $this->entityName() . "'s own on " . $code
+            . ' in Settings → Bank statements, or choose another of its accounts in Settings → Ledger → Posting accounts.';
     }
 
     public function code(string $role): string
@@ -157,8 +160,8 @@ final class PostingAccounts extends Repository
             throw new RuleViolation($label . ' has to be ' . self::article($types[0]) . ' ' . $types[0] . ' account. ' . $code . ' ' . $account['name'] . ' is ' . self::article($account['type']) . ' ' . $account['type'] . ' account.');
         }
         if (($owner = $this->otherEntitysBank($role, $code)) !== null) {
-            throw new RuleViolation($code . ' ' . $account['name'] . ' is a bank account of ' . $owner . ', so ' . $this->entityName() . ' cannot take '
-                . lcfirst($label) . ' from it. Choose one of ' . $this->entityName() . "'s own accounts.");
+            throw new RuleViolation($code . ' ' . $account['name'] . ' is a bank account of ' . $owner . ' and ' . $this->entityName() . ' holds no cash account on it, so it cannot take '
+                . lcfirst($label) . ' from it. Open ' . $this->entityName() . "'s own on " . $code . ' in Settings → Bank statements first, or choose one of its own accounts.');
         }
         // The organisation's control accounts hold every entity's balance.
         $balance = EntityScope::across(fn () => (new Lookups())->balance($current));
@@ -235,9 +238,10 @@ final class PostingAccounts extends Repository
     }
 
     /**
-     * The name of the entity that holds $code as a bank account, when a role that
-     * pays out of the bank would take it from another entity's; else null. Petty
-     * cash and other accounts no entity holds as a bank account are anyone's.
+     * The name of an entity that holds $code as a bank account, when a role that
+     * pays out of the bank would take it from another entity's because this one holds
+     * no cash account on it; else null. Petty cash and other accounts no entity holds
+     * as a bank account are anyone's.
      */
     private function otherEntitysBank(string $role, string $code): ?string
     {

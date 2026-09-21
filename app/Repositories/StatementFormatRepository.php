@@ -30,9 +30,9 @@ final class StatementFormatRepository extends Repository
         return $this->cached('formats', function () {
             // Formats are the organisation's, so every entity's accounts count as using one.
             $accounts = [];
-            foreach (EntityScope::across(fn () => $this->lookups->bankAccounts()) as $code => $b) {
+            foreach (EntityScope::across(fn () => $this->lookups->bankAccounts()) as $b) {
                 if ($b['statement_format_id'] !== null) {
-                    $accounts[(int) $b['statement_format_id']][] = (string) $code;
+                    $accounts[(int) $b['statement_format_id']][] = (string) $b['code'];
                 }
             }
 
@@ -51,7 +51,7 @@ final class StatementFormatRepository extends Repository
     /** The format a cash account's statements are read with, or null when none is set. */
     public function forAccount(string $code): ?array
     {
-        $bank = $this->lookups->bankAccounts()[$code] ?? null;
+        $bank = $this->lookups->bankAccount($code);
 
         return $bank === null || $bank['statement_format_id'] === null ? null : $this->find((int) $bank['statement_format_id']);
     }
@@ -125,27 +125,32 @@ final class StatementFormatRepository extends Repository
     }
 
     /**
-     * The ledger accounts a cash account could be opened on: postable asset accounts
-     * that do not already carry one, and that no other entity posts to.
+     * The ledger accounts the entity could open a cash account on: postable asset
+     * accounts it holds none on yet, that either carry another entity's cash account
+     * (whose kind and currency one opened beside it takes) or that no other entity
+     * posts to. A code the head office uses for its grants receivable is not a
+     * branch's to bank on; the head office's bank code is.
      *
-     * @return list<array{code: string, name: string}>
+     * @return list<array{code: string, name: string, kind: ?string, currency: ?string, sharedWith: list<string>}>
      */
     public function cashCandidates(): array
     {
-        // Read from the rows, not the keys: bankAccounts() is keyed by account code,
-        // and PHP turns a numeric code like "1110" into an integer key.
-        // One ledger account carries one cash account, whichever entity holds it.
-        $taken = array_column(EntityScope::across(fn () => $this->lookups->bankAccounts()), 'code');
-        $others = $this->postedByOthers($this->lookups->entityId());
+        $entityId = $this->lookups->entityId();
+        $out = [];
+        foreach ($this->lookups->accounts() as $a) {
+            if ($a['type'] !== 'asset' || (int) $a['is_leaf'] !== 1 || $a['status'] !== 'active'
+                || $this->ledgerRefusal($a, $entityId, null) !== null) {
+                continue;
+            }
+            $beside = $this->cashOnLedger((int) $a['id'], $entityId);
+            $out[] = [
+                'code' => (string) $a['code'], 'name' => $a['name'],
+                'kind' => $beside[0]['kind'] ?? null, 'currency' => $beside[0]['currency'] ?? null,
+                'sharedWith' => array_values(array_unique(array_column($beside, 'entity'))),
+            ];
+        }
 
-        return array_values(array_map(
-            static fn ($a) => ['code' => $a['code'], 'name' => $a['name']],
-            array_filter(
-                $this->lookups->accounts(),
-                static fn ($a) => $a['type'] === 'asset' && (int) $a['is_leaf'] === 1 && $a['status'] === 'active' && !in_array($a['code'], $taken, true)
-                    && !isset($others[(int) $a['id']])
-            )
-        ));
+        return $out;
     }
 
     /**
@@ -214,8 +219,9 @@ final class StatementFormatRepository extends Repository
      *
      * A bank reconciliation is between a cash account and the statement of the
      * account behind it, so the ledger account comes first: it must be a postable
-     * asset account, and no two cash accounts can sit on the same one or the
-     * reconciliation would not know which balance it was agreeing.
+     * asset account, and one entity's two cash accounts cannot sit on the same one or
+     * the reconciliation would not know which balance it was agreeing. Each entity's
+     * can (ledgerRefusal()).
      *
      * @param array{code: string, name: string, shortName?: string, kind?: string,
      *              bankName?: string, accountNumber?: string, currency?: string} $input
@@ -227,27 +233,21 @@ final class StatementFormatRepository extends Repository
         $kind = trim((string) ($input['kind'] ?? 'bank'));
 
         $account = $this->lookups->accounts()[$code] ?? null;
-        // Whichever entity holds it: one ledger account carries one cash account.
-        $taken = EntityScope::across(fn () => $this->lookups->bankAccounts());
+        $currency = mb_strtoupper(trim((string) ($input['currency'] ?? ''))) ?: 'KES';
         $refusal = match (true) {
             $account === null                    => 'Account ' . $code . ' is not in the chart of accounts.',
             $account['type'] !== 'asset'         => $code . ' ' . $account['name'] . ' is ' . $account['type'] . '. Cash is held on an asset account.',
             (int) $account['is_leaf'] === 0      => $code . ' ' . $account['name'] . ' is a heading, not a postable account.',
             $account['status'] !== 'active'      => $code . ' ' . $account['name'] . ' is archived.',
-            isset($taken[$code]) => $code . ' already carries ' . $taken[$code]['name']
-                . '. One ledger account holds one cash account, or a reconciliation cannot say which balance it agreed.',
-            ($other = $this->postedByOthers($this->lookups->entityId())[(int) $account['id']] ?? null) !== null
-                                                 => self::othersRefusal($code, $account['name'], $other),
             $name === ''                         => 'Give the account the name it is known by — it is what the reconciliation and the cash book show.',
             !isset(self::KINDS[$kind])           => 'A cash account is a ' . implode(', a ', array_map('lcfirst', self::KINDS)) . '.',
-            default                              => null,
+            default                              => $this->ledgerRefusal($account, $this->lookups->entityId(), null, $kind, $currency),
         };
         if ($refusal !== null) {
             throw new RuleViolation($refusal);
         }
 
         $short = trim((string) ($input['shortName'] ?? '')) ?: mb_substr($name, 0, 40);
-        $currency = mb_strtoupper(trim((string) ($input['currency'] ?? ''))) ?: 'KES';
         if ($this->value('SELECT code FROM {currencies} WHERE code = ?', [$currency]) === null) {
             throw new RuleViolation($currency . ' is not a currency this instance holds. Add it in Settings → Currencies first.');
         }
@@ -279,7 +279,7 @@ final class StatementFormatRepository extends Repository
      */
     public function updateAccount(string $code, array $input, int $actorId): array
     {
-        $bank = $this->lookups->bankAccounts()[$code] ?? throw new RuleViolation('Account ' . $code . ' is not a cash account of this entity.');
+        $bank = $this->lookups->bankAccount($code) ?? throw new RuleViolation('Account ' . $code . ' is not a cash account of this entity.');
         if (($uses = $this->uses($bank)) !== []) {
             throw new RuleViolation($bank['name'] . ' can no longer be changed: ' . self::andList($uses)
                 . ' already refer to it. Open a new cash account for the corrected details instead.');
@@ -297,23 +297,18 @@ final class StatementFormatRepository extends Repository
         }
 
         $account = $this->lookups->accounts()[$next['code']] ?? null;
-        $taken = EntityScope::across(fn () => $this->lookups->bankAccounts());
         $mpesa = EntityScope::across(fn () => $this->value('SELECT COUNT(*) FROM {mpesa_integrations} WHERE bank_account_id = ?', [(int) $bank['id']]));
         $refusal = match (true) {
             $account === null                    => 'Account ' . $next['code'] . ' is not in the chart of accounts.',
             $account['type'] !== 'asset'         => $next['code'] . ' ' . $account['name'] . ' is ' . $account['type'] . '. Cash is held on an asset account.',
             (int) $account['is_leaf'] === 0      => $next['code'] . ' ' . $account['name'] . ' is a heading, not a postable account.',
             $account['status'] !== 'active'      => $next['code'] . ' ' . $account['name'] . ' is archived.',
-            $next['code'] !== $code && isset($taken[$next['code']]) => $next['code'] . ' already carries ' . $taken[$next['code']]['name']
-                . '. One ledger account holds one cash account, or a reconciliation cannot say which balance it agreed.',
-            $next['code'] !== $code && ($other = $this->postedByOthers((int) $bank['entity_id'])[(int) $account['id']] ?? null) !== null
-                                                 => self::othersRefusal($next['code'], $account['name'], $other),
             $next['name'] === ''                 => 'Give the account the name it is known by — it is what the reconciliation and the cash book show.',
             !isset(self::KINDS[$next['kind']])   => 'A cash account is a ' . implode(', a ', array_map('lcfirst', self::KINDS)) . '.',
             $mpesa > 0 && $next['kind'] !== 'mobile_money' => 'M-Pesa settles onto ' . $bank['name'] . ', so it stays a mobile money account. Choose another settlement account in Settings → Integrations first.',
             $this->value('SELECT code FROM {currencies} WHERE code = ?', [$next['currency']]) === null
                                                  => $next['currency'] . ' is not a currency this instance holds. Add it in Settings → Currencies first.',
-            default                              => null,
+            default => $this->ledgerRefusal($account, (int) $bank['entity_id'], (int) $bank['id'], $next['kind'], $next['currency']),
         };
         if ($refusal !== null) {
             throw new RuleViolation($refusal);
@@ -356,32 +351,98 @@ final class StatementFormatRepository extends Repository
         $format = $formatId === null ? null : ($this->find($formatId) ?? throw new RuleViolation('That statement format no longer exists.'));
 
         $this->transaction(function () use ($account, $format, $actorId) {
-            $this->db->table('bank_accounts')->where('id', $this->lookups->bankAccounts()[$account['code']]['id'])
+            $this->db->table('bank_accounts')->where('id', $this->lookups->bankAccount($account['code'])['id'])
                 ->update(['statement_format_id' => $format['id'] ?? null, 'updated_at' => Clock::timestamp()]);
             $this->logChange($account['code'] . ' ' . $account['short'] . ' statements ' . ($format === null ? 'no longer have a format' : 'now read as ' . $format['name']), $actorId);
         });
     }
 
     /**
+     * Why an entity cannot hold a cash account on a ledger account, or null when it
+     * can. The chart is shared and every journal is an entity's, so a ledger account
+     * carries a cash account of each entity — the Coast's bank on 1110 beside the
+     * head office's — but only one of each, or a reconciliation could not say which
+     * balance it agreed. The cash accounts on one ledger account are of one kind and
+     * currency, as the account's balance is. A ledger account no one banks on but
+     * another entity posts to is that entity's receivable, advance or asset, not cash.
+     *
+     * $exceptId is the cash account being corrected; with no kind given, only where
+     * the account stands is checked.
+     */
+    private function ledgerRefusal(array $account, int $entityId, ?int $exceptId, ?string $kind = null, ?string $currency = null): ?string
+    {
+        $label = $account['code'] . ' ' . $account['name'];
+        $here = $beside = [];
+        foreach ($this->cashOnLedger((int) $account['id']) as $b) {
+            if ($b['id'] === $exceptId) {
+                continue;
+            }
+            $b['entity_id'] === $entityId ? $here[] = $b : $beside[] = $b;
+        }
+
+        if ($here !== []) {
+            return $label . ' already carries ' . $here[0]['name'] . '. An entity holds one cash account on a ledger account, or a reconciliation cannot say which balance it agreed.';
+        }
+        if ($beside !== []) {
+            $b = $beside[0];
+            if ($kind !== null && $kind !== $b['kind']) {
+                return $label . ' carries ' . $b['entity'] . "'s " . $b['name'] . ', ' . self::article(lcfirst(self::KINDS[$b['kind']])) . ' ' . lcfirst(self::KINDS[$b['kind']])
+                    . '. The cash accounts on one ledger account are of one kind: open this one on another.';
+            }
+            if ($currency !== null && $currency !== $b['currency']) {
+                return $label . ' carries ' . $b['entity'] . "'s " . $b['name'] . ' in ' . $b['currency']
+                    . '. The cash accounts on one ledger account hold one currency: open this one in ' . $b['currency'] . ', or on another ledger account.';
+            }
+
+            return null;
+        }
+        if (($other = $this->postedByOthers($entityId)[(int) $account['id']] ?? null) !== null) {
+            return $label . ' carries postings of ' . $other . ' and no cash account, so it is not a cash ledger. '
+                . 'Open the cash account on a bank ledger account, or add one to the chart of accounts first.';
+        }
+
+        return null;
+    }
+
+    /**
+     * The cash accounts on a ledger account, whichever entity holds them, but for the
+     * one entity named.
+     *
+     * @return list<array{id: int, entity_id: int, entity: string, name: string, kind: string, currency: string}>
+     */
+    private function cashOnLedger(int $accountId, ?int $exceptEntityId = null): array
+    {
+        $all = $this->cached('cash-on-ledger', fn () => EntityScope::across(function () {
+            $out = [];
+            foreach ($this->rows('SELECT b.id, b.entity_id, b.account_id, b.name, b.kind, b.currency, e.name AS entity
+                FROM {bank_accounts} b JOIN {entities} e ON e.id = b.entity_id ORDER BY b.entity_id') as $r) {
+                $out[(int) $r['account_id']][] = ['id' => (int) $r['id'], 'entity_id' => (int) $r['entity_id']] + $r;
+            }
+
+            return $out;
+        }));
+
+        return array_values(array_filter($all[$accountId] ?? [], static fn ($b) => $b['entity_id'] !== $exceptEntityId));
+    }
+
+    /**
      * Ledger accounts that an entity other than the one given posts to, with the first
-     * such entity's name. The chart is shared, so a code another entity already uses —
-     * its grants receivable, its own bank — is not free to become this entity's cash.
+     * such entity's name.
      *
      * @return array<int, string> account id => entity name
      */
     private function postedByOthers(int $entityId): array
     {
-        return EntityScope::across(fn () => array_column($this->rows(
+        return $this->cached('posted-by-others:' . $entityId, fn () => EntityScope::across(fn () => array_column($this->rows(
             'SELECT l.account_id, MIN(e.name) AS entity FROM {journal_lines} l JOIN {journals} j ON j.id = l.journal_id
              JOIN {entities} e ON e.id = j.entity_id WHERE j.entity_id <> ? GROUP BY l.account_id',
             [$entityId]
-        ), 'entity', 'account_id'));
+        ), 'entity', 'account_id')));
     }
 
-    private static function othersRefusal(string $code, string $name, string $entity): string
+    private static function article(string $word): string
     {
-        return $code . ' ' . $name . ' already carries postings of ' . $entity
-            . '. A cash account needs a ledger account of its own: add one to the chart of accounts first.';
+        return in_array($word[0], ['a', 'e', 'i', 'o', 'u'], true) ? 'an' : 'a';
     }
 
     private static function andList(array $items): string

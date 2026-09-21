@@ -447,23 +447,28 @@ final class BankRepository extends Repository
     private function header(string $code, string $period): array
     {
         return $this->cached("header:{$code}:{$period}", fn () => $this->row(
-            'SELECT r.*, s.reference, s.opening_balance, s.closing_balance, s.source, s.bank_account_id, b.account_id, p.starts_on, p.ends_on, p.status AS period_status
+            'SELECT r.*, s.reference, s.opening_balance, s.closing_balance, s.source, s.bank_account_id, b.account_id, b.entity_id AS bank_entity_id,
+                    p.starts_on, p.ends_on, p.status AS period_status
              FROM {reconciliations} r JOIN {bank_statements} s ON s.id = r.bank_statement_id JOIN {bank_accounts} b ON b.id = r.bank_account_id
              JOIN {accounts} a ON a.id = b.account_id JOIN {periods} p ON p.id = r.period_id
-             WHERE a.code = ? AND p.name = ?',
-            [$code, $period]
+             WHERE a.code = ? AND p.name = ?
+             ORDER BY b.entity_id = ? DESC, b.entity_id LIMIT 1',
+            [$code, $period, $this->lookups->entityId()]
         ) ?? throw new RuleViolation('There is no ' . $code . ' reconciliation for ' . $period . '.'));
     }
 
-    /** The cash book: posted lines on the account dated in the period. */
+    /**
+     * The cash book: the holding entity's posted lines on the account dated in the
+     * period. Another entity's lines on the same code are its own cash account's.
+     */
     private function bookLines(array $h): array
     {
         return $this->rows(
             "SELECT l.id, l.debit, l.credit, l.description, j.reference, j.journal_date, j.narration, j.source_type
              FROM {journal_lines} l JOIN {journals} j ON j.id = l.journal_id
-             WHERE l.account_id = ? AND j.status IN ('posted', 'reversed') AND j.journal_date BETWEEN ? AND ?
+             WHERE l.account_id = ? AND j.entity_id = ? AND j.status IN ('posted', 'reversed') AND j.journal_date BETWEEN ? AND ?
              ORDER BY j.journal_date, j.reference, l.line_no",
-            [$h['account_id'], $h['starts_on'], $h['ends_on']]
+            [$h['account_id'], $h['bank_entity_id'], $h['starts_on'], $h['ends_on']]
         );
     }
 

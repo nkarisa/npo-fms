@@ -124,6 +124,14 @@ Running left to right across the top of every page:
   the bank, M-Pesa and cash accounts it pays from (**Settings → Ledger →
   Posting accounts**), and its M-Pesa short code. An entity that has set none of
   its own follows the head office's, and can go back to following them.
+
+  Each entity opens its own bank, M-Pesa and petty cash accounts in **Settings →
+  Bank statements**. Because every journal belongs to an entity, a branch's bank
+  can sit on the same ledger account as the head office's (1110, say): each is
+  reconciled against its own entity's postings to it. An entity holds one cash
+  account per ledger account, and the cash accounts sharing one are of the same
+  kind and currency. A ledger account another entity uses for something else —
+  its grants receivable, say — cannot become a cash account.
 - **Search everything (⌘K)** — a command palette that searches journals,
   accounts, suppliers, donors and awards.
 - **Financial-year pill** — the current FY and whether it is open.

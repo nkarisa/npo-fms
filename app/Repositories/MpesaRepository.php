@@ -578,13 +578,7 @@ final class MpesaRepository extends Repository
         if ($bankAccountId === null) {
             return '';
         }
-        foreach ($this->lookups->bankAccounts() as $code => $b) {
-            if ((int) $b['id'] === $bankAccountId) {
-                return (string) $code;
-            }
-        }
-
-        return '';
+        return (string) ($this->lookups->bankAccounts()[$bankAccountId]['code'] ?? '');
     }
 
     private function statementFormat(string $accountCode): array

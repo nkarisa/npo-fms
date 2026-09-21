@@ -96,7 +96,7 @@ final class StatementImportRepository extends Repository
             throw new RuleViolation($file['name'] . ' is not a CSV file. Download the statement from the bank as CSV.');
         }
 
-        $bankId = (int) $this->lookups->bankAccounts()[$code]['id'];
+        $bankId = (int) $this->lookups->bankAccount($code)['id'];
         $statement = $this->row(
             'SELECT s.*, r.status AS rec_status FROM {bank_statements} s LEFT JOIN {reconciliations} r ON r.bank_statement_id = s.id WHERE s.bank_account_id = ? AND s.period_id = ?',
             [$bankId, $p['id']]
