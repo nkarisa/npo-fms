@@ -113,7 +113,8 @@ final class InstallTest extends CIUnitTestCase
         // The first user can change settings; the system user can never sign in.
         $this->seeInDatabase('users', ['email' => 'a.salim@cct.or.ke', 'short_name' => 'A. Salim', 'initials' => 'AS', 'status' => 'active']);
         $this->seeInDatabase('users', ['email' => Installer::SYSTEM_EMAIL, 'status' => 'suspended']);
-        $this->assertContains('settings.manage', (new UserRepository())->actor('a.salim@cct.or.ke')['permissions']);
+        $this->assertEmpty(array_diff(['settings.organisation', 'settings.ledger', 'settings.approvals', 'settings.integrations', 'users.manage'],
+            (new UserRepository())->actor('a.salim@cct.or.ke')['permissions']));
         $this->assertSame('Finance Manager', (new Lookups())->roleOf((int) (new Lookups())->userId('a.salim@cct.or.ke')));
 
         // The installation is on the record.

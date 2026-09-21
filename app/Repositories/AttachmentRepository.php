@@ -36,7 +36,7 @@ final class AttachmentRepository extends Repository
         'journal'             => ['table' => 'journals',             'ref' => 'reference', 'label' => 'journal',          'permission' => 'journal.prepare'],
         'bill'                => ['table' => 'bills',                'ref' => 'reference', 'label' => 'bill',             'permission' => 'journal.prepare'],
         'advance'             => ['table' => 'advances',             'ref' => 'reference', 'label' => 'advance',          'permission' => 'journal.prepare'],
-        'grant'               => ['table' => 'grants',               'ref' => 'award_ref', 'label' => 'award',            'permission' => 'settings.manage'],
+        'grant'               => ['table' => 'grants',               'ref' => 'award_ref', 'label' => 'award',            'permission' => 'settings.ledger'],
         'invoice'             => ['table' => 'invoices',             'ref' => 'reference', 'label' => 'invoice',          'permission' => 'journal.prepare'],
         'asset'               => ['table' => 'assets',               'ref' => 'tag',       'label' => 'asset',            'permission' => 'journal.prepare'],
         'verification_result' => ['table' => 'verification_results', 'ref' => 'id',        'label' => 'count',            'permission' => 'journal.prepare'],

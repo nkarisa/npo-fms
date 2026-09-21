@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\SettingsAccess;
 use App\Repositories\MpesaRepository;
 use App\Repositories\RuleViolation;
 
@@ -11,9 +12,10 @@ use App\Repositories\RuleViolation;
  *
  * This section saves as changes are made rather than into the settings draft,
  * because a credential is written once and never read back — it cannot sit in a
- * draft in the browser. Anyone may look at how the integration is set up; only a
- * user holding settings.manage (the Finance Manager) can change it or run a
- * connection check, and every change is in the audit log.
+ * draft in the browser. It is shown only to a user who can change it — a role
+ * with settings.integrations (App\Libraries\SettingsAccess), the Finance Manager
+ * out of the box — who can also run a connection check. Every change is in the
+ * audit log.
  *
  * No credential is ever served: the screen is told which are set and their last
  * four characters.
@@ -22,6 +24,9 @@ class Mpesa extends BaseApiController
 {
     public function index()
     {
+        if (!SettingsAccess::of($this->actor())->canSee('Integrations')) {
+            return $this->denied($this->actor()['role'] . ' cannot see the M-Pesa integration. That needs a role with settings.integrations.');
+        }
         $repo = new MpesaRepository();
 
         return $this->json([
@@ -79,7 +84,7 @@ class Mpesa extends BaseApiController
 
     private function canManage(): bool
     {
-        return in_array('settings.manage', $this->actor()['permissions'] ?? [], true);
+        return SettingsAccess::of($this->actor())->canEdit('Integrations');
     }
 
     private function cannotManage()
@@ -90,7 +95,7 @@ class Mpesa extends BaseApiController
         $actor = $this->actor();
 
         return $this->response->setStatusCode(403)->setJSON([
-            'error' => $actor['role'] . ' cannot change the M-Pesa integration. Only the Finance Manager can — it moves money out of the organisation.',
+            'error' => $actor['role'] . ' cannot change the M-Pesa integration — it moves money out of the organisation. That needs a role with settings.integrations.',
         ]);
     }
 }

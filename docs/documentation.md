@@ -634,8 +634,9 @@ appearance, language/translation, users and the audit log. Changes are edited in
 
 **On screen:** a left navigation of sections and a content pane on the right. The
 top-right shows **Discard** (when there are unsaved changes) and a save button that
-reads **Save changes** when dirty or **Saved** when clean. Only someone whose roles
-include `settings.manage` (the Finance Manager, out of the box) can save; everyone else sees a read-only view and a banner explaining why. A
+reads **Save changes** when dirty or **Saved** when clean. Each section is shown and changed by its own permission
+(see [authentication.md](authentication.md#permissions)); the Finance Manager holds them all out of the box. Someone who can see
+a section but not change it gets a read-only view and a banner naming the permission it needs. A
 warning appears if you try to leave with unsaved changes.
 
 **Sections:**

@@ -12,9 +12,9 @@ use Throwable;
  * same reason the reporting locale is held centrally: finance staff read each
  * other's screens over a shoulder and in screenshots attached to approvals, and
  * a colour that means "this is our ledger" only works if everyone sees it. It is
- * therefore an organisation setting, changed by the role that holds
- * settings.manage (the Finance Manager) and written to the audit log like any
- * other.
+ * therefore an organisation setting, changed by a role that holds
+ * settings.organisation (the Finance Manager, out of the box) and written to the
+ * audit log like any other.
  *
  * Only the theme's key lives here. The colours themselves are in app.css, as
  * [data-theme="..."] blocks of custom properties, so there is one place a

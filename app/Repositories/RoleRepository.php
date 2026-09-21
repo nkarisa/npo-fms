@@ -18,8 +18,10 @@ use App\Libraries\Clock;
  * close checklist, so they can be given different permissions but cannot be
  * renamed or deleted. Roles added here can be all three.
  *
- * Every change is refused if it would leave nobody active who can change settings
- * or manage users — the organisation could not undo it.
+ * Every change is refused if it would leave nobody active who can manage users —
+ * the organisation could not undo it. Nobody changes or deletes a role they hold
+ * themselves: whoever manages roles could otherwise widen their own permissions,
+ * so a change to theirs is made by someone else who manages users.
  */
 final class RoleRepository extends Repository
 {
@@ -27,6 +29,7 @@ final class RoleRepository extends Repository
     public const GROUPS = [
         'ledger' => 'Ledger', 'journal' => 'Journals and documents', 'requisition' => 'Procurement', 'payroll' => 'Payroll',
         'period' => 'Period close', 'chart' => 'Chart of accounts', 'settings' => 'Administration', 'users' => 'Administration',
+        'audit' => 'Administration',
     ];
 
     public function __construct(?\CodeIgniter\Database\BaseConnection $db = null)
@@ -69,6 +72,17 @@ final class RoleRepository extends Repository
                 'activeHolders' => count(array_filter($holders[(int) $r['id']] ?? [], static fn ($h) => $h['active'])),
             ], $this->rows('SELECT * FROM {roles} ORDER BY id'));
         });
+    }
+
+    /**
+     * Every role, each marked with whether $userId holds it — the ones that person
+     * may not change.
+     */
+    public function rolesFor(int $userId): array
+    {
+        $held = $this->heldBy($userId);
+
+        return array_map(static fn ($r) => $r + ['yours' => in_array($r['id'], $held, true)], $this->roles());
     }
 
     /**
@@ -121,6 +135,7 @@ final class RoleRepository extends Repository
     public function update(int $roleId, string $name, string $description, array $permissions, int $actorId): array
     {
         $role = $this->roleById($roleId);
+        $this->assertNotOwn($role, $actorId);
         $name = trim($name) === '' ? $role['name'] : $this->validName($name, $roleId);
         if ($name !== $role['name'] && $role['builtIn']) {
             throw new RuleViolation($role['name'] . ' is one of the roles the application starts with. The approval policy and the close checklist name it, so it keeps its name — add a new role instead.');
@@ -157,6 +172,7 @@ final class RoleRepository extends Repository
     public function delete(int $roleId, int $actorId): void
     {
         $role = $this->roleById($roleId);
+        $this->assertNotOwn($role, $actorId);
         if ($role['builtIn']) {
             throw new RuleViolation($role['name'] . ' is one of the roles the application starts with and cannot be deleted. Take its permissions away instead if it is not used.');
         }
@@ -281,26 +297,38 @@ final class RoleRepository extends Repository
     }
 
     /**
-     * Someone active must still be able to change settings and manage users —
-     * otherwise nobody could undo what was just done.
+     * Someone active must still be able to manage users — otherwise nobody could
+     * undo what was just done, or give anyone back a permission taken away.
      */
     public function assertManaged(): void
     {
-        foreach (['settings.manage' => 'change settings', 'users.manage' => 'manage users and roles'] as $key => $what) {
-            if ($this->value('SELECT id FROM {permissions} WHERE ' . $this->db->escapeIdentifiers('key') . ' = ?', [$key]) === null) {
-                continue;
-            }
-            $holders = (int) $this->value(
-                "SELECT COUNT(DISTINCT u.id) FROM {users} u JOIN {user_entity_roles} ur ON ur.user_id = u.id JOIN {role_permissions} rp ON rp.role_id = ur.role_id
-                 JOIN {permissions} p ON p.id = rp.permission_id WHERE u.status = 'active' AND p.key = ?", [$key]
-            );
-            if ($holders === 0) {
-                throw new RuleViolation('That would leave nobody active who can ' . $what . ', so it could never be undone. Make sure someone else keeps a role with ' . $key . ' first.');
-            }
+        if ($this->value('SELECT id FROM {permissions} WHERE ' . $this->db->escapeIdentifiers('key') . " = 'users.manage'") === null) {
+            return;
+        }
+        $holders = (int) $this->value(
+            "SELECT COUNT(DISTINCT u.id) FROM {users} u JOIN {user_entity_roles} ur ON ur.user_id = u.id JOIN {role_permissions} rp ON rp.role_id = ur.role_id
+             JOIN {permissions} p ON p.id = rp.permission_id WHERE u.status = 'active' AND p.key = 'users.manage'"
+        );
+        if ($holders === 0) {
+            throw new RuleViolation('That would leave nobody active who can manage users and roles, so it could never be undone. Make sure someone else keeps a role with users.manage first.');
         }
     }
 
     // ------------------------------------------------------------------
+
+    /** Refuses a change to a role the person making it holds, at any entity. */
+    private function assertNotOwn(array $role, int $actorId): void
+    {
+        if (in_array($role['id'], $this->heldBy($actorId), true)) {
+            throw new RuleViolation('You hold ' . $role['name'] . ', so you cannot change it — that would let you widen your own permissions. Ask someone else who manages users.');
+        }
+    }
+
+    /** @return list<int> the ids of the roles a user holds, at any entity */
+    private function heldBy(int $userId): array
+    {
+        return array_map('intval', array_column($this->rows('SELECT DISTINCT role_id FROM {user_entity_roles} WHERE user_id = ?', [$userId]), 'role_id'));
+    }
 
     /** "Senior Accountant (all entities), Grants Lead (ELOG-CST)" */
     private function describe(array $access): string
@@ -342,7 +370,7 @@ final class RoleRepository extends Repository
     /** A role that can only look. */
     private function readOnly(array $keys): bool
     {
-        return $keys !== [] && array_diff($keys, ['ledger.view', 'payroll.view']) === [];
+        return $keys !== [] && array_diff($keys, ['ledger.view', 'payroll.view', 'settings.view', 'audit.view']) === [];
     }
 
     private function setPermissions(int $roleId, array $keys): void

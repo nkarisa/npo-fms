@@ -90,7 +90,7 @@ added later gets its own line ("Supporting document added: invoice.pdf").
 |---|---|
 | Upload a file | Anyone signed in. It waits against them. |
 | Attach to a bill, advance, invoice, asset, count, journal or donor report | A role with `journal.prepare` |
-| Attach to an award | A role with `settings.manage`, the same as recording an award |
+| Attach to an award | A role with `settings.ledger`, the same as recording an award |
 | Open (download) a document | Its uploader, or anyone who holds a role at the entity it belongs to. A waiting upload opens only for its uploader. |
 | Discard a waiting upload | Only its uploader |
 

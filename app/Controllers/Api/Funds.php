@@ -134,7 +134,7 @@ class Funds extends BaseApiController
     public function create()
     {
         $actor = $this->actor();
-        if (!in_array('settings.manage', $actor['permissions'] ?? [], true)) {
+        if (!in_array('settings.ledger', $actor['permissions'] ?? [], true)) {
             return $this->response->setStatusCode(403)->setJSON([
                 'error' => $actor['role'] . ' cannot open a fund. Only the Finance Manager can — every posting is coded to one.',
             ]);

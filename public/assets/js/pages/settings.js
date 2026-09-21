@@ -10,8 +10,10 @@
  * with "Discard"), so nothing reaches the ledger half-configured and every saved
  * change lands in the audit log. Bank statement formats and the M-Pesa integration
  * save as they are made — a credential cannot sit in a draft in the browser.
- * /settings?section=Currencies opens a section straight away. Only the Finance
- * Manager can save; the API applies every rule again.
+ * /settings?section=Currencies opens a section straight away. Which sections are
+ * shown, and which of them can be changed, is the API's to say (SettingsAccess):
+ * a section someone cannot see is not served at all, and the API applies every rule
+ * again on saving.
  */
 (async function () {
   const app = document.getElementById('app');
@@ -51,35 +53,46 @@
     root.style.setProperty('--rail-bg', appearance.theme === 'custom' ? appearance.custom.rail : '');
   }
 
-  /** The editable part of the settings, in the shape the API saves. */
+  /**
+   * The editable part of the settings, in the shape the API saves. Only the sections
+   * shown are drafted: a hidden section's data is not served, and nothing in it can
+   * change.
+   */
   function toDraft(d) {
-    return structuredClone({
-      organisation: d.organisation,
-      entities: d.entities.map(e => ({ code: e.code, name: e.name, type: e.type, currency: e.currency, status: e.status })),
-      ledger: d.ledger,
-      postingAccounts: Object.fromEntries(d.postingAccounts.map(p => [p.role, p.code])),
-      toggles: Object.fromEntries(d.toggles.map(t => [t.key, t.on])),
-      segments: Object.fromEntries(d.segments.map(s => [s.key, s.required])),
-      currencies: d.currencies.map(c => ({ code: c.code, name: c.name, rate: c.rate, active: c.active })),
-      approvals: Object.fromEntries(d.approvals.map(a => [a.key, { threshold: a.threshold, approver: a.approver }])),
+    const parts = {
+      organisation: () => d.organisation,
+      entities: () => d.entities.map(e => ({ code: e.code, name: e.name, type: e.type, currency: e.currency, status: e.status })),
+      ledger: () => d.ledger,
+      postingAccounts: () => Object.fromEntries(d.postingAccounts.map(p => [p.role, p.code])),
+      toggles: () => Object.fromEntries(d.toggles.map(t => [t.key, t.on])),
+      segments: () => Object.fromEntries(d.segments.map(s => [s.key, s.required])),
+      currencies: () => d.currencies.map(c => ({ code: c.code, name: c.name, rate: c.rate, active: c.active })),
+      approvals: () => Object.fromEntries(d.approvals.map(a => [a.key, { threshold: a.threshold, approver: a.approver }])),
       // Set to go back to the head office's, for an entity that has its own.
-      approvalsFollow: false,
-      postingAccountsFollow: [],
-      procurement: { quoteThreshold: d.procurement.quoteThreshold, follow: false },
-      days: Object.fromEntries(d.days.map(r => [r.key, r.value])),
-      taxes: { vat: { ...(d.taxes.vat || { rate: '', label: 'Standard rate' }) }, wht: d.taxes.wht.map(r => ({ ...r })) },
-      payroll: {
+      approvalsFollow: () => false,
+      postingAccountsFollow: () => [],
+      procurement: () => ({ quoteThreshold: d.procurement.quoteThreshold, follow: false }),
+      days: () => Object.fromEntries(d.days.map(r => [r.key, r.value])),
+      taxes: () => ({ vat: { ...(d.taxes.vat || { rate: '', label: 'Standard rate' }) }, wht: d.taxes.wht.map(r => ({ ...r })) }),
+      payroll: () => ({
         benefits: d.benefits.map(b => ({ key: b.key, name: b.name, basis: b.basis, taxable: b.taxable, active: b.active })),
         grades: d.grades.map(g => ({ grade: g.grade, band: g.band, ben: { ...g.ben }, active: g.active })),
-      },
-      payAccounts: Object.fromEntries(d.payAccounts.map(c => [c.key, c.code])),
-      appearance: {
+      }),
+      payAccounts: () => Object.fromEntries(d.payAccounts.map(c => [c.key, c.code])),
+      appearance: () => ({
         theme: d.appearance.theme, appName: d.appearance.appName, appTagline: d.appearance.appTagline,
         custom: { ...d.appearance.custom },
-      },
-      language: { formatsLocked: d.language.formatsLocked },
-    });
+      }),
+      language: () => ({ formatsLocked: d.language.formatsLocked }),
+    };
+    const shown = new Set(d.sections.map(s => s.key));
+    return structuredClone(Object.fromEntries(Object.entries(parts)
+      .filter(([part]) => shown.has(d.draftSections[part]))
+      .map(([part, read]) => [part, read()])));
   }
+
+  /** Whether this user can change a section — the one open, unless another is named. */
+  const canEdit = (section = view.section) => !!data.sections.find(s => s.key === section)?.canEdit;
 
   const dirty = () => data && JSON.stringify(draft) !== JSON.stringify(toDraft(data));
 
@@ -91,7 +104,7 @@
       return;
     }
     draft = toDraft(data);
-    view.taxFrom ??= data.taxes.today;
+    view.taxFrom ??= data.taxes?.today;
     if (!data.sections.some(s => s.key === view.section)) view.section = data.sections[0].key;
     shell();
     render();
@@ -109,7 +122,7 @@
           <button type="button" class="btn btn-primary" id="st-save"></button>
         </div>
       </div>
-      <div class="st-readonly" id="st-readonly" hidden>You can look through the settings. Changing them needs a role with settings.manage, such as the Finance Manager.</div>
+      <div class="st-readonly" id="st-readonly" hidden></div>
       <div class="st-wrap">
         <nav class="st-nav" id="st-nav" aria-label="Settings sections"></nav>
         <div class="st-main" id="st-main"></div>
@@ -118,7 +131,7 @@
     app.querySelector('#st-save').addEventListener('click', save);
     app.querySelector('#st-discard').addEventListener('click', () => {
       draft = toDraft(data);
-      paintTheme(draft.appearance);
+      if (draft.appearance) paintTheme(draft.appearance);
       view.curForm = { code: '', name: '', rate: '' };
       view.entForm = { code: '', name: '', type: 'Branch', currency: '' };
       view.fundForm = { code: '', name: '', restriction: 'Unrestricted', group: 'General Fund', funder: '' };
@@ -172,7 +185,11 @@
     save.textContent = changed ? 'Save changes' : 'Saved';
     save.hidden = !data.canManage;
     app.querySelector('#st-discard').hidden = !changed;
-    app.querySelector('#st-readonly').hidden = data.canManage;
+    // Said of the section open: another may be this user's to change.
+    const section = data.sections.find(s => s.key === view.section);
+    const banner = app.querySelector('#st-readonly');
+    banner.hidden = !section || section.canEdit || !section.edit;
+    banner.textContent = section && section.edit ? `You can look at ${section.label}. Changing it needs a role with ${section.edit}.` : '';
   }
 
   function renderSection() {
@@ -185,7 +202,7 @@
     };
     (renderers[view.section] || organisation)(main);
     if (!data.canManageUsers) main.querySelectorAll('[data-manage-users]').forEach(el => { el.disabled = true; });
-    if (!data.canManage && !['Bank statements', 'Opening balances', 'Integrations', 'Language and translation', 'Users', 'Roles'].includes(view.section)) {
+    if (!canEdit() && !['Bank statements', 'Opening balances', 'Integrations', 'Language and translation', 'Users', 'Roles'].includes(view.section)) {
       main.querySelectorAll('input:not([data-free]), select:not([data-free]), textarea').forEach(el => { el.disabled = true; });
       main.querySelectorAll('[data-manage]').forEach(el => { el.disabled = true; });
     }
@@ -200,10 +217,10 @@
     button.disabled = true;
     try {
       // The date a tax change takes effect goes with it; on its own it changes nothing.
-      const res = await UI.postJSON('/api/settings', { ...draft, taxes: { ...draft.taxes, from: view.taxFrom } });
+      const res = await UI.postJSON('/api/settings', draft.taxes ? { ...draft, taxes: { ...draft.taxes, from: view.taxFrom } } : draft);
       data = res;
       draft = toDraft(data);
-      view.taxFrom = data.taxes.today;
+      view.taxFrom = data.taxes?.today;
       render();
       UI.toast(res.message);
     } catch (err) {
@@ -574,7 +591,7 @@
     if (s.head) return `<div class="st-note" style="margin-bottom:10px;">The head office's ${what} are the organisation's: every entity without its own follows them.</div>`;
     if (!own) return `<div class="st-note" style="margin-bottom:10px;">${esc(s.name)} follows the head office's ${what}. Changing one gives ${esc(s.name)} ${what} of its own.</div>`;
     return `<div class="st-note" style="margin-bottom:10px;">${esc(s.name)}'s own ${what}.
-      ${data.canManage ? `<button type="button" class="st-linkbtn" data-act="follow" data-id="${esc(followPath)}">${following ? 'Keep its own' : 'Follow the head office\'s again'}</button>${following ? ' — on saving' : ''}` : ''}</div>`;
+      ${canEdit('Approvals') ? `<button type="button" class="st-linkbtn" data-act="follow" data-id="${esc(followPath)}">${following ? 'Keep its own' : 'Follow the head office\'s again'}</button>${following ? ' — on saving' : ''}` : ''}</div>`;
   }
 
   function bankStatements(main) {
@@ -607,7 +624,7 @@
     if (data.scope.head) return ' · the head office\'s; an entity that chooses none follows it';
     if (!p.own) return ` · follows the head office`;
     const following = draft.postingAccountsFollow.includes(p.role);
-    return ` · ${esc(data.scope.name)}'s own${data.canManage ? ` · <button type="button" class="st-linkbtn" data-act="pa-follow" data-id="${esc(p.role)}">${following ? 'Keep its own' : 'Follow the head office'}</button>` : ''}${following ? ' — on saving' : ''}`;
+    return ` · ${esc(data.scope.name)}'s own${canEdit('Ledger') ? ` · <button type="button" class="st-linkbtn" data-act="pa-follow" data-id="${esc(p.role)}">${following ? 'Keep its own' : 'Follow the head office'}</button>` : ''}${following ? ' — on saving' : ''}`;
   }
 
   /** The account each automatic posting goes to, by module. */
@@ -789,8 +806,8 @@
             <div class="st-role-card">
               <div class="st-role-head">
                 <span class="st-role-name">${esc(r.name)}</span>
-                ${r.builtIn ? '<span class="st-chip muted">Built-in</span>' : ''}
-                <button type="button" class="btn" data-act="role-edit" data-id="${r.id}">${data.canManageUsers ? 'Edit' : 'View'}</button>
+                ${r.builtIn ? '<span class="st-chip muted">Built-in</span>' : ''}${r.yours ? '<span class="st-chip muted">Yours</span>' : ''}
+                <button type="button" class="btn" data-act="role-edit" data-id="${r.id}">${data.canManageUsers && !r.yours ? 'Edit' : 'View'}</button>
               </div>
               <div class="st-role-meta">${r.holders.length ? `${r.holders.length === 1 ? '1 person' : r.holders.length + ' people'} · ${esc(r.holders.slice(0, 4).join(', '))}${r.holders.length > 4 ? '…' : ''}` : 'Nobody holds it yet'}</div>
               ${r.description ? `<div class="st-note">${esc(r.description)}</div>` : ''}
@@ -1127,7 +1144,7 @@
         </div>
       </div>`;
 
-    if (!data.canManage) main.querySelector('input[data-bind="language.formatsLocked"]').disabled = true;
+    if (!canEdit('Language and translation')) main.querySelector('input[data-bind="language.formatsLocked"]').disabled = true;
     main.querySelectorAll('input[data-act-change="fallback"]').forEach(r => r.addEventListener('change', () => {
       if (dirty()) {
         UI.toast('Save or discard your changes before switching how untranslated text is shown.');
@@ -1228,7 +1245,8 @@
       }
       return;
     }
-    if (!data.canManage) return;
+    // Everything below changes the section open.
+    if (!canEdit()) return;
 
     if (act === 'theme') {
       draft.appearance.theme = id;
@@ -1489,11 +1507,13 @@
 
   /** A role: its name, what it is for, and its permissions. `role` null for a new one. */
   function openRole(role) {
-    const can = data.canManageUsers;
+    // Nobody changes a role they hold themselves; someone else who manages users does.
+    const can = data.canManageUsers && !(role && role.yours);
     const held = new Set(role ? role.permissions : []);
     const groups = [...new Set(data.permissionCatalogue.map(p => p.group))];
     UI.drawer(role ? role.name : 'New role', `
       <div class="bu" id="st-role">
+        ${role && role.yours && data.canManageUsers ? '<p class="bu-intro"><strong>You hold this role, so you cannot change it.</strong> That would let you widen your own permissions — ask someone else who manages users.</p>' : ''}
         ${role ? `<p class="bu-intro">${role.holders.length ? `Held by ${esc(role.holders.join(', '))}. A change applies to all of them from their next request.` : 'Nobody holds this role yet.'}</p>` : '<p class="bu-intro">Name the role as people would say it, then tick what it lets its holders do. Give it to people under Users → Manage.</p>'}
         <label class="bu-field"><span>Name${role && role.builtIn ? ' <em>built-in — kept as it is</em>' : ''}</span><input id="rl-name" maxlength="60" value="${esc(role ? role.name : '')}" ${can && !(role && role.builtIn) ? '' : 'disabled'}></label>
         <label class="bu-field"><span>What it is for <em>optional</em></span><textarea id="rl-desc" rows="2" maxlength="500" ${can ? '' : 'disabled'}>${esc(role ? role.description : '')}</textarea></label>
@@ -1710,7 +1730,6 @@ const StatementFormats = (() => {
 
     root.innerHTML = `
       <div class="sf-cards">
-        ${data.canManage ? '' : '<p class="bu-intro">Only an approver can change statement formats or the format an account uses.</p>'}
         <div class="sf-section">Accounts</div>
         <div class="coa-card">
           ${data.accounts.map(a => accountRow(a, opts)).join('') || '<div class="coa-empty">No cash accounts yet. A reconciliation agrees one of these to its bank statement.</div>'}
@@ -2560,7 +2579,6 @@ const Conversion = (() => {
           <button type="button" class="btn" data-cv="check" ${data.canManage ? '' : 'disabled'}>Check the file</button>
           <button type="button" class="btn btn-primary" data-cv="load" ${data.canManage && state.preview && state.preview.ok ? '' : 'disabled'}>Carry the balances</button>
         </div>
-        ${data.canManage ? '' : `<div class="bu-intro" style="margin-top:8px;">${esc(data.role)} can look but not load. Only the Finance Manager carries opening balances.</div>`}
       </div>`;
   }
 

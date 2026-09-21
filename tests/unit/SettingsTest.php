@@ -167,7 +167,7 @@ final class SettingsTest extends CIUnitTestCase
         $refused(['ledger' => ['codeLength' => '5 digits']], 'do not have 5-digit codes');
         $refused(['approvals' => ['journal' => ['approver' => 'Senior Accountant']]], 'has no approval rights');
         $refused(['organisation' => ['taxPin' => 'P0512']], 'is not a KRA PIN');
-        $refused(['users' => ['w.kamau@elog.or.ke' => 'Accountant']], 'no active Finance Manager');
+        $refused(['users' => ['w.kamau@elog.or.ke' => 'Accountant']], 'nobody active who can manage users');
         $refused(['payroll' => ['grades' => [['grade' => 'G4', 'band' => 'Officer', 'active' => false, 'ben' => []]]]], 'G4 is held by');
         $refused(['payroll' => ['benefits' => [['key' => 'house_allowance', 'name' => 'House allowance', 'basis' => 'pct', 'taxable' => true, 'active' => false]]]], 'House allowance is paid to');
         $refused(['payroll' => ['grades' => [['grade' => 'G9', 'band' => 'Casual', 'ben' => ['house_allowance' => 120]]]]], 'percentage of basic pay');

@@ -231,13 +231,41 @@ each one is checked somewhere in the code. They cannot be added from the screen.
 | `journal.post` | Post approved journals to the ledger |
 | `requisition.raise` | Raise purchase requisitions |
 | `payroll.view` | View payroll records (every read is logged) |
-| `settings.manage` | Change organisation, ledger and approval settings |
+| `settings.view` | See the everyday sections of Settings, read only |
+| `settings.organisation` | Change the organisation, its entities, the appearance and the language settings |
+| `settings.ledger` | Change the ledger, segments, currencies, taxes and terms; open funds, record awards and carry opening balances |
+| `settings.approvals` | Change approval bands, approvers and the procurement threshold |
+| `settings.banking` | Change bank statement formats and the cash accounts they are read into |
+| `settings.integrations` | Change the M-Pesa integration and the mail server, credentials included |
+| `settings.payroll` | Change payroll benefits, grades and the accounts payroll pays from |
+| `audit.view` | Read the settings audit log |
 | `period.close` | Confirm the management review and close a period |
 | `period.authorise` | Authorise a period close and reopen a closed period |
 | `chart.manage` | Add, change, import and archive accounts |
 | `users.manage` | Invite users, assign their roles and define roles |
 
-A role with no permission other than `ledger.view` is marked read only.
+A role with no permissions other than `ledger.view`, `payroll.view`, `settings.view`
+and `audit.view` is marked read only.
+
+Which permission shows and changes each section of Settings is set in one place,
+[app/Libraries/SettingsAccess.php](../app/Libraries/SettingsAccess.php):
+
+| Section | Shown to | Changed by |
+|---|---|---|
+| Organisation, Appearance, Language and translation | `settings.view` | `settings.organisation` |
+| Ledger, Segments, Currencies, Taxes, Terms and reminders, Opening balances | `settings.view` | `settings.ledger` |
+| Approvals | `settings.view` | `settings.approvals` |
+| Bank statements | `settings.view` | `settings.banking` |
+| Integrations | nobody else | `settings.integrations` |
+| Payroll | `payroll.view` | `settings.payroll` |
+| Users, Roles | nobody else | `users.manage` |
+| Audit log | `audit.view` | nobody |
+
+Holding the permission that changes a section also shows it. A section someone
+cannot see is left out of what the API serves, data and all, and Settings is left
+out of the sidebar for someone who can see no section. A settings save that would
+change a section its author cannot change is refused whole (403), with nothing
+applied.
 
 ### Roles
 
@@ -255,8 +283,9 @@ adds.
 
 `RoleRepository::assertManaged()` runs inside the same transaction as every change
 to a role, to who holds a role, or to whether someone is suspended. It refuses any
-change that would leave **nobody active** holding `settings.manage` or
-`users.manage`, because then nobody could undo the change. Also:
+change that would leave **nobody active** holding `users.manage`, because then
+nobody could undo the change. Whoever holds it can give themselves any other
+permission, the settings ones included, so that one is enough. Also:
 
 - A person cannot suspend themselves.
 - Every person must keep at least one role. To stop someone signing in, suspend
@@ -291,7 +320,7 @@ overridden in `.env` as `auth.<name>` (or `auth_<name>` in an environment variab
 | Setting | Default | Meaning |
 |---|---|---|
 | `mfaRequired` | `all` | Who must have a second step: `all`, `privileged` (anyone holding a permission in `privileged`) or `optional` |
-| `privileged` | `journal.approve`, `journal.post`, `settings.manage`, `users.manage`, `period.authorise` | Used when `mfaRequired = privileged` |
+| `privileged` | `journal.approve`, `journal.post`, every `settings.*` permission that changes something, `users.manage`, `period.authorise` | Used when `mfaRequired = privileged` |
 | `mfaMethods` | `totp`, `email` | The methods offered, in order |
 | `issuer` | the organisation's brand name | The name an authenticator app files the account under |
 | `emailCodeMinutes` | 10 | How long an emailed code works |
@@ -321,7 +350,7 @@ The migration `2026-09-21-100033_CreateAuthentication` adds these to the existin
 | `users.password_changed_at` | |
 | `auth_tokens` | Invitation and reset links (SHA-256) and emailed codes (`password_hash`). Columns: `purpose`, `expires_at`, `attempts`, `used_at` |
 | `user_recovery_codes` | Hashed recovery codes and when each was used |
-| permission `users.manage` | Given to every role that already holds `settings.manage`, so nobody loses access when the migration runs |
+| permission `users.manage` | Given to every role that already holds `settings.manage`, so nobody loses access when the migration runs. `settings.manage` itself was later split by `SplitSettingsPermissions` (see Permissions above) |
 
 ## API
 

@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\SettingsAccess;
 use App\Libraries\SignIn;
 
 /**
@@ -176,6 +177,11 @@ class Pages extends BaseController
 
     public function settings()
     {
+        // Served all the same, so the page can say why there is nothing to show.
+        if (!SettingsAccess::current()->any()) {
+            $this->response->setStatusCode(403);
+        }
+
         return $this->render('pages/settings', 'settings', 'settings', 'Settings', 'Insight');
     }
 

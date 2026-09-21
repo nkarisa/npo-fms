@@ -7,6 +7,7 @@ use App\Libraries\Clock;
 use App\Libraries\EntityCalendar;
 use App\Libraries\EntityScope;
 use App\Libraries\Prototype;
+use App\Libraries\SettingsAccess;
 use App\Libraries\Theme;
 
 /**
@@ -503,74 +504,112 @@ final class SettingsRepository extends Repository
     /**
      * Applies the sections of the draft that differ from what is held.
      *
+     * Each change is counted against the settings section of the part of the draft
+     * it comes from (SettingsAccess::DRAFT) — adding an entity is an Organisation
+     * change even though it also gives people access to it. When $mayEdit is given,
+     * a save that would change a section it refuses is refused whole, before
+     * anything is written.
+     *
      * @param array $draft any of: organisation, ledger, toggles, segments, currencies,
      *        approvals, payroll {benefits, grades}, users {email: role}, language {formatsLocked}
+     * @param (callable(string): bool)|null $mayEdit whether the author may change a section
      * @return list<array{area: string, what: string}> the changes made, as the audit log records them
+     * @throws NotPermitted when the draft changes a section $mayEdit refuses
      */
-    public function save(array $draft, int $actorId): array
+    public function save(array $draft, int $actorId, ?callable $mayEdit = null): array
     {
         $changes = [];
         $writes = [];
-        $plan = static function (string $area, string $what, ?callable $write = null) use (&$changes, &$writes): void {
+        $touched = [];
+        $section = null;
+        $plan = static function (string $area, string $what, ?callable $write = null) use (&$changes, &$writes, &$touched, &$section): void {
             $changes[] = ['area' => $area, 'what' => $what];
+            $touched[$section] = true;
             if ($write !== null) {
                 $writes[] = $write;
             }
         };
+        // Which section the parts planned next belong to.
+        $from = static function (string $part) use (&$section): void {
+            $section = SettingsAccess::DRAFT[$part];
+        };
 
         // Everything is checked before anything is written.
         if (isset($draft['organisation'])) {
+            $from('organisation');
             $this->planOrganisation((array) $draft['organisation'], $plan);
         }
         if (isset($draft['ledger'])) {
+            $from('ledger');
             $this->planLedger((array) $draft['ledger'], $plan);
         }
         if (isset($draft['toggles'])) {
+            $from('toggles');
             $this->planToggles((array) $draft['toggles'], $plan);
         }
         if (isset($draft['segments'])) {
+            $from('segments');
             $this->planSegments((array) $draft['segments'], $plan);
         }
         if (isset($draft['currencies'])) {
+            $from('currencies');
             $this->planCurrencies((array) $draft['currencies'], $plan);
         }
         if (!empty($draft['approvalsFollow'])) {
+            $from('approvalsFollow');
             $this->planApprovalsFollow($plan);
         } elseif (isset($draft['approvals'])) {
+            $from('approvals');
             $this->planApprovals((array) $draft['approvals'], $plan);
         }
         if (isset($draft['procurement'])) {
+            $from('procurement');
             $this->planProcurement((array) $draft['procurement'], $plan);
         }
         if (isset($draft['taxes'])) {
+            $from('taxes');
             $this->planTaxes((array) $draft['taxes'], $plan);
         }
         if (isset($draft['days'])) {
+            $from('days');
             $this->planDays((array) $draft['days'], $plan);
         }
         if (isset($draft['postingAccounts']) || isset($draft['postingAccountsFollow'])) {
+            $from('postingAccounts');
             $this->planPostingAccounts((array) ($draft['postingAccounts'] ?? []), $plan, (array) ($draft['postingAccountsFollow'] ?? []));
         }
         if (isset($draft['payroll'])) {
+            $from('payroll');
             $this->planPayroll((array) $draft['payroll'], $plan);
         }
         if (isset($draft['payAccounts'])) {
+            $from('payAccounts');
             $this->planPayAccounts((array) $draft['payAccounts'], $plan);
         }
         if (isset($draft['users'])) {
+            $from('users');
             $this->planUsers((array) $draft['users'], $plan);
         }
         if (isset($draft['entities'])) {
+            $from('entities');
             $this->planEntities((array) $draft['entities'], $plan);
         }
         if (isset($draft['appearance'])) {
+            $from('appearance');
             $this->planAppearance((array) $draft['appearance'], $plan);
         }
         if (isset($draft['language']['formatsLocked'])) {
+            $from('language');
             $locked = (bool) $draft['language']['formatsLocked'];
             if ($locked !== $this->formatsLocked()) {
                 $plan('Language', $locked ? 'Numbers, dates and currency held in the reporting locale (en-KE · KES)' : 'Numbers, dates and currency released to each user\'s locale',
                     fn () => $this->setSetting('formatsLocked', $locked ? '1' : '0'));
+            }
+        }
+
+        foreach (array_keys($touched) as $changed) {
+            if ($mayEdit !== null && !$mayEdit($changed)) {
+                throw new NotPermitted(SettingsAccess::refusal($changed));
             }
         }
 
@@ -582,7 +621,7 @@ final class SettingsRepository extends Repository
             foreach ($writes as $write) {
                 $write();
             }
-            $this->assertSettingsManaged();
+            (new RoleRepository($this->db))->assertManaged();
             foreach ($changes as $c) {
                 $this->logChange($c['area'], $c['what'], $actorId);
             }
@@ -1488,18 +1527,6 @@ final class SettingsRepository extends Repository
     }
 
     // ------------------------------------------------------------------
-
-    /** Someone active must still be able to change settings once a save is applied. */
-    private function assertSettingsManaged(): void
-    {
-        $managers = (int) $this->value(
-            "SELECT COUNT(DISTINCT u.id) FROM {users} u JOIN {user_entity_roles} ur ON ur.user_id = u.id JOIN {role_permissions} rp ON rp.role_id = ur.role_id
-             JOIN {permissions} p ON p.id = rp.permission_id WHERE u.status = 'active' AND p.key = 'settings.manage'"
-        );
-        if ($managers === 0) {
-            throw new RuleViolation('That would leave no active Finance Manager, and nobody else can change settings or approve above their thresholds. Assign the role to someone first.');
-        }
-    }
 
     private function setAppearance(string $key, string $value, string $label, string $note = ''): void
     {

@@ -224,12 +224,12 @@ final class MpesaTest extends CIUnitTestCase
     {
         $this->actAs('d.kiptoo@elog.or.ke');
 
-        $looking = $this->api('api/mpesa');
-        $this->assertFalse($looking['canManage']);
-        $this->assertSame('509118', $looking['mpesa']['shortcode']);
-
+        // Not shown at all to someone who cannot change it: the credentials are behind it.
+        $this->get('api/mpesa')->assertStatus(403);
         $this->withBodyFormat('json')->post('api/mpesa', ['shortcode' => '4123456'])->assertStatus(403);
         $this->withBodyFormat('json')->post('api/mpesa/check')->assertStatus(403);
+
+        $this->actAs('w.kamau@elog.or.ke');
         $this->assertSame('509118', $this->api('api/mpesa')['mpesa']['shortcode']);
     }
 

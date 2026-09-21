@@ -1223,7 +1223,7 @@ paths:
       summary: Attach uploads to a record that already exists
       description: >
         Adding to a bill, advance, invoice, asset, count, journal or donor report needs
-        `journal.prepare`. Adding to an award needs `settings.manage`. The addition is recorded in the
+        `journal.prepare`. Adding to an award needs `settings.ledger`. The addition is recorded in the
         record's history.
       parameters:
         - name: kind
@@ -3694,7 +3694,7 @@ paths:
       tags: [Grants]
       summary: Record an award from its agreement
       description: >
-        `settings.manage` only. Opens or attaches a fund and writes the award, its
+        `settings.ledger` only. Opens or attaches a fund and writes the award, its
         budget, disbursements, reporting calendar and conditions in one go. An award recorded as
         Active needs its signed agreement in `documents`; a Pipeline award does not.
       requestBody:
@@ -3743,7 +3743,7 @@ paths:
       tags: [Grants]
       summary: Convert a pipeline award on signature
       description: >
-        `settings.manage` only. The award needs its agreement period, and its budget and
+        `settings.ledger` only. The award needs its agreement period, and its budget and
         disbursements must agree with its value. It also needs its signed agreement: already on
         file, or sent here as `documents`.
       parameters:
@@ -3951,9 +3951,14 @@ paths:
     get:
       tags: [Settings]
       summary: The full settings payload
+      description: |
+        Only the sections the user can see (App\Libraries\SettingsAccess), each with
+        `canEdit` and the permission (`edit`) that changes it. The data of a section the
+        user cannot see is left out. `draftSections` names the section each part of the
+        save body belongs to.
       responses:
         '200':
-          description: Organisation, ledger, controls, currencies, approvals, payroll scales, appearance, users, audit and language.
+          description: Organisation, ledger, controls, currencies, approvals, payroll scales, appearance, users, audit and language — as far as the user can see them.
           content:
             application/json:
               schema:
@@ -4015,10 +4020,14 @@ paths:
                         name: { type: string, example: Deep blue }
                         note: { type: string }
                   locale: { $ref: '#/components/schemas/Locale' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Settings]
       summary: Save changes
-      description: Finance Manager only. Send only the changed sections.
+      description: |
+        Needs a settings permission. Send only the changed sections. A body that would
+        change a section the user cannot change is refused whole (403) and nothing is
+        applied; unchanged sections are ignored.
       requestBody:
         required: true
         content:
@@ -4062,7 +4071,7 @@ paths:
       tags: [Settings]
       summary: Replace the logo
       description: |
-        Finance Manager only. PNG, JPEG or WebP under 500 KB — an SVG is refused, since
+        Needs `settings.organisation`. PNG, JPEG or WebP under 500 KB — an SVG is refused, since
         it can carry script as well as a picture. Saved as it is chosen rather than with
         the draft, and the logo it replaces is deleted.
       requestBody:
@@ -4086,7 +4095,7 @@ paths:
     post:
       tags: [Settings]
       summary: Remove the logo
-      description: Finance Manager only. The sidebar goes back to drawing the initials of the application name.
+      description: Needs `settings.organisation`. The sidebar goes back to drawing the initials of the application name.
       responses:
         '200':
           description: The refreshed settings with a message.
@@ -4101,7 +4110,7 @@ paths:
       tags: [Settings]
       summary: Open a cash account
       description: |
-        Finance Manager only. A reconciliation is between a cash account and the
+        Needs `settings.banking`. A reconciliation is between a cash account and the
         statement of the account behind it, so the ledger account comes first: it must
         be a postable asset account, and no two cash accounts may sit on the same one.
         Assign a statement format afterwards before loading a statement.
@@ -4218,7 +4227,7 @@ paths:
       tags: [Settings]
       summary: Check a trial balance
       description: |
-        Finance Manager only. Reads the file, places every row on the chart and answers
+        Needs `settings.ledger`. Reads the file, places every row on the chart and answers
         every rule — and writes nothing at all. The same body serves
         `/settings/conversion/load`, which does this and then writes.
       requestBody:
@@ -4666,6 +4675,7 @@ paths:
     get:
       tags: [Roles and users]
       summary: The roles, the permission catalogue, and who holds each role
+      description: Needs `users.manage`.
       responses:
         '200':
           description: Roles and catalogue.
@@ -4793,6 +4803,7 @@ paths:
       tags: [M-Pesa]
       summary: The M-Pesa integration as Settings → Integrations shows it
       description: |
+        Needs `settings.integrations`, which shows it as well as changing it.
         Credentials are never served. Each is reported as `set` with a `hint` of its
         last four characters; `outstanding` says, per service, what is still missing
         before it can be switched on.

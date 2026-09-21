@@ -108,7 +108,7 @@ final class MailServerTest extends CIUnitTestCase
     {
         $this->actAs('d.kiptoo@elog.or.ke');
 
-        $this->assertFalse($this->api('api/mail')['canManage']);
+        $this->get('api/mail')->assertStatus(403);
         $this->withBodyFormat('json')->post('api/mail', ['host' => 'smtp.evil.test'])->assertStatus(403);
         $this->withBodyFormat('json')->post('api/mail/test')->assertStatus(403);
     }

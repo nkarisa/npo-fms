@@ -9,7 +9,8 @@ use App\Repositories\RuleViolation;
  * Settings → Roles: define roles as named sets of permissions.
  *
  * People get permissions only by holding roles (Api\Users sets who holds what).
- * Anyone can look; changing roles needs users.manage. Changes save as they are
+ * Seeing and changing roles both need users.manage, and nobody changes a role
+ * they hold themselves (see RoleRepository). Changes save as they are
  * made — not in the settings draft — because a half-saved role would leave its
  * holders with permissions nobody chose.
  */
@@ -17,6 +18,10 @@ class Roles extends BaseApiController
 {
     public function index()
     {
+        if ($refusal = $this->cannotManage()) {
+            return $refusal;
+        }
+
         return $this->json($this->payload());
     }
 
@@ -78,6 +83,6 @@ class Roles extends BaseApiController
     {
         $roles = new RoleRepository();
 
-        return ['roles' => $roles->roles(), 'catalogue' => $roles->catalogue(), 'canManage' => $this->can('users.manage')];
+        return ['roles' => $roles->rolesFor($this->actorId()), 'catalogue' => $roles->catalogue(), 'canManage' => $this->can('users.manage')];
     }
 }

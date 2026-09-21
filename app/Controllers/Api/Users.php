@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\SettingsAccess;
 use App\Repositories\AuthRepository;
 use App\Repositories\RoleRepository;
 use App\Repositories\RuleViolation;
@@ -77,7 +78,8 @@ class Users extends BaseApiController
 
         $settings = new SettingsRepository();
 
-        return $this->json(['message' => $message, 'users' => $settings->users(), 'roles' => $settings->roles(), 'roleDetail' => (new RoleRepository())->roles(), 'audit' => $settings->auditLog()]);
+        return $this->json(['message' => $message, 'users' => $settings->users(), 'roles' => $settings->roles(), 'roleDetail' => (new RoleRepository())->rolesFor($this->actorId())]
+            + (SettingsAccess::of($this->actor())->canSee('Audit log') ? ['audit' => $settings->auditLog()] : []));
     }
 
     private function unsent(): string

@@ -127,7 +127,7 @@ final class Lookups extends Repository
             $id = $this->value(
                 "SELECT u.id FROM {users} u JOIN {user_entity_roles} ur ON ur.user_id = u.id
                  JOIN {role_permissions} rp ON rp.role_id = ur.role_id JOIN {permissions} p ON p.id = rp.permission_id
-                 WHERE u.status = 'active' AND p.key = 'settings.manage' ORDER BY u.id LIMIT 1"
+                 WHERE u.status = 'active' AND p.key = 'settings.organisation' ORDER BY u.id LIMIT 1"
             );
 
             return $id === null ? null : (int) $id;

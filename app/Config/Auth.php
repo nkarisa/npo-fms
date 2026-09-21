@@ -24,7 +24,8 @@ class Auth extends BaseConfig
     public string $mfaRequired = 'all';
 
     /** Permissions that make a second factor mandatory when $mfaRequired is `privileged`. */
-    public array $privileged = ['journal.approve', 'journal.post', 'settings.manage', 'users.manage', 'period.authorise'];
+    public array $privileged = ['journal.approve', 'journal.post', 'settings.organisation', 'settings.ledger', 'settings.approvals',
+        'settings.banking', 'settings.integrations', 'settings.payroll', 'users.manage', 'period.authorise'];
 
     /** The second factors offered, in the order they are offered. */
     public array $mfaMethods = ['totp', 'email'];

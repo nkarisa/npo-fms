@@ -11,6 +11,7 @@ use App\Libraries\Brand;
 use App\Libraries\EntityScope;
 use App\Libraries\I18n;
 use App\Libraries\Navigation;
+use App\Libraries\SettingsAccess;
 use App\Libraries\Theme;
 
 // Language and direction are set server-side, the same way the API decides them, so a
@@ -31,6 +32,12 @@ $brand = Brand::current();
 // palette is built rather than one here and another in the settings preview.
 $style = $theme === Theme::CUSTOM ? Theme::customStyle(Theme::currentCustom()) : '';
 $entities = Navigation::entities();
+// Settings is offered only to someone with a section of it to see.
+try {
+    $hidden = SettingsAccess::current()->any() ? [] : ['settings'];
+} catch (Throwable $e) {
+    $hidden = ['settings'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="<?= esc($locale->code()) ?>" dir="<?= esc($locale->dir()) ?>" data-theme="<?= esc($theme) ?>" data-brand="<?= esc($brand['name'], 'attr') ?>"<?= $style !== '' ? ' style="' . esc($style, 'attr') . '"' : '' ?>>
@@ -63,6 +70,7 @@ $entities = Navigation::entities();
       <?php foreach (Navigation::GROUPS as $group => $items): ?>
         <div class="nav-group-label"><?= esc($group) ?></div>
         <?php foreach ($items as $item): ?>
+          <?php if (in_array($item['page'], $hidden, true)) continue; ?>
           <a class="nav-item <?= $item['page'] === $page ? 'active' : '' ?>" href="<?= $item['url'] ?>" aria-label="<?= esc($item['label']) ?>" data-rail>
             <span class="nav-icon"><?= $item['icon'] ?></span><span class="nav-label"><?= esc($item['label']) ?></span>
           </a>

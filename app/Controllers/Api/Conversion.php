@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\Brand;
+use App\Libraries\SettingsAccess;
 use App\Repositories\ConversionRepository;
 use App\Repositories\RuleViolation;
 
@@ -15,20 +16,25 @@ use App\Repositories\RuleViolation;
  * approved on the Journals screen, so the conversion goes through the same
  * segregation of duties and approval limits as every other entry.
  *
- * Only a user holding settings.manage (the Finance Manager) can load or discard a
- * conversion; everyone else can look at what was carried.
+ * Only a user holding settings.ledger (the Finance Manager, out of the box) can
+ * load or discard a conversion; anyone who can see the section can look at what
+ * was carried (App\Libraries\SettingsAccess).
  */
 class Conversion extends BaseApiController
 {
     public function index()
     {
+        if ($refusal = $this->cannotSee()) {
+            return $refusal;
+        }
+
         return $this->json($this->options());
     }
 
     /** What the screen offers, with whether this user may act on it. */
     private function options(): array
     {
-        return ['canManage' => in_array('settings.manage', $this->actor()['permissions'] ?? [], true),
+        return ['canManage' => SettingsAccess::of($this->actor())->canEdit('Opening balances'),
             'role' => $this->actor()['role']] + (new ConversionRepository())->options();
     }
 
@@ -41,6 +47,9 @@ class Conversion extends BaseApiController
      */
     public function template()
     {
+        if ($refusal = $this->cannotSee()) {
+            return $refusal;
+        }
         $template = (new ConversionRepository())->template((string) $this->request->getGet('period'));
         $name = trim(Brand::current()['name'] . ' ' . $template['filename']);
 
@@ -104,16 +113,22 @@ class Conversion extends BaseApiController
         return $this->json($result + $this->options());
     }
 
-    /** Refuses a change by anyone without settings.manage, as the Settings screen does. */
+    private function cannotSee()
+    {
+        return SettingsAccess::of($this->actor())->canSee('Opening balances') ? null
+            : $this->denied($this->actor()['role'] . ' cannot see the opening balances. That needs a role with settings.view.');
+    }
+
+    /** Refuses a change by anyone who cannot change the section, as the Settings screen does. */
     private function cannotManage()
     {
         $actor = $this->actor();
-        if (in_array('settings.manage', $actor['permissions'] ?? [], true)) {
+        if (SettingsAccess::of($actor)->canEdit('Opening balances')) {
             return null;
         }
 
         return $this->response->setStatusCode(403)->setJSON([
-            'error' => $actor['role'] . ' cannot carry opening balances onto the ledger. Only the Finance Manager can — the load is recorded in the audit log.',
+            'error' => $actor['role'] . ' cannot carry opening balances onto the ledger. That needs a role with settings.ledger — the load is recorded in the audit log.',
         ]);
     }
 }

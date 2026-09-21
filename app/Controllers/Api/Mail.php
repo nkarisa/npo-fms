@@ -3,6 +3,7 @@
 namespace App\Controllers\Api;
 
 use App\Libraries\AuthMail;
+use App\Libraries\SettingsAccess;
 use App\Repositories\MailRepository;
 use App\Repositories\RuleViolation;
 
@@ -11,14 +12,18 @@ use App\Repositories\RuleViolation;
  * and sign-in codes go out through (App\Repositories\MailRepository).
  *
  * Like M-Pesa, it saves as changes are made rather than into the settings draft,
- * because the password is written once and never read back. Anyone may look;
- * only a user holding settings.manage (the Finance Manager) can change it or send
- * a test message, and every change is in the audit log.
+ * because the password is written once and never read back. It is shown only to
+ * a user who can change it — a role with settings.integrations — who can also send
+ * a test message. Every change is in the audit log.
  */
 class Mail extends BaseApiController
 {
     public function index()
     {
+        if (!$this->canManage()) {
+            return $this->denied($this->actor()['role'] . ' cannot see the mail server. That needs a role with settings.integrations.');
+        }
+
         return $this->json($this->payload());
     }
 
@@ -75,7 +80,7 @@ class Mail extends BaseApiController
 
     private function canManage(): bool
     {
-        return in_array('settings.manage', $this->actor()['permissions'] ?? [], true);
+        return SettingsAccess::of($this->actor())->canEdit('Integrations');
     }
 
     private function cannotManage()
@@ -85,7 +90,7 @@ class Mail extends BaseApiController
         }
 
         return $this->response->setStatusCode(403)->setJSON([
-            'error' => $this->actor()['role'] . ' cannot change the mail server. Only the Finance Manager can — every change is recorded in the audit log.',
+            'error' => $this->actor()['role'] . ' cannot change the mail server. That needs a role with settings.integrations — every change is recorded in the audit log.',
         ]);
     }
 }

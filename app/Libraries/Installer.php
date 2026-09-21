@@ -21,8 +21,8 @@ use CodeIgniter\Database\BaseConnection;
  * What is written here is the smallest set that lets the ledger be posted to at
  * all: a journal needs an entity, an open period inside a fiscal year, and a
  * preparer; approving one needs a second person and an approval rule. The first
- * user therefore holds settings.manage and users.manage, and can invite that
- * second person.
+ * user therefore holds every settings permission and users.manage, and can invite
+ * that second person.
  *
  * The first user's password comes from the answers file (userPassword) for an
  * unattended install, or is chosen in the browser from a one-time link the install

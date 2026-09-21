@@ -714,9 +714,16 @@ Importing is limited to the Finance Manager.
 
 ## Users and roles
 
-**Settings → Users** and **Settings → Roles**. Changing either needs a role with
-the `users.manage` permission, which the Finance Manager has out of the box.
-Everyone else can look but not change.
+**Settings → Users** and **Settings → Roles**. Seeing or changing either needs a
+role with the `users.manage` permission, which the Finance Manager has out of the
+box. Nobody else sees them.
+
+The rest of Settings works the same way, one duty at a time: `settings.view` shows
+the everyday sections read only, and `settings.organisation`, `settings.ledger`,
+`settings.approvals`, `settings.banking`, `settings.integrations` and
+`settings.payroll` each change their own part. Payroll settings are also shown to
+anyone with `payroll.view`, and the audit log to anyone with `audit.view`. Someone
+who can see no part of Settings does not have it in their menu at all.
 
 ### 1. How access works
 
@@ -759,6 +766,10 @@ To change a role, choose **Edit** on its card, then **Save role**. The roles the
 with keep their names, because approvals and the close checklist refer to them,
 but you can change their permissions. A role you added can be removed with
 **Delete role** once nobody holds it.
+
+You cannot change or delete a role you hold yourself, at any entity — otherwise
+whoever manages roles could widen their own permissions. Its card is marked
+**Yours** and opens read only; ask someone else who manages users to make the change.
 
 ### 5. Safeguards
 

@@ -306,7 +306,7 @@ final class ConversionTest extends CIUnitTestCase
         $this->actAs('p.mwangi@elog.or.ke');
         $refused = $this->post('api/settings/conversion/load');
         $refused->assertStatus(403);
-        $this->assertStringContainsString('Only the Finance Manager can', json_decode($refused->getJSON(), true)['error']);
+        $this->assertStringContainsString('That needs a role with settings.ledger', json_decode($refused->getJSON(), true)['error']);
     }
 
     public function testTheTemplateIsTheOrganisationsOwnChartReadyForFigures(): void

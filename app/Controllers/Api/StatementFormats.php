@@ -2,18 +2,23 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\SettingsAccess;
 use App\Repositories\RuleViolation;
 use App\Repositories\StatementFormatRepository;
 
 /**
  * Settings → Bank statements: the CSV format of each bank's statements and which
- * format each cash account uses. Anyone can look and try a sample file; changing a
- * format or an account's format is for an approver (the Finance Manager).
+ * format each cash account uses. Anyone who can see the section can look and try a
+ * sample file; changing a format, or which one an account uses, needs a role with
+ * settings.banking (App\Libraries\SettingsAccess).
  */
 class StatementFormats extends BaseApiController
 {
     public function index()
     {
+        if ($refusal = $this->cannotSee()) {
+            return $refusal;
+        }
         $repo = new StatementFormatRepository();
 
         return $this->json([
@@ -22,7 +27,7 @@ class StatementFormats extends BaseApiController
             'candidates' => $repo->cashCandidates(),
             'kinds'    => StatementFormatRepository::KINDS,
             'options'  => StatementFormatRepository::options(),
-            'canManage' => $this->actor()['canApprove'],
+            'canManage' => SettingsAccess::of($this->actor())->canEdit('Bank statements'),
         ]);
     }
 
@@ -90,6 +95,9 @@ class StatementFormats extends BaseApiController
     /** Multipart: `file` (a sample statement) and `payload` (the format as edited so far). */
     public function sample()
     {
+        if ($refusal = $this->cannotSee()) {
+            return $refusal;
+        }
         $file = $this->request->getFile('file');
         if ($file === null || !$file->isValid()) {
             return $this->refused(new RuleViolation('Choose a sample statement file.'));
@@ -105,12 +113,18 @@ class StatementFormats extends BaseApiController
 
     // ------------------------------------------------------------------
 
-    /** Runs a change for an approver and answers with its message and the formats as they now stand. */
+    private function cannotSee()
+    {
+        return SettingsAccess::of($this->actor())->canSee('Bank statements') ? null
+            : $this->denied($this->actor()['role'] . ' cannot see the bank statement formats. That needs a role with settings.view.');
+    }
+
+    /** Runs a change for someone who may make it, and answers with its message and the formats as they now stand. */
     private function write(callable $action)
     {
         $actor = $this->actor();
-        if (!$actor['canApprove']) {
-            return $this->response->setStatusCode(403)->setJSON(['error' => $actor['role'] . ' cannot change statement formats. Ask the Finance Manager.']);
+        if (!SettingsAccess::of($actor)->canEdit('Bank statements')) {
+            return $this->response->setStatusCode(403)->setJSON(['error' => $actor['role'] . ' cannot change statement formats. That needs a role with settings.banking.']);
         }
 
         try {

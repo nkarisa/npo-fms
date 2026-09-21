@@ -65,7 +65,7 @@ final class RolesTest extends CIUnitTestCase
         $auditor = $this->userId('audit@pkfea.com');
 
         // The auditor can only look at the ledger…
-        $this->assertSame(['ledger.view'], $this->actor('audit@pkfea.com')['permissions']);
+        $this->assertSame(['ledger.view', 'settings.view', 'audit.view'], $this->actor('audit@pkfea.com')['permissions']);
 
         // …until they hold a second role, at one entity only.
         $access = $this->api('post', "api/users/{$auditor}/access", ['access' => [
@@ -77,7 +77,7 @@ final class RolesTest extends CIUnitTestCase
         $this->assertSame(['role' => 'Payroll Reviewer', 'entities' => ['ELOG-NS']], $row['access'][1]);
 
         $me = $this->actor('audit@pkfea.com');
-        $this->assertEqualsCanonicalizing(['ledger.view', 'payroll.view'], $me['permissions']);
+        $this->assertEqualsCanonicalizing(['ledger.view', 'settings.view', 'audit.view', 'payroll.view'], $me['permissions']);
         $this->assertSame(['Auditor (read only)', 'Payroll Reviewer'], $me['roles']);
         $this->assertSame('PKF Kenya now holds Auditor (read only) (all entities), Payroll Reviewer (ELOG-NS)', $access['audit'][0]['what']);
 
@@ -100,9 +100,9 @@ final class RolesTest extends CIUnitTestCase
     public function testTheBuiltInRolesKeepTheirNamesAndARoleInUseIsNotDeleted(): void
     {
         $roles = $this->api('get', 'api/roles');
-        $fm = $this->role($roles, 'Finance Manager');
-        $this->assertStringContainsString('keeps its name', $this->api('post', 'api/roles/' . $fm['id'], ['name' => 'Head of Finance', 'permissions' => $fm['permissions']], 422)['error']);
-        $this->assertStringContainsString('cannot be deleted', $this->api('post', 'api/roles/' . $fm['id'] . '/delete', [], 422)['error']);
+        $ed = $this->role($roles, 'Executive Director');
+        $this->assertStringContainsString('keeps its name', $this->api('post', 'api/roles/' . $ed['id'], ['name' => 'Chief Executive', 'permissions' => $ed['permissions']], 422)['error']);
+        $this->assertStringContainsString('cannot be deleted', $this->api('post', 'api/roles/' . $ed['id'] . '/delete', [], 422)['error']);
 
         $this->api('post', 'api/roles', ['name' => 'Budget Holder', 'permissions' => ['requisition.raise']]);
         $holder = $this->role($this->api('get', 'api/roles'), 'Budget Holder');
@@ -121,19 +121,49 @@ final class RolesTest extends CIUnitTestCase
         $fm = $this->role($this->api('get', 'api/roles'), 'Finance Manager');
         $kamau = $this->userId('w.kamau@elog.or.ke');
 
+        // Taking users.manage from the role the last holders hold would be refused too,
+        // but whoever tries holds it (see testNobodyChangesARoleTheyHold).
         $taken = array_values(array_diff($fm['permissions'], ['users.manage']));
-        $this->assertStringContainsString('nobody active who can manage users', $this->api('post', 'api/roles/' . $fm['id'], ['permissions' => $taken], 422)['error']);
+        $this->assertStringContainsString('You hold Finance Manager', $this->api('post', 'api/roles/' . $fm['id'], ['permissions' => $taken], 422)['error']);
         $this->assertStringContainsString('nobody active who can', $this->api('post', "api/users/{$kamau}/access", ['access' => [['role' => 'Accountant']]], 422)['error']);
         $this->assertStringContainsString('cannot suspend yourself', $this->api('post', "api/users/{$kamau}/suspend", [], 422)['error']);
         $this->assertStringContainsString('at least one role', $this->api('post', "api/users/{$kamau}/access", ['access' => []], 422)['error']);
+    }
+
+    public function testNobodyChangesARoleTheyHold(): void
+    {
+        $roles = $this->api('get', 'api/roles');
+        $fm = $this->role($roles, 'Finance Manager');
+        $this->assertTrue($fm['yours']);
+        $this->assertFalse($this->role($roles, 'Accountant')['yours']);
+
+        // Not even to give it more: whoever manages roles would widen their own permissions.
+        $refused = $this->api('post', 'api/roles/' . $fm['id'], ['permissions' => [...$fm['permissions'], 'period.authorise']], 422)['error'];
+        $this->assertStringContainsString('You hold Finance Manager', $refused);
+        $this->assertNotContains('period.authorise', $this->role($this->api('get', 'api/roles'), 'Finance Manager')['permissions']);
+
+        // A role they hold at one entity only is still theirs; one they do not hold, they change.
+        $this->api('post', 'api/roles', ['name' => 'Branch Admin', 'permissions' => ['users.manage', 'ledger.view']]);
+        $admin = $this->role($this->api('get', 'api/roles'), 'Branch Admin');
+        $njeri = $this->userId('s.njeri@elog.or.ke');
+        $entity = db_connect()->table('entities')->select('code')->where('parent_id IS NOT NULL')->get()->getRowArray()['code'];
+        $this->api('post', "api/users/{$njeri}/access", ['access' => [['role' => 'Branch Admin', 'entities' => [$entity]]]]);
+        $this->api('post', 'api/roles/' . $admin['id'], ['permissions' => ['users.manage', 'ledger.view', 'audit.view']]);
+
+        $this->signIn('s.njeri@elog.or.ke');
+        $this->assertStringContainsString('You hold Branch Admin', $this->api('post', 'api/roles/' . $admin['id'], ['permissions' => ['users.manage', 'ledger.view', 'journal.post']], 422)['error']);
+        $this->assertStringContainsString('You hold Branch Admin', $this->api('post', 'api/roles/' . $admin['id'] . '/delete', [], 422)['error']);
+        // Someone else who manages users makes the change instead.
+        $this->assertStringContainsString('saved', $this->api('post', 'api/roles/' . $fm['id'], ['permissions' => [...$fm['permissions'], 'period.authorise']])['message']);
     }
 
     public function testOnlyARoleWithUsersManageChangesRolesOrAccess(): void
     {
         $this->signIn('j.achieng@elog.or.ke');
 
-        $this->assertFalse($this->api('get', 'api/roles')['canManage']);
-        $this->api('post', 'api/roles', ['name' => 'Sneaky', 'permissions' => ['settings.manage']], 403);
+        // Roles are not even shown to someone who cannot change them.
+        $this->api('get', 'api/roles', [], 403);
+        $this->api('post', 'api/roles', ['name' => 'Sneaky', 'permissions' => ['settings.organisation']], 403);
         $this->api('post', 'api/users/' . $this->userId('j.achieng@elog.or.ke') . '/access', ['access' => [['role' => 'Finance Manager']]], 403);
         $this->api('post', 'api/settings/invite', ['name' => 'A B', 'email' => 'a@b.co', 'roles' => ['Accountant']], 403);
     }

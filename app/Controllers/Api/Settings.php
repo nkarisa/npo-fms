@@ -4,8 +4,10 @@ namespace App\Controllers\Api;
 
 use App\Libraries\Brand;
 use App\Libraries\I18n as I18nLib;
+use App\Libraries\SettingsAccess;
 use App\Libraries\Theme;
 use App\Repositories\AuthRepository;
+use App\Repositories\NotPermitted;
 use App\Repositories\PayablesRepository;
 use App\Repositories\PostingAccounts;
 use App\Repositories\RoleRepository;
@@ -24,51 +26,61 @@ use App\Repositories\TaxRepository;
  * M-Pesa integration (Api\Mpesa) and the mail server (Api\Mail) — a credential cannot sit in a draft in the
  * browser. Carrying opening balances from a legacy system (Api\Conversion) reads a
  * file rather than a draft, and writes a journal for approval rather than settings.
- * "Language and translation" is served in detail by Api\I18n. Only a user holding
- * settings.manage (the Finance Manager) can save; everyone else can look. Users and
- * roles are users.manage, and save as they are made (Api\Users, Api\Roles).
+ * "Language and translation" is served in detail by Api\I18n. Users and roles save
+ * as they are made (Api\Users, Api\Roles).
+ *
+ * Who sees and who changes each section is App\Libraries\SettingsAccess: a
+ * section someone cannot see is left out of what is served, data and all, and a
+ * save that would change a section they cannot change is refused whole.
  */
 class Settings extends BaseApiController
 {
-    /** Sections in the order the screen lists them. "Taxes", "Terms and reminders", "Bank statements", "Opening balances", "Integrations" and "Appearance" are the additions to the v5 prototype. */
-    private const SECTIONS = [
-        ['label' => 'Organisation', 'icon' => '◧'],
-        ['label' => 'Ledger', 'icon' => '▤'],
-        ['label' => 'Segments', 'icon' => '◈'],
-        ['label' => 'Currencies', 'icon' => '⇄'],
-        ['label' => 'Taxes', 'icon' => '%'],
-        ['label' => 'Terms and reminders', 'icon' => '◔'],
-        ['label' => 'Approvals', 'icon' => '✓'],
-        ['label' => 'Bank statements', 'icon' => '⇅'],
-        ['label' => 'Opening balances', 'icon' => '⇥'],
-        ['label' => 'Integrations', 'icon' => '⇌'],
-        ['label' => 'Payroll', 'icon' => '◍'],
-        ['label' => 'Appearance', 'icon' => '◐'],
-        ['label' => 'Language and translation', 'icon' => '⌾'],
-        ['label' => 'Users', 'icon' => '◉'],
-        ['label' => 'Roles', 'icon' => '◎'],
-        ['label' => 'Audit log', 'icon' => '◷'],
+    /**
+     * What each section of the screen is served, by the payload key. A key goes to
+     * anyone who can see one of its sections; the rest (scope, language, who is
+     * asking) every section reads.
+     */
+    private const DATA = [
+        'organisation' => ['Organisation'], 'entities' => ['Organisation'], 'entityTypes' => ['Organisation'],
+        'funds' => ['Segments'], 'fundOptions' => ['Segments'], 'segments' => ['Segments'],
+        'ledger' => ['Ledger'], 'ledgerOptions' => ['Ledger'], 'periods' => ['Ledger'], 'toggles' => ['Ledger'],
+        'postingAccounts' => ['Ledger'], 'postingAccountOptions' => ['Ledger'],
+        'currencies' => ['Currencies'], 'taxes' => ['Taxes'], 'days' => ['Terms and reminders'],
+        'approvals' => ['Approvals'], 'ownApprovals' => ['Approvals'], 'approverRoles' => ['Approvals'],
+        'procurement' => ['Approvals'], 'sodRules' => ['Approvals'],
+        'payAccounts' => ['Payroll'], 'payAccountOptions' => ['Payroll'], 'benefits' => ['Payroll'], 'grades' => ['Payroll'],
+        'appearance' => ['Appearance'], 'themes' => ['Appearance'],
+        'users' => ['Users'], 'entityOptions' => ['Users'], 'roles' => ['Users', 'Roles'],
+        'roleDetail' => ['Roles'], 'permissionCatalogue' => ['Roles'],
+        'audit' => ['Audit log'],
     ];
 
     public function index()
     {
+        if (!$this->access()->any()) {
+            return $this->denied($this->actor()['role'] . ' has no settings to look at. Seeing them needs a role with settings.view.');
+        }
+
         return $this->json($this->payload(new SettingsRepository()));
     }
 
     /**
      * Saves the draft. Body: any of organisation, entities, ledger, toggles, segments,
      * currencies, approvals, procurement, taxes, days, postingAccounts, payroll, appearance, users, language — only what differs
-     * from what is held is changed. The logo is not in the draft; it has its own
-     * endpoints below.
+     * from what is held is changed, and only in the sections this user can change
+     * (SettingsAccess). The logo is not in the draft; it has its own endpoints below.
      */
     public function save()
     {
-        if ($refusal = $this->cannotManage()) {
-            return $refusal;
+        $access = $this->access();
+        if (!$access->editsDraft()) {
+            return $this->denied($this->actor()['role'] . ' cannot change settings. That needs a role with one of the settings permissions — every change is recorded in the audit log.');
         }
 
         try {
-            $changes = (new SettingsRepository())->save($this->request->getJSON(true) ?? [], $this->actorId());
+            $changes = (new SettingsRepository())->save($this->request->getJSON(true) ?? [], $this->actorId(), $access->canEdit(...));
+        } catch (NotPermitted $e) {
+            return $this->denied($this->actor()['role'] . ' cannot do that. ' . $e->getMessage());
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }
@@ -116,7 +128,7 @@ class Settings extends BaseApiController
      */
     public function logo()
     {
-        if ($refusal = $this->cannotManage()) {
+        if ($refusal = $this->cannotChange('Appearance')) {
             return $refusal;
         }
 
@@ -142,7 +154,7 @@ class Settings extends BaseApiController
     /** Removes the logo, leaving the sidebar to draw the initials of the application name. */
     public function removeLogo()
     {
-        if ($refusal = $this->cannotManage()) {
+        if ($refusal = $this->cannotChange('Appearance')) {
             return $refusal;
         }
 
@@ -178,14 +190,14 @@ class Settings extends BaseApiController
 
     // ------------------------------------------------------------------
 
-    private function cannotManage()
+    private function access(): SettingsAccess
     {
-        $actor = $this->actor();
-        if (in_array('settings.manage', $actor['permissions'] ?? [], true)) {
-            return null;
-        }
+        return SettingsAccess::of($this->actor());
+    }
 
-        return $this->response->setStatusCode(403)->setJSON(['error' => $actor['role'] . ' cannot change settings. Only the Finance Manager can — every change is recorded in the audit log.']);
+    private function cannotChange(string $section)
+    {
+        return $this->access()->canEdit($section) ? null : $this->denied($this->actor()['role'] . ' cannot do that. ' . SettingsAccess::refusal($section));
     }
 
     /** The brand and the palette, with the logo's address rather than its storage key. */
@@ -202,54 +214,73 @@ class Settings extends BaseApiController
 
     private function payload(SettingsRepository $settings): array
     {
-        return [
+        $access = $this->access();
+        $sections = [];
+        foreach ($access->visible() as $key) {
+            $s = SettingsAccess::SECTIONS[$key];
             // The key is what the screen switches on; the label is translated for display.
-            'sections'     => array_map(static fn ($s) => ['key' => $s['label']] + $s, self::SECTIONS),
-            'canManage'    => in_array('settings.manage', $this->actor()['permissions'] ?? [], true),
-            'canManageUsers' => $this->can('users.manage'),
-            'me'           => $this->actor()['email'],
-            // The entity whose own settings are shown: its registered details, approval bands,
-            // procurement threshold and the accounts it pays from. The rest are the organisation's.
-            'scope'        => $settings->scope(),
-            'organisation' => $settings->organisation(),
-            'entities'     => $settings->entities(),
-            'funds'        => $settings->funds(),
-            'payAccounts'  => $settings->payAccounts(),
-            'payAccountOptions' => $settings->payAccountOptions(),
-            'fundOptions'  => $settings->fundOptions(),
-            'ledger'       => $settings->ledger(),
-            'ledgerOptions' => [
+            $sections[] = ['key' => $key, 'label' => $key, 'icon' => $s['icon'], 'canEdit' => $access->canEdit($key), 'edit' => $s['edit']];
+        }
+
+        // Each read only for a section that is shown: a hidden section's data is not served.
+        $data = [
+            'organisation' => fn () => $settings->organisation(),
+            'entities'     => fn () => $settings->entities(),
+            'funds'        => fn () => $settings->funds(),
+            'payAccounts'  => fn () => $settings->payAccounts(),
+            'payAccountOptions' => fn () => $settings->payAccountOptions(),
+            'fundOptions'  => fn () => $settings->fundOptions(),
+            'ledger'       => fn () => $settings->ledger(),
+            'ledgerOptions' => fn () => [
                 'frameworks'  => SettingsRepository::FRAMEWORKS,
                 'currencies'  => array_map(static fn ($c) => ['value' => $c['code'], 'text' => $c['code'] . ' — ' . $c['name']], $settings->currencies()),
                 'yearEnds'    => SettingsRepository::YEAR_ENDS,
                 'codeLengths' => SettingsRepository::CODE_LENGTHS,
             ],
-            'postingAccounts' => (new PostingAccounts())->all(),
-            'postingAccountOptions' => (new PostingAccounts())->options(),
-            'toggles'      => $settings->toggles(),
-            'periods'      => $settings->periods(),
-            'segments'     => $settings->segments(),
-            'currencies'   => $settings->currencies(),
-            'approvals'    => $settings->approvals(),
-            'ownApprovals' => $settings->ownApprovals(),
-            'approverRoles' => $settings->approverRoles(),
-            'procurement'  => $settings->procurement(),
-            'days'         => $settings->dayRules(),
-            'taxes'        => (new TaxRepository())->schedule() + ['categories' => (new PayablesRepository())->categories()],
-            'sodRules'     => SettingsRepository::SOD_RULES,
-            'benefits'     => $settings->benefits(),
-            'grades'       => $settings->grades(),
-            'roles'        => $settings->roles(),
-            'roleDetail'   => (new RoleRepository())->roles(),
-            'permissionCatalogue' => (new RoleRepository())->catalogue(),
-            'users'        => $settings->users(),
-            'entityOptions' => $settings->entityOptions(),
-            'appearance'   => $this->appearance($settings),
-            'themes'       => Theme::THEMES,
-            'entityTypes'  => SettingsRepository::ENTITY_TYPES,
-            'audit'        => $settings->auditLog(),
-            'language'     => $this->languageSummary($settings),
+            'postingAccounts' => fn () => (new PostingAccounts())->all(),
+            'postingAccountOptions' => fn () => (new PostingAccounts())->options(),
+            'toggles'      => fn () => $settings->toggles(),
+            'periods'      => fn () => $settings->periods(),
+            'segments'     => fn () => $settings->segments(),
+            'currencies'   => fn () => $settings->currencies(),
+            'approvals'    => fn () => $settings->approvals(),
+            'ownApprovals' => fn () => $settings->ownApprovals(),
+            'approverRoles' => fn () => $settings->approverRoles(),
+            'procurement'  => fn () => $settings->procurement(),
+            'days'         => fn () => $settings->dayRules(),
+            'taxes'        => fn () => (new TaxRepository())->schedule() + ['categories' => (new PayablesRepository())->categories()],
+            'sodRules'     => fn () => SettingsRepository::SOD_RULES,
+            'benefits'     => fn () => $settings->benefits(),
+            'grades'       => fn () => $settings->grades(),
+            'roles'        => fn () => $settings->roles(),
+            'roleDetail'   => fn () => (new RoleRepository())->rolesFor($this->actorId()),
+            'permissionCatalogue' => fn () => (new RoleRepository())->catalogue(),
+            'users'        => fn () => $settings->users(),
+            'entityOptions' => fn () => $settings->entityOptions(),
+            'appearance'   => fn () => $this->appearance($settings),
+            'themes'       => fn () => Theme::THEMES,
+            'entityTypes'  => fn () => SettingsRepository::ENTITY_TYPES,
+            'audit'        => fn () => $settings->auditLog(),
         ];
+        $shown = [];
+        foreach ($data as $key => $read) {
+            if (array_filter(self::DATA[$key], $access->canSee(...)) !== []) {
+                $shown[$key] = $read();
+            }
+        }
+
+        return [
+            'sections'     => $sections,
+            // The section each part of the draft belongs to, so the screen drafts only what it shows.
+            'draftSections' => SettingsAccess::DRAFT,
+            'canManage'    => $access->editsDraft(),
+            'canManageUsers' => $this->can('users.manage'),
+            'me'           => $this->actor()['email'],
+            // The entity whose own settings are shown: its registered details, approval bands,
+            // procurement threshold and the accounts it pays from. The rest are the organisation's.
+            'scope'        => $settings->scope(),
+            'language'     => $this->languageSummary($settings),
+        ] + $shown;
     }
 
     /**

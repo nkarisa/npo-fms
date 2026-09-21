@@ -208,6 +208,7 @@ class Grants extends BaseApiController
 
     private function canManage(): bool
     {
-        return in_array('settings.manage', $this->actor()['permissions'] ?? [], true);
+        // Recording an award opens a fund, the first coding every posting carries: the ledger's to set up.
+        return in_array('settings.ledger', $this->actor()['permissions'] ?? [], true);
     }
 }

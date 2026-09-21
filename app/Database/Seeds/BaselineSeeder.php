@@ -42,26 +42,35 @@ class BaselineSeeder extends Seeder
         'Executive Director', 'Auditor (read only)', 'Finance Director', 'Grants Lead'];
 
     public const PERMISSIONS = [
-        'ledger.view'       => 'View the ledger, reports and supporting records',
-        'journal.prepare'   => 'Prepare and submit journals and documents',
-        'journal.approve'   => 'Approve documents within the role\'s ceiling',
-        'journal.post'      => 'Post approved journals to the ledger',
-        'requisition.raise' => 'Raise purchase requisitions',
-        'payroll.view'      => 'View payroll records (personal data; every read is logged)',
-        'settings.manage'   => 'Change organisation, ledger and approval settings',
-        'period.close'      => 'Confirm the management review and close a period',
-        'period.authorise'  => 'Authorise a period close and reopen a closed period',
-        'chart.manage'      => 'Add, change, import and archive accounts in the chart',
-        'users.manage'      => 'Invite users, assign their roles and define roles',
+        'ledger.view'           => 'View the ledger, reports and supporting records',
+        'journal.prepare'       => 'Prepare and submit journals and documents',
+        'journal.approve'       => 'Approve documents within the role\'s ceiling',
+        'journal.post'          => 'Post approved journals to the ledger',
+        'requisition.raise'     => 'Raise purchase requisitions',
+        'payroll.view'          => 'View payroll records (personal data; every read is logged)',
+        'settings.view'         => 'See the organisation, ledger, approval and bank statement settings, read only',
+        'settings.organisation' => 'Change the organisation, its entities, the appearance and the language settings',
+        'settings.ledger'       => 'Change the ledger, segments, currencies, taxes and terms; open funds, record awards and carry opening balances',
+        'settings.approvals'    => 'Change approval bands, approvers and the procurement threshold',
+        'settings.banking'      => 'Change bank statement formats and the cash accounts they are read into',
+        'settings.integrations' => 'Change the M-Pesa integration and the mail server, credentials included',
+        'settings.payroll'      => 'Change payroll benefits, grades and the accounts payroll pays from',
+        'audit.view'            => 'Read the settings audit log',
+        'period.close'          => 'Confirm the management review and close a period',
+        'period.authorise'      => 'Authorise a period close and reopen a closed period',
+        'chart.manage'          => 'Add, change, import and archive accounts in the chart',
+        'users.manage'          => 'Invite users, assign their roles and define roles',
     ];
 
     public const ROLE_PERMISSIONS = [
-        'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view', 'settings.manage', 'period.close', 'chart.manage', 'users.manage'],
-        'Executive Director'  => ['ledger.view', 'journal.approve', 'journal.post', 'payroll.view', 'period.authorise'],
-        'Senior Accountant'   => ['ledger.view', 'journal.prepare', 'requisition.raise'],
-        'Accountant'          => ['ledger.view', 'journal.prepare', 'requisition.raise'],
+        'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view',
+            'settings.view', 'settings.organisation', 'settings.ledger', 'settings.approvals', 'settings.banking', 'settings.integrations', 'settings.payroll',
+            'period.close', 'chart.manage', 'users.manage', 'audit.view'],
+        'Executive Director'  => ['ledger.view', 'journal.approve', 'journal.post', 'payroll.view', 'settings.view', 'period.authorise', 'audit.view'],
+        'Senior Accountant'   => ['ledger.view', 'journal.prepare', 'requisition.raise', 'settings.view'],
+        'Accountant'          => ['ledger.view', 'journal.prepare', 'requisition.raise', 'settings.view'],
         'Programme Officer'   => ['requisition.raise'],
-        'Auditor (read only)' => ['ledger.view'],
+        'Auditor (read only)' => ['ledger.view', 'settings.view', 'audit.view'],
     ];
 
     /** What a role may approve in one transaction. Null is no ceiling. */
