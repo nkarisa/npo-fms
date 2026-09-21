@@ -54,15 +54,21 @@ final class Lookups extends Repository
     }
 
     /**
-     * The organisation's names as Settings → Organisation holds them, for the
-     * documents that carry them: the close pack, the board pack, a donor report.
+     * The names Settings → Organisation holds for the entity being worked in, for the
+     * documents that carry them: the close pack, the board pack, a donor report. An
+     * entity that is not a legal body of its own leaves them blank, and carries the
+     * head office's.
      *
      * @return array{registered: string, short: string}
      */
     public function organisationNames(): array
     {
-        return $this->cached('organisation-names', function () {
-            $e = $this->row('SELECT registered_name, short_name FROM {entities} WHERE parent_id IS NULL ORDER BY id LIMIT 1') ?? [];
+        return $this->cached('organisation-names:' . $this->entityId(), function () {
+            $sql = 'SELECT registered_name, short_name FROM {entities} WHERE id = ?';
+            $own  = $this->row($sql, [$this->entityId()]) ?? [];
+            $head = $this->row($sql, [$this->headOfficeId()]) ?? [];
+            // Its names together or the head office's together, never one of each.
+            $e = trim(($own['registered_name'] ?? '') . ($own['short_name'] ?? '')) !== '' ? $own : $head;
             $registered = trim((string) ($e['registered_name'] ?? ''));
             $short      = trim((string) ($e['short_name'] ?? ''));
 

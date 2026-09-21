@@ -1165,6 +1165,9 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .st-head > div:first-child { display: flex; flex-direction: column; gap: 4px; flex: 1 1 320px; min-width: 0; }
 .st-kicker { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: #8B948F; }
 .st-note { font-size: 11.5px; color: #7A857F; line-height: 1.5; }
+/* A small action inside a note: follow the head office's settings again. */
+.st-linkbtn { border: 0; background: none; padding: 0; font: inherit; color: var(--accent-ink); text-decoration: underline; cursor: pointer; }
+.st-linkbtn:disabled { color: inherit; text-decoration: none; cursor: default; }
 .st-note a { color: var(--accent); }
 .st-rule { height: 1px; background: #EEEDE8; }
 .st-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

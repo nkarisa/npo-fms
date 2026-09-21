@@ -74,6 +74,53 @@ final class StatementFormatRepository extends Repository
     }
 
     /**
+     * Every active cash account of the entity, petty cash included, for Settings →
+     * Bank statements: with its details, and what already refers to it, since it
+     * can be corrected only while nothing does.
+     */
+    public function cashAccounts(): array
+    {
+        $names = array_column($this->formats(), 'name', 'id');
+
+        return array_values(array_map(fn ($b) => [
+            'code' => (string) $b['code'], 'name' => $b['name'], 'short' => $b['short_name'], 'kind' => $b['kind'], 'currency' => $b['currency'],
+            'bankName' => (string) ($b['bank_name'] ?? ''), 'accountNumber' => (string) ($b['account_number'] ?? ''),
+            'formatId' => $b['statement_format_id'] === null ? null : (int) $b['statement_format_id'],
+            'format' => $names[(int) $b['statement_format_id']] ?? '',
+            'uses' => $this->uses($b),
+        ], array_filter($this->lookups->bankAccounts(), static fn ($b) => $b['status'] === 'active')));
+    }
+
+    /**
+     * Records that refer to a cash account, as "3 receipts", "1 bank statement": the
+     * documents that name it, and every journal line on the ledger account behind
+     * it, drafts included, since those post there.
+     *
+     * @return list<string>
+     */
+    public function uses(array $bank): array
+    {
+        $id = (int) $bank['id'];
+        $counts = EntityScope::across(fn () => [
+            'journal line'   => (int) $this->value('SELECT COUNT(*) FROM {journal_lines} WHERE account_id = ?', [(int) $bank['account_id']])
+                + (int) $this->value("SELECT COUNT(*) FROM {journals} WHERE source_type = 'cash_book' AND source_id = ?", [$id]),
+            'receipt'        => (int) $this->value('SELECT COUNT(*) FROM {receipts} WHERE bank_account_id = ?', [$id]),
+            'payment'        => (int) $this->value('SELECT COUNT(*) FROM {payments} WHERE bank_account_id = ?', [$id]),
+            'payment run'    => (int) $this->value('SELECT COUNT(*) FROM {payment_runs} WHERE bank_account_id = ?', [$id]),
+            'bill'           => (int) $this->value('SELECT COUNT(*) FROM {bills} WHERE pay_from_bank_account_id = ?', [$id]),
+            'advance'        => (int) $this->value('SELECT COUNT(*) FROM {advances} WHERE bank_account_id = ?', [$id]),
+            'bank statement' => (int) $this->value('SELECT COUNT(*) FROM {bank_statements} WHERE bank_account_id = ?', [$id]),
+            'reconciliation' => (int) $this->value('SELECT COUNT(*) FROM {reconciliations} WHERE bank_account_id = ?', [$id]),
+            'WHT remittance' => (int) $this->value('SELECT COUNT(*) FROM {wht_remittances} WHERE bank_account_id = ?', [$id]),
+        ]);
+
+        return array_values(array_map(
+            static fn ($what, $n) => $n . ' ' . $what . ($n === 1 ? '' : 's'),
+            array_keys(array_filter($counts)), array_filter($counts)
+        ));
+    }
+
+    /**
      * The ledger accounts a cash account could be opened on: postable asset accounts
      * that do not already carry one.
      *
@@ -212,6 +259,86 @@ final class StatementFormatRepository extends Repository
         return ['code' => $code, 'name' => $name, 'short' => $short, 'kind' => $kind, 'currency' => $currency];
     }
 
+    /**
+     * Corrects a cash account opened by mistake — the wrong ledger account, name,
+     * kind, bank, number or currency — while nothing refers to it yet. Once a
+     * receipt, payment, statement or journal line does, it stays as it is: changing
+     * it would change what those records say was paid from, or into, where.
+     *
+     * @param array{code?: string, name?: string, shortName?: string, kind?: string,
+     *              bankName?: string, accountNumber?: string, currency?: string} $input
+     * @return array{code: string, name: string, changes: list<string>}
+     */
+    public function updateAccount(string $code, array $input, int $actorId): array
+    {
+        $bank = $this->lookups->bankAccounts()[$code] ?? throw new RuleViolation('Account ' . $code . ' is not a cash account of this entity.');
+        if (($uses = $this->uses($bank)) !== []) {
+            throw new RuleViolation($bank['name'] . ' can no longer be changed: ' . self::andList($uses)
+                . ' already refer to it. Open a new cash account for the corrected details instead.');
+        }
+
+        $held = [
+            'code' => $code, 'name' => $bank['name'], 'shortName' => $bank['short_name'], 'kind' => $bank['kind'],
+            'bankName' => (string) ($bank['bank_name'] ?? ''), 'accountNumber' => (string) ($bank['account_number'] ?? ''), 'currency' => $bank['currency'],
+        ];
+        $next = array_map(static fn ($v) => trim((string) $v), array_intersect_key($input, $held)) + $held;
+        $next['currency'] = mb_strtoupper($next['currency']);
+        if ($next['kind'] === 'petty_cash') {
+            // Petty cash is counted, not banked.
+            $next['bankName'] = $next['accountNumber'] = '';
+        }
+
+        $account = $this->lookups->accounts()[$next['code']] ?? null;
+        $taken = EntityScope::across(fn () => $this->lookups->bankAccounts());
+        $mpesa = EntityScope::across(fn () => $this->value('SELECT COUNT(*) FROM {mpesa_integrations} WHERE bank_account_id = ?', [(int) $bank['id']]));
+        $refusal = match (true) {
+            $account === null                    => 'Account ' . $next['code'] . ' is not in the chart of accounts.',
+            $account['type'] !== 'asset'         => $next['code'] . ' ' . $account['name'] . ' is ' . $account['type'] . '. Cash is held on an asset account.',
+            (int) $account['is_leaf'] === 0      => $next['code'] . ' ' . $account['name'] . ' is a heading, not a postable account.',
+            $account['status'] !== 'active'      => $next['code'] . ' ' . $account['name'] . ' is archived.',
+            $next['code'] !== $code && isset($taken[$next['code']]) => $next['code'] . ' already carries ' . $taken[$next['code']]['name']
+                . '. One ledger account holds one cash account, or a reconciliation cannot say which balance it agreed.',
+            $next['name'] === ''                 => 'Give the account the name it is known by — it is what the reconciliation and the cash book show.',
+            !isset(self::KINDS[$next['kind']])   => 'A cash account is a ' . implode(', a ', array_map('lcfirst', self::KINDS)) . '.',
+            $mpesa > 0 && $next['kind'] !== 'mobile_money' => 'M-Pesa settles onto ' . $bank['name'] . ', so it stays a mobile money account. Choose another settlement account in Settings → Integrations first.',
+            $this->value('SELECT code FROM {currencies} WHERE code = ?', [$next['currency']]) === null
+                                                 => $next['currency'] . ' is not a currency this instance holds. Add it in Settings → Currencies first.',
+            default                              => null,
+        };
+        if ($refusal !== null) {
+            throw new RuleViolation($refusal);
+        }
+        $next['shortName'] = $next['shortName'] !== '' ? mb_substr($next['shortName'], 0, 40) : mb_substr($next['name'], 0, 40);
+
+        $labels = ['code' => 'ledger account', 'name' => 'name', 'shortName' => 'short name', 'kind' => 'kind',
+            'bankName' => 'bank', 'accountNumber' => 'account number', 'currency' => 'currency'];
+        $shown = static fn (string $key, string $v) => $v === '' ? 'blank' : ($key === 'kind' ? lcfirst(self::KINDS[$v]) : $v);
+        $changes = [];
+        foreach ($labels as $key => $label) {
+            if ($next[$key] !== $held[$key]) {
+                $changes[] = $label . ' ' . $shown($key, $held[$key]) . ' → ' . $shown($key, $next[$key]);
+            }
+        }
+        if ($changes === []) {
+            return ['code' => $code, 'name' => $bank['name'], 'changes' => []];
+        }
+
+        $this->transaction(function () use ($bank, $account, $next, $changes, $actorId) {
+            $this->db->table('bank_accounts')->where('id', (int) $bank['id'])->update([
+                'account_id' => $account['id'], 'name' => $next['name'], 'short_name' => $next['shortName'], 'kind' => $next['kind'],
+                'bank_name' => $next['bankName'] !== '' ? $next['bankName'] : null,
+                'account_number' => $next['accountNumber'] !== '' ? $next['accountNumber'] : null,
+                'currency' => $next['currency'],
+                // Petty cash takes no statement, so it keeps no format.
+                'statement_format_id' => $next['kind'] === 'petty_cash' ? null : $bank['statement_format_id'],
+                'updated_at' => Clock::timestamp(),
+            ]);
+            $this->logChange($bank['name'] . ' corrected before first use: ' . implode('; ', $changes), $actorId);
+        });
+
+        return ['code' => $next['code'], 'name' => $next['name'], 'changes' => $changes];
+    }
+
     public function assign(string $code, ?int $formatId, int $actorId): void
     {
         $account = current(array_filter($this->accounts(), static fn ($a) => $a['code'] === $code))
@@ -223,6 +350,16 @@ final class StatementFormatRepository extends Repository
                 ->update(['statement_format_id' => $format['id'] ?? null, 'updated_at' => Clock::timestamp()]);
             $this->logChange($account['code'] . ' ' . $account['short'] . ' statements ' . ($format === null ? 'no longer have a format' : 'now read as ' . $format['name']), $actorId);
         });
+    }
+
+    private static function andList(array $items): string
+    {
+        if (count($items) < 2) {
+            return (string) ($items[0] ?? '');
+        }
+        $last = array_pop($items);
+
+        return implode(', ', $items) . ' and ' . $last;
     }
 
     /** Format changes are settings changes, and show in Settings → Audit log. */

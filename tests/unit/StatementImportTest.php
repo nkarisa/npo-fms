@@ -92,7 +92,7 @@ final class StatementImportTest extends CIUnitTestCase
         $list = $this->api('api/statement-formats');
         $this->assertSame(['M-Pesa organisation portal (CSV)', 'Equity Bank online banking (CSV)', 'KCB internet banking (CSV)'], array_column($list['formats'], 'name'));
         $this->assertTrue($list['formats'][0]['builtin']);
-        $this->assertSame(['1110' => 'KCB internet banking (CSV)', '1120' => 'Equity Bank online banking (CSV)', '1130' => 'M-Pesa organisation portal (CSV)'], array_column($list['accounts'], 'format', 'code'));
+        $this->assertSame(['1110' => 'KCB internet banking (CSV)', '1120' => 'Equity Bank online banking (CSV)', '1130' => 'M-Pesa organisation portal (CSV)', '1140' => ''], array_column($list['accounts'], 'format', 'code'));
         $this->assertTrue($list['canManage']);
 
         $coop = [
@@ -233,6 +233,48 @@ final class StatementImportTest extends CIUnitTestCase
         $this->actAs('audit@pkfea.com');
         $this->post('api/bank-rec/import')->assertStatus(403);
         $this->assertFalse($this->api('api/bank-rec/import')['canUpload']);
+    }
+
+    public function testACashAccountCanBeCorrectedUntilSomethingRefersToIt(): void
+    {
+        $post = fn (string $url, array $body) => $this->withBodyFormat('json')->post($url, $body);
+        $panel = $this->api('api/statement-formats');
+        $accounts = array_column($panel['accounts'], null, 'code');
+        $this->assertSame('petty_cash', $accounts['1140']['kind'], 'Petty cash is listed with the rest');
+        $this->assertNotSame([], $accounts['1110']['uses']);
+
+        // The KCB account has receipts, payments and statements behind it.
+        $fixed = $post('api/statement-formats/account/1110', ['name' => 'Renamed']);
+        $fixed->assertStatus(422);
+        $this->assertStringContainsString('KCB', json_decode($fixed->getJSON(), true)['error']);
+        $this->assertStringContainsString('can no longer be changed', json_decode($fixed->getJSON(), true)['error']);
+
+        // Two new ledger accounts with nothing posted to them: an account with postings is already in use.
+        [$first, $second] = ['1115', '1116'];
+        $db = db_connect();
+        $template = $db->table('accounts')->where('code', '1110')->get()->getRowArray();
+        unset($template['id']);
+        foreach ([$first, $second] as $code) {
+            $db->table('accounts')->insert(['code' => $code, 'name' => 'Cash ' . $code] + $template);
+        }
+        Repository::forget();
+        $this->json($post('api/statement-formats/account', [
+            'code' => $first, 'name' => 'Equity Current', 'kind' => 'bank', 'bankName' => 'Equty', 'accountNumber' => '123', 'currency' => 'KES',
+        ]));
+        $this->assertSame([], array_column($this->api('api/statement-formats')['accounts'], null, 'code')[$first]['uses']);
+
+        // Opened on the wrong ledger account, as the wrong kind: put right before first use.
+        $body = $this->json($post('api/statement-formats/account/' . $first, ['code' => $second, 'name' => 'Petty cash — Rift Valley', 'kind' => 'petty_cash']));
+        $this->assertStringContainsString('ledger account ' . $first . ' → ' . $second, $body['message']);
+        $account = array_column($body['accounts'], null, 'code')[$second];
+        $this->assertSame(['Petty cash — Rift Valley', 'petty_cash', '', ''], [$account['name'], $account['kind'], $account['bankName'], $account['accountNumber']]);
+        $this->assertContains($first, array_column($body['candidates'], 'code'), 'The account it left is free again');
+        $this->assertStringContainsString('corrected before first use', json_encode($this->api('api/settings')['audit'], JSON_UNESCAPED_UNICODE));
+
+        // Another cash account's ledger account is not free.
+        $taken = $post('api/statement-formats/account/' . $second, ['code' => '1130']);
+        $taken->assertStatus(422);
+        $this->assertStringContainsString('already carries', json_decode($taken->getJSON(), true)['error']);
     }
 
     // ------------------------------------------------------------------

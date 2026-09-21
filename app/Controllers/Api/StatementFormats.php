@@ -18,7 +18,7 @@ class StatementFormats extends BaseApiController
 
         return $this->json([
             'formats'  => $repo->formats(),
-            'accounts' => $repo->accounts(),
+            'accounts' => $repo->cashAccounts(),
             'candidates' => $repo->cashCandidates(),
             'kinds'    => StatementFormatRepository::KINDS,
             'options'  => StatementFormatRepository::options(),
@@ -62,13 +62,26 @@ class StatementFormats extends BaseApiController
         ]);
     }
 
+    /**
+     * Corrects a cash account while nothing refers to it yet. Body: any of {code,
+     * name, shortName, kind, bankName, accountNumber, currency}.
+     */
+    public function updateAccount(string $code)
+    {
+        return $this->write(function (StatementFormatRepository $repo, array $body) use ($code) {
+            $a = $repo->updateAccount($code, $body, $this->actorId());
+
+            return ['message' => $a['changes'] === [] ? 'No changes to save.' : $a['name'] . ' saved: ' . implode('; ', $a['changes']) . '.', 'account' => $a];
+        });
+    }
+
     /** Body: {account, format: id|null}. */
     public function assign()
     {
         return $this->write(function (StatementFormatRepository $repo, array $body) {
             $format = isset($body['format']) && $body['format'] !== '' && $body['format'] !== null ? (int) $body['format'] : null;
             $repo->assign((string) ($body['account'] ?? ''), $format, $this->actorId());
-            $account = current(array_filter($repo->accounts(), static fn ($a) => $a['code'] === (string) $body['account']));
+            $account = current(array_filter($repo->cashAccounts(), static fn ($a) => $a['code'] === (string) $body['account']));
 
             return ['message' => $account['short'] . ($format === null ? ' has no statement format now.' : ' statements will be read as ' . $account['format'] . '.')];
         });
@@ -105,7 +118,7 @@ class StatementFormats extends BaseApiController
             $out = $action($repo, $this->request->getJSON(true) ?? []);
             $repo = new StatementFormatRepository();
 
-            return $this->json($out + ['formats' => $repo->formats(), 'accounts' => $repo->accounts(), 'candidates' => $repo->cashCandidates()]);
+            return $this->json($out + ['formats' => $repo->formats(), 'accounts' => $repo->cashAccounts(), 'candidates' => $repo->cashCandidates()]);
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }

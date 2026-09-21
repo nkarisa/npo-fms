@@ -49,7 +49,7 @@ final class SettingsTest extends CIUnitTestCase
 
         $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Taxes', 'Terms and reminders', 'Approvals', 'Bank statements', 'Opening balances', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Roles', 'Audit log'], array_column($s['sections'], 'key'));
         $this->assertTrue($s['canManage']);
-        $this->assertSame(['registeredName' => 'Elections Observation Group', 'shortName' => 'ELOG', 'taxPin' => 'P051290384H', 'ngoReg' => 'OP/218/051/2010/0142'], $s['organisation']);
+        $this->assertSame(['registeredName' => 'Elections Observation Group', 'shortName' => 'ELOG', 'taxPin' => 'P051290384H', 'ngoReg' => 'OP/218/051/2010/0142', 'headOffice' => null], $s['organisation']);
         $this->assertSame(['framework' => 'IFRS', 'currency' => 'KES', 'yearEnd' => '31 December', 'codeLength' => '4 digits'], $s['ledger']);
         $this->assertCount(6, $s['toggles']);
         $this->assertSame(['KES', 'USD', 'EUR', 'DKK', 'GBP'], array_column($s['currencies'], 'code'));

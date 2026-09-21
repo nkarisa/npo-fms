@@ -62,7 +62,10 @@
       segments: Object.fromEntries(d.segments.map(s => [s.key, s.required])),
       currencies: d.currencies.map(c => ({ code: c.code, name: c.name, rate: c.rate, active: c.active })),
       approvals: Object.fromEntries(d.approvals.map(a => [a.key, { threshold: a.threshold, approver: a.approver }])),
-      procurement: { quoteThreshold: d.procurement.quoteThreshold },
+      // Set to go back to the head office's, for an entity that has its own.
+      approvalsFollow: false,
+      postingAccountsFollow: [],
+      procurement: { quoteThreshold: d.procurement.quoteThreshold, follow: false },
       days: Object.fromEntries(d.days.map(r => [r.key, r.value])),
       taxes: { vat: { ...(d.taxes.vat || { rate: '', label: 'Standard rate' }) }, wht: d.taxes.wht.map(r => ({ ...r })) },
       payroll: {
@@ -245,17 +248,25 @@
   // Sections
   // ------------------------------------------------------------------
 
+  /**
+   * The registered details of the entity being worked in. A branch that is not a
+   * legal body of its own leaves them blank and prints the head office's, shown as
+   * the placeholder.
+   */
   function organisation(main) {
     const o = draft.organisation;
+    const h = data.organisation.headOffice;
+    const ph = (key) => h && h[key] ? `placeholder="${esc(h[key])}"` : '';
     main.innerHTML = `
       <div class="st-body">
         <div class="st-block">
-          <div class="st-kicker">Organisation</div>
+          <div class="st-kicker">${h ? esc(data.scope.name) : 'Organisation'}</div>
+          ${h ? `<div class="st-note">${esc(data.scope.name)}'s own registration. Leave it blank where ${esc(data.scope.name)} is not a legal body of its own: its statements and reports then carry the head office's, shown greyed.</div>` : ''}
           <div class="st-grid">
-            ${field('Registered name', 'organisation.registeredName', o.registeredName)}
-            ${field('Short name', 'organisation.shortName', o.shortName)}
-            ${field('KRA PIN', 'organisation.taxPin', o.taxPin, 'class="mono"')}
-            ${field('NGO Board registration', 'organisation.ngoReg', o.ngoReg, 'class="mono"')}
+            ${field('Registered name', 'organisation.registeredName', o.registeredName, ph('registeredName'))}
+            ${field('Short name', 'organisation.shortName', o.shortName, ph('shortName'))}
+            ${field('KRA PIN', 'organisation.taxPin', o.taxPin, 'class="mono" ' + ph('taxPin'))}
+            ${field('NGO Board registration', 'organisation.ngoReg', o.ngoReg, 'class="mono" ' + ph('ngoReg'))}
           </div>
         </div>
         ${rule}
@@ -518,8 +529,9 @@
     main.innerHTML = `
       <div class="st-body wide">
         ${head('Approval thresholds', 'Bands are read from the bottom up: a transaction takes the highest band its value reaches. Every band above nil enforces the two-person rule.')}
+        ${bandsNote('approvalsFollow', 'approval bands', data.ownApprovals, draft.approvalsFollow)}
         <div class="st-table"><div style="min-width:640px;">
-          <div class="st-tr st-th" style="grid-template-columns:minmax(140px,1fr) 152px 190px 160px;"><div>Transaction type</div><div class="end">Threshold (KES)</div><div>Approver</div><div>Above threshold</div></div>
+          <div class="st-tr st-th" style="grid-template-columns:minmax(140px,1fr) 152px 190px 160px;"><div>Transaction type</div><div class="end">Threshold (${esc(data.scope.currency)})</div><div>Approver</div><div>Above threshold</div></div>
           ${data.approvals.map(a => {
             const d = draft.approvals[a.key];
             const nil = num(d.threshold) === 0;
@@ -535,8 +547,9 @@
         </div></div>
         <div style="margin-top:22px;">
           ${head('Procurement threshold', 'Above this value a purchase needs three quotations, each with the supplier\'s document, or a single-source justification before its purchase order. A bill entered straight into Payables for more than this, before VAT, goes only to a pre-qualified supplier; below it, a supplier without a current pre-qualification needs a reason on the bill.')}
+          ${bandsNote('procurement.follow', 'procurement threshold', data.procurement.own, draft.procurement.follow)}
           <div class="st-table"><div style="min-width:640px;">
-            <div class="st-tr st-th" style="grid-template-columns:minmax(140px,1fr) 152px minmax(160px,1fr);"><div>Control</div><div class="end">Threshold (KES)</div><div>Above threshold</div></div>
+            <div class="st-tr st-th" style="grid-template-columns:minmax(140px,1fr) 152px minmax(160px,1fr);"><div>Control</div><div class="end">Threshold (${esc(data.scope.currency)})</div><div>Above threshold</div></div>
             <div class="st-tr" style="grid-template-columns:minmax(140px,1fr) 152px minmax(160px,1fr);">
               <div class="st-ellipsis">Quotations and supplier pre-qualification</div>
               <div><input class="st-cell mono end" data-num data-bind="procurement.quoteThreshold" value="${esc(fmt(num(draft.procurement.quoteThreshold)))}" aria-label="Procurement threshold"></div>
@@ -549,6 +562,19 @@
           ${data.sodRules.map(r => `<div class="st-bullet"><span>·</span>${esc(r)}</div>`).join('')}
         </div>
       </div>`;
+  }
+
+  /**
+   * Whose bands these are. The head office's are the organisation's; an entity
+   * changing any gets its own, and can go back to following the head office.
+   */
+  function bandsNote(followPath, what, own, following) {
+    const s = data.scope;
+    if (s.consolidated) return `<div class="st-note" style="margin-bottom:10px;">The head office's ${what}, which every entity without its own follows. Choose an entity at the top of the page to see its own.</div>`;
+    if (s.head) return `<div class="st-note" style="margin-bottom:10px;">The head office's ${what} are the organisation's: every entity without its own follows them.</div>`;
+    if (!own) return `<div class="st-note" style="margin-bottom:10px;">${esc(s.name)} follows the head office's ${what}. Changing one gives ${esc(s.name)} ${what} of its own.</div>`;
+    return `<div class="st-note" style="margin-bottom:10px;">${esc(s.name)}'s own ${what}.
+      ${data.canManage ? `<button type="button" class="st-linkbtn" data-act="follow" data-id="${esc(followPath)}">${following ? 'Keep its own' : 'Follow the head office\'s again'}</button>${following ? ' — on saving' : ''}` : ''}</div>`;
   }
 
   function bankStatements(main) {
@@ -572,6 +598,18 @@
    * reference data, so a newly installed instance has the components and nothing
    * mapped — until this is set, a run is worked out but has nowhere to go.
    */
+  /**
+   * Whose choice a role that pays from a bank or cash account is. Those are each
+   * entity's own; an entity that has chosen none follows the head office.
+   */
+  function entityNote(p) {
+    if (!p.entity) return '';
+    if (data.scope.head) return ' · the head office\'s; an entity that chooses none follows it';
+    if (!p.own) return ` · follows the head office`;
+    const following = draft.postingAccountsFollow.includes(p.role);
+    return ` · ${esc(data.scope.name)}'s own${data.canManage ? ` · <button type="button" class="st-linkbtn" data-act="pa-follow" data-id="${esc(p.role)}">${following ? 'Keep its own' : 'Follow the head office'}</button>` : ''}${following ? ' — on saving' : ''}`;
+  }
+
   /** The account each automatic posting goes to, by module. */
   function postingAccounts() {
     const cols = 'grid-template-columns:minmax(170px,1fr) minmax(200px,1.2fr);';
@@ -582,6 +620,7 @@
         <div class="st-kicker">Posting accounts</div>
         <div class="st-note">Where the postings the system makes itself go — a bill, a donor claim, a depreciation run, a bank charge. A change applies to postings from then on. An account that holds a balance to be cleared later, such as trade payables, can move only once that balance is nil.</div>
         ${data.postingAccounts.some(p => p.missing) ? warn(`${data.postingAccounts.filter(p => p.missing).map(p => `${p.label} (${p.code})`).join(', ')} — not in the chart of accounts. Choose an account, or those postings will be refused.`) : ''}
+        ${data.postingAccounts.some(p => p.otherEntity) ? warn(`${data.postingAccounts.filter(p => p.otherEntity).map(p => `${p.label} (${p.code}, ${p.otherEntity}'s bank)`).join(', ')} — ${data.scope.name} cannot pay from another entity's bank, so those postings are refused. Choose ${data.scope.name}'s own accounts.`) : ''}
         <div class="st-table"><div style="min-width:440px;">
           <div class="st-tr st-th" style="${cols}"><div>Posting</div><div>Account</div></div>
           ${data.postingAccounts.map(p => {
@@ -590,7 +629,7 @@
             const heading = p.module !== module ? `<div class="st-tr" style="${cols}background:#FAF9F6;"><div class="st-sub" style="text-transform:uppercase;letter-spacing:.08em;">${esc(module = p.module)}</div><div></div></div>` : '';
             return `${heading}
             <div class="st-tr" style="${cols}">
-              <div class="st-stack"><span>${esc(p.label)}</span><span class="st-sub">${esc(p.what)}${p.control && p.balance ? ` · holds ${fmt(Math.abs(p.balance))}` : ''}</span></div>
+              <div class="st-stack"><span>${esc(p.label)}</span><span class="st-sub">${esc(p.what)}${p.control && p.balance ? ` · holds ${fmt(Math.abs(p.balance))}` : ''}${entityNote(p)}</span></div>
               <div><select class="st-cell" data-bind="postingAccounts.${esc(p.role)}" aria-label="Account for ${esc(p.label)}">
                 ${options.some(o => o.code === current) ? '' : `<option value="${esc(current)}" selected>${esc(current)} · not in the chart</option>`}
                 ${options.map(o => `<option value="${esc(o.code)}" ${o.code === current ? 'selected' : ''}>${esc(short(o.code + ' · ' + o.name))}</option>`).join('')}
@@ -1150,6 +1189,21 @@
       renderSection();
       return;
     }
+    if (act === 'follow') {
+      // approvalsFollow or procurement.follow: back to the head office's, on saving.
+      const [a, b] = id.split('.');
+      if (b) draft[a][b] = !draft[a][b]; else draft[a] = !draft[a];
+      renderHead();
+      renderSection();
+      return;
+    }
+    if (act === 'pa-follow') {
+      const list = draft.postingAccountsFollow;
+      draft.postingAccountsFollow = list.includes(id) ? list.filter(r => r !== id) : [...list, id];
+      renderHead();
+      renderSection();
+      return;
+    }
     if (act === 'lang-preview') {
       if (dirty()) {
         UI.toast('Save or discard your changes before previewing another language.');
@@ -1499,6 +1553,8 @@ const StatementFormats = (() => {
   let data = null;
   const ed = { format: null, file: null, sample: null, timer: null, seq: 0 };
   const form = { open: false, account: { code: '', name: '', shortName: '', kind: 'bank', bankName: '', accountNumber: '', currency: 'KES' } };
+  // The cash account being corrected, as {from: its code, ...the fields}, or null.
+  let editing = null;
 
   const BLANK = {
     id: null, name: '', builtin: false, delimiter: 'comma', dateColumn: '', dateFormat: 'dd/mm/yyyy', referenceColumn: '',
@@ -1534,6 +1590,77 @@ const StatementFormats = (() => {
     }
   }
 
+  /** The fields of a cash account, for opening one (`data-a`) or correcting one (`data-e`). */
+  function accountFields(attr, a, candidates) {
+    return `
+        <div class="bu-grid" style="margin-top:12px;">
+          <label class="bu-field"><span>Ledger account</span>
+            <select ${attr}="code">${candidates.map(c => `<option value="${esc(c.code)}" ${c.code === a.code ? 'selected' : ''}>${esc(c.code)} · ${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="bu-field"><span>Account name</span>
+            <input ${attr}="name" value="${esc(a.name)}" placeholder="KCB Current Account" maxlength="120"></label>
+          <label class="bu-field"><span>Short name <em>on the reconciliation</em></span>
+            <input ${attr}="shortName" value="${esc(a.shortName)}" placeholder="KCB Current" maxlength="40"></label>
+          <label class="bu-field"><span>Kind</span>
+            <select ${attr}="kind">${Object.entries(data.kinds).map(([k, label]) => `<option value="${esc(k)}" ${k === a.kind ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
+          ${a.kind === 'petty_cash' ? '' : `
+            <label class="bu-field"><span>Bank <em>or provider</em></span>
+              <input ${attr}="bankName" value="${esc(a.bankName)}" placeholder="KCB" maxlength="60"></label>
+            <label class="bu-field"><span>Account number</span>
+              <input ${attr}="accountNumber" value="${esc(a.accountNumber)}" placeholder="1104578921" class="mono" maxlength="40"></label>`}
+          <label class="bu-field"><span>Currency</span>
+            <input ${attr}="currency" value="${esc(a.currency)}" class="mono upper" maxlength="3"></label>
+        </div>`;
+  }
+
+  const KIND_LABEL = { bank: 'Bank', mobile_money: 'Mobile money', petty_cash: 'Petty cash' };
+
+  /**
+   * One cash account in the list. It can be corrected until something refers to
+   * it — a receipt, a payment, a statement, a journal line — and after that it
+   * says what does.
+   */
+  function accountRow(a, opts) {
+    if (editing && editing.from === a.code) {
+      // Its own ledger account is on offer as well as the free ones.
+      const candidates = [{ code: a.code, name: a.name }, ...data.candidates];
+      return `
+        <div class="sf-row sf-account" style="display:block;">
+          <div class="sf-name">Correct ${esc(a.code)} · ${esc(a.name)}</div>
+          <div class="sf-sub">Nothing refers to this account yet, so any detail can still be put right. Once a receipt, payment, statement or journal uses it, it is fixed.</div>
+          ${accountFields('data-e', editing, candidates)}
+          <div class="bu-actions" style="margin-top:10px;display:flex;gap:8px;">
+            <button type="button" class="btn btn-primary" data-save-account>Save</button>
+            <button type="button" class="btn" data-cancel-account>Cancel</button>
+          </div>
+        </div>`;
+    }
+    const detail = [KIND_LABEL[a.kind] || a.kind, a.currency, a.bankName, a.accountNumber].filter(Boolean).map(esc).join(' · ');
+    const used = a.uses.length ? `In use — ${a.uses.map(esc).join(', ')}` : 'Not used yet';
+    return `
+            <div class="sf-row sf-account">
+              <div><div class="sf-name">${esc(a.code)} · ${esc(a.name)}</div><div class="sf-sub">${detail}</div><div class="sf-sub">${used}</div></div>
+              <div class="sf-btns" style="align-items:center;">
+                ${a.kind === 'petty_cash'
+                  ? '<span class="sf-sub">Counted, not banked — no statement</span>'
+                  : `<select data-assign="${esc(a.code)}" ${data.canManage ? '' : 'disabled'} aria-label="Statement format for ${esc(a.short)}">${opts(a.formatId)}</select>`}
+                ${data.canManage && !a.uses.length ? `<button type="button" class="btn" data-edit-account="${esc(a.code)}">Edit</button>` : ''}
+              </div>
+            </div>`;
+  }
+
+  async function saveAccount() {
+    const { from, ...fields } = editing;
+    try {
+      const res = await UI.postJSON('/api/statement-formats/account/' + encodeURIComponent(from), fields);
+      Object.assign(data, { formats: res.formats, accounts: res.accounts, candidates: res.candidates });
+      editing = null;
+      render();
+      UI.toast(res.message);
+    } catch (err) {
+      UI.toast(err.message);
+    }
+  }
+
   /**
    * Opening a cash account. The ledger account comes first: a reconciliation agrees
    * the statement of the account behind it, so only a postable asset account that
@@ -1549,23 +1676,7 @@ const StatementFormats = (() => {
     return `
       <details class="sf-new" ${form.open ? 'open' : ''}>
         <summary>Open a cash account</summary>
-        <div class="bu-grid" style="margin-top:12px;">
-          <label class="bu-field"><span>Ledger account</span>
-            <select data-a="code">${data.candidates.map(c => `<option value="${esc(c.code)}" ${c.code === a.code ? 'selected' : ''}>${esc(c.code)} · ${esc(c.name)}</option>`).join('')}</select></label>
-          <label class="bu-field"><span>Account name</span>
-            <input data-a="name" value="${esc(a.name)}" placeholder="KCB Current Account" maxlength="120"></label>
-          <label class="bu-field"><span>Short name <em>on the reconciliation</em></span>
-            <input data-a="shortName" value="${esc(a.shortName)}" placeholder="KCB Current" maxlength="40"></label>
-          <label class="bu-field"><span>Kind</span>
-            <select data-a="kind">${Object.entries(data.kinds).map(([k, label]) => `<option value="${esc(k)}" ${k === a.kind ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>
-          ${a.kind === 'petty_cash' ? '' : `
-            <label class="bu-field"><span>Bank <em>or provider</em></span>
-              <input data-a="bankName" value="${esc(a.bankName)}" placeholder="KCB" maxlength="60"></label>
-            <label class="bu-field"><span>Account number</span>
-              <input data-a="accountNumber" value="${esc(a.accountNumber)}" placeholder="1104578921" class="mono" maxlength="40"></label>`}
-          <label class="bu-field"><span>Currency</span>
-            <input data-a="currency" value="${esc(a.currency)}" class="mono upper" maxlength="3"></label>
-        </div>
+        ${accountFields('data-a', a, data.candidates)}
         <div class="bu-intro" style="margin-top:8px;">${a.kind === 'petty_cash'
           ? 'Petty cash takes no statement, so it takes no format — it is counted and agreed by hand.'
           : 'Assign it a statement format below once it is open; a statement cannot be loaded without one.'}</div>
@@ -1583,11 +1694,7 @@ const StatementFormats = (() => {
         ${data.canManage ? '' : '<p class="bu-intro">Only an approver can change statement formats or the format an account uses.</p>'}
         <div class="sf-section">Accounts</div>
         <div class="coa-card">
-          ${data.accounts.map(a => `
-            <div class="sf-row sf-account">
-              <div><div class="sf-name">${esc(a.code)} · ${esc(a.name)}</div><div class="sf-sub">${a.kind === 'mobile_money' ? 'Mobile money' : 'Bank'} · ${esc(a.currency)}</div></div>
-              <select data-assign="${esc(a.code)}" ${data.canManage ? '' : 'disabled'} aria-label="Statement format for ${esc(a.short)}">${opts(a.formatId)}</select>
-            </div>`).join('') || '<div class="coa-empty">No cash accounts yet. A reconciliation agrees one of these to its bank statement.</div>'}
+          ${data.accounts.map(a => accountRow(a, opts)).join('') || '<div class="coa-empty">No cash accounts yet. A reconciliation agrees one of these to its bank statement.</div>'}
         </div>
         ${newAccount()}
         <div class="sf-section" style="display:flex;align-items:center;gap:8px;">Formats
@@ -1616,8 +1723,16 @@ const StatementFormats = (() => {
     root.oninput = (e) => {
       const field = e.target.closest('[data-a]');
       if (field) form.account[field.dataset.a] = field.value;
+      const fix = e.target.closest('[data-e]');
+      if (fix && editing) editing[fix.dataset.e] = fix.value;
     };
     root.onchange = async (e) => {
+      const fix = e.target.closest('[data-e]');
+      if (fix && editing) {
+        editing[fix.dataset.e] = fix.value;
+        if (fix.dataset.e === 'kind') render();
+        return;
+      }
       // The kind decides which fields the panel shows, so it redraws; the rest do not.
       const field = e.target.closest('[data-a]');
       if (field) {
@@ -1643,6 +1758,16 @@ const StatementFormats = (() => {
       const btn = e.target.closest('button');
       if (!btn) return;
       if (btn.dataset.openAccount !== undefined) return openAccount();
+      if (btn.dataset.editAccount !== undefined) {
+        const a = data.accounts.find(x => x.code === btn.dataset.editAccount);
+        editing = { from: a.code, code: a.code, name: a.name, shortName: a.short, kind: a.kind, bankName: a.bankName, accountNumber: a.accountNumber, currency: a.currency };
+        return render();
+      }
+      if (btn.dataset.saveAccount !== undefined) return saveAccount();
+      if (btn.dataset.cancelAccount !== undefined) {
+        editing = null;
+        return render();
+      }
       const find = (id) => data.formats.find(f => f.id === Number(id));
       if (btn.dataset.new !== undefined) openEditor({ ...BLANK, descriptionColumns: [''], rules: [] });
       if (btn.dataset.edit) openEditor(structuredClone(find(btn.dataset.edit)));
@@ -1934,8 +2059,9 @@ const Mpesa = (() => {
     root.innerHTML = `
       <div class="sf-cards">
         <div class="mp-status ${esc(m.status.state)}">
-          <div class="mp-status-head"><span class="mp-dot"></span>M-Pesa · ${esc(m.status.label)}</div>
+          <div class="mp-status-head"><span class="mp-dot"></span>M-Pesa · ${esc(m.entity)} · ${esc(m.status.label)}</div>
           <div class="mp-status-note">${esc(m.status.note)}</div>
+          <div class="mp-status-note">Each entity has its own short code, settling onto a mobile-money account of its own books. This is ${esc(m.entity)}'s; choose another entity at the top of the page to set up its own.</div>
           ${m.checked ? `<div class="mp-status-note mp-checked">Last checked ${esc(m.checked.when)} — ${esc(m.checked.result)}</div>` : ''}
           <div class="sf-btns"><button type="button" class="btn" data-check ${can ? '' : 'disabled'}>Check connection</button></div>
         </div>
@@ -1946,7 +2072,7 @@ const Mpesa = (() => {
         <div class="bu-grid">
           ${choose('Environment', 'environment', o.environments)}
           ${choose('Short code is a', 'shortcodeKind', o.kinds, noteOf(o.kinds, form.shortcodeKind))}
-          ${field('Short code', 'shortcode', 'paybill or till', 'class="mono" inputmode="numeric" maxlength="7" placeholder="509118"')}
+          ${field('Short code', 'shortcode', 'paybill or till', 'class="mono" inputmode="numeric" maxlength="7" placeholder="600000"')}
           ${paybill ? field('Account number payers quote', 'accountReference', 'optional', 'maxlength="20" placeholder="ELOG"') : ''}
           ${choose('Settles to', 'account', [{ value: '', text: 'No account — nothing can be collected or paid' }, ...o.accounts])}
           ${field('Callback address', 'callbackBase', 'where Safaricom posts results', 'placeholder="https://finance.elog.or.ke"')}

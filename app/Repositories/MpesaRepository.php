@@ -8,9 +8,14 @@ use App\Libraries\Prototype;
 use App\Libraries\Secret;
 
 /**
- * Settings → Integrations → M-Pesa: the Safaricom short code the organisation
- * collects and pays through, the credentials it signs with, and which of the two
- * services are switched on.
+ * Settings → Integrations → M-Pesa: the Safaricom short code an entity collects
+ * and pays through, the credentials it signs with, and which of the two services
+ * are switched on.
+ *
+ * Each entity has its own: a branch or a related trust holds its own short code,
+ * and what it moves settles onto a mobile-money account of its own books. The one
+ * shown and changed is that of the entity being worked in (the head office in the
+ * consolidated view, where nothing is changed).
  *
  * Collections (a payer sends money to the short code) and disbursements (the
  * organisation pays out — supplier bills and observer stipends) are separate
@@ -86,6 +91,7 @@ final class MpesaRepository extends Repository
         $base = (string) ($r['callback_base'] ?? '');
 
         return [
+            'entity'           => $this->entityName(),
             'environment'      => (string) $r['environment'],
             'shortcode'        => (string) ($r['shortcode'] ?? ''),
             'shortcodeKind'    => (string) $r['shortcode_kind'],
@@ -168,7 +174,7 @@ final class MpesaRepository extends Repository
         $this->transaction(function () use ($held, $next, $changes, $actorId) {
             $row = array_intersect_key($next, self::DEFAULTS) + ['updated_by' => $actorId, 'updated_at' => Clock::timestamp()];
             if ($held['id'] === null) {
-                $this->insert('mpesa_integrations', $row + ['entity_id' => $this->lookups->headOfficeId(), 'created_at' => Clock::timestamp()]);
+                $this->insert('mpesa_integrations', $row + ['entity_id' => $this->lookups->entityId(), 'created_at' => Clock::timestamp()]);
             } else {
                 $this->db->table('mpesa_integrations')->where('id', $held['id'])->update($row);
             }
@@ -197,7 +203,7 @@ final class MpesaRepository extends Repository
             $row = ['checked_at' => Clock::timestamp(), 'check_result' => mb_substr($result['note'], 0, 160), 'updated_at' => Clock::timestamp()];
             if ($held['id'] === null) {
                 $this->insert('mpesa_integrations', array_intersect_key($held, self::DEFAULTS) + $row + [
-                    'entity_id' => $this->lookups->headOfficeId(), 'updated_by' => $actorId, 'created_at' => Clock::timestamp(),
+                    'entity_id' => $this->lookups->entityId(), 'updated_by' => $actorId, 'created_at' => Clock::timestamp(),
                 ]);
             } else {
                 $this->db->table('mpesa_integrations')->where('id', $held['id'])->update($row + ['updated_by' => $actorId]);
@@ -553,7 +559,7 @@ final class MpesaRepository extends Repository
     private function held(): array
     {
         return $this->cached('integration', function () {
-            $row = $this->row('SELECT * FROM {mpesa_integrations} WHERE entity_id = ?', [$this->lookups->headOfficeId()]);
+            $row = $this->row('SELECT * FROM {mpesa_integrations} WHERE entity_id = ?', [$this->lookups->entityId()]);
 
             return $row ?? ['id' => null] + self::DEFAULTS;
         });
@@ -586,9 +592,14 @@ final class MpesaRepository extends Repository
         return (new StatementFormatRepository($this->db))->forAccount($accountCode) ?? [];
     }
 
+    private function entityName(): string
+    {
+        return (string) $this->value('SELECT name FROM {entities} WHERE id = ?', [$this->lookups->entityId()]);
+    }
+
     private function log(string $what, int $actorId): void
     {
-        $this->audit('settings:integrations', null, null, $what, $actorId, 'settings.changed', $this->lookups->headOfficeId());
+        $this->audit('settings:integrations', null, null, $what, $actorId, 'settings.changed', $this->lookups->entityId());
     }
 
     /** @return list<array{value: string, text: string, note: string}> a choice and what it means, for a select */

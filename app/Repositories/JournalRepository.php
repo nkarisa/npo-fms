@@ -734,7 +734,9 @@ final class JournalRepository extends Repository
     private function approverRole(): string
     {
         return (string) ($this->value(
-            "SELECT r.name FROM {approval_rules} ar JOIN {roles} r ON r.id = ar.approver_role_id WHERE ar.document_type = 'journal' LIMIT 1"
+            "SELECT r.name FROM {approval_rules} ar JOIN {roles} r ON r.id = ar.approver_role_id
+             WHERE ar.document_type = 'journal' AND ar.entity_id IN (?, ?) ORDER BY ar.entity_id = ? DESC LIMIT 1",
+            [$this->lookups->entityId(), $this->lookups->headOfficeId(), $this->lookups->entityId()]
         ) ?? 'Finance Manager');
     }
 

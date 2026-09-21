@@ -5,12 +5,19 @@ namespace App\Repositories;
 use App\Libraries\Brand;
 use App\Libraries\Clock;
 use App\Libraries\EntityCalendar;
+use App\Libraries\EntityScope;
 use App\Libraries\Prototype;
 use App\Libraries\Theme;
 
 /**
  * Organisation, ledger, segment, currency, approval, payroll, user and language
  * settings, and the log of changes to them.
+ *
+ * Most settings are the organisation's, held on the head office. A few are each
+ * entity's own, and are shown and changed for the entity being worked in: its
+ * registered details, its approval bands and procurement threshold, and the
+ * accounts it pays out of (PostingAccounts::ENTITY_ROLES). An entity that has set
+ * none of its own follows the head office, and can go back to following it.
  *
  * The screen edits a draft and saves it in one go: save() compares what it is
  * sent with what is held, applies every change in one transaction, and writes
@@ -70,15 +77,33 @@ final class SettingsRepository extends Repository
     // Reading
     // ------------------------------------------------------------------
 
-    /** The head office's registered details. */
-    public function organisation(): array
+    /**
+     * The entity whose own settings the screen shows and changes: the one being
+     * worked in, or the head office in the consolidated view.
+     */
+    public function scope(): array
     {
-        $e = $this->headOffice();
+        $e = $this->current();
 
         return [
+            'code' => $e['code'], 'name' => $e['name'], 'currency' => $e['functional_currency'],
+            'head' => $this->atHeadOffice(), 'consolidated' => EntityScope::consolidated(),
+        ];
+    }
+
+    /**
+     * The registered details of the entity being worked in. A branch that is not a
+     * legal body of its own leaves them blank and prints the head office's, which
+     * the screen shows it (`headOffice`).
+     */
+    public function organisation(): array
+    {
+        $shape = static fn (array $e) => [
             'registeredName' => (string) $e['registered_name'], 'shortName' => (string) $e['short_name'],
             'taxPin' => (string) $e['tax_pin'], 'ngoReg' => (string) $e['registration_no'],
         ];
+
+        return $shape($this->current()) + ['headOffice' => $this->atHeadOffice() ? null : $shape($this->headOffice())];
     }
 
     /**
@@ -250,6 +275,10 @@ final class SettingsRepository extends Repository
         return array_map(static fn ($c) => (float) $c['rate'], array_column(array_filter($this->currencies(), static fn ($c) => $c['active']), null, 'code'));
     }
 
+    /**
+     * The approval bands of the entity being worked in: its own when it has set them,
+     * else the head office's, which are the organisation's.
+     */
     public function approvals(): array
     {
         return array_map(static fn ($a) => [
@@ -257,21 +286,34 @@ final class SettingsRepository extends Repository
             'approver' => $a['approver'], 'escalation' => $a['escalation'] ?? $a['escalation_note'] ?? '—',
         ], $this->rows(
             'SELECT ar.*, r.name AS approver, e.name AS escalation FROM {approval_rules} ar JOIN {roles} r ON r.id = ar.approver_role_id
-             LEFT JOIN {roles} e ON e.id = ar.escalation_role_id WHERE ar.document_type IN (' . self::quoted(array_keys(self::APPROVAL_KEYS)) . ') ORDER BY ar.id'
+             LEFT JOIN {roles} e ON e.id = ar.escalation_role_id WHERE ar.entity_id = ? AND ar.document_type IN (' . self::quoted(array_keys(self::APPROVAL_KEYS)) . ') ORDER BY ar.id',
+            [$this->ownApprovals() ? $this->current()['id'] : $this->headOffice()['id']]
         ));
+    }
+
+    /** Whether the entity being worked in has approval bands of its own, rather than the head office's. */
+    public function ownApprovals(): bool
+    {
+        return !$this->atHeadOffice() && $this->cached('own-approvals', fn () => $this->value(
+            'SELECT COUNT(*) FROM {approval_rules} WHERE entity_id = ?', [$this->current()['id']]
+        ) > 0);
     }
 
     /** The procurement controls shown with the approval bands. */
     public function procurement(): array
     {
-        return ['quoteThreshold' => self::num($this->quoteThreshold()), 'label' => self::QUOTE_THRESHOLD_LABEL];
+        return [
+            'quoteThreshold' => self::num($this->quoteThreshold()), 'label' => self::QUOTE_THRESHOLD_LABEL,
+            'own' => $this->ownSetting(self::QUOTE_THRESHOLD_KEY) !== null,
+        ];
     }
 
+    /** The procurement threshold of the entity being worked in: its own, else the head office's. */
     public function quoteThreshold(): float
     {
-        return $this->cached('quote-threshold', fn () => (float) ($this->value(
-            'SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = ?',
-            [$this->lookups->headOfficeCode(), self::QUOTE_THRESHOLD_KEY]
+        return $this->cached('quote-threshold', fn () => (float) ($this->ownSetting(self::QUOTE_THRESHOLD_KEY) ?? $this->value(
+            'SELECT s.value FROM {settings} s WHERE s.entity_id = ? AND s.key = ?',
+            [$this->headOffice()['id'], self::QUOTE_THRESHOLD_KEY]
         ) ?? self::QUOTE_THRESHOLD_DEFAULT));
     }
 
@@ -443,10 +485,15 @@ final class SettingsRepository extends Repository
     /** Changes to settings and controls, newest first. */
     public function auditLog(): array
     {
+        $head = (int) $this->headOffice()['id'];
+
+        // A change to one entity's own settings is marked with its code; the organisation's are the head office's.
         return $this->cached('audit', fn () => array_map(fn ($e) => [
             'when' => date('d M H:i', strtotime($e['occurred_at'])), 'who' => $this->lookups->shortName($e['actor_user_id'] === null ? null : (int) $e['actor_user_id']),
-            'what' => $e['summary'] ?? '', 'area' => ucfirst(substr((string) strstr($e['object_type'], ':'), 1)),
-        ], $this->rows("SELECT * FROM {all:audit_events} WHERE action = 'settings.changed' ORDER BY occurred_at DESC, id DESC")));
+            'what' => $e['summary'] ?? '', 'area' => ucfirst(substr((string) strstr($e['object_type'], ':'), 1))
+                . ($e['entity_id'] !== null && (int) $e['entity_id'] !== $head ? ' · ' . $e['entity_code'] : ''),
+        ], $this->rows("SELECT a.*, e.code AS entity_code FROM {all:audit_events} a LEFT JOIN {entities} e ON e.id = a.entity_id
+            WHERE a.action = 'settings.changed' ORDER BY a.occurred_at DESC, a.id DESC")));
     }
 
     // ------------------------------------------------------------------
@@ -487,7 +534,9 @@ final class SettingsRepository extends Repository
         if (isset($draft['currencies'])) {
             $this->planCurrencies((array) $draft['currencies'], $plan);
         }
-        if (isset($draft['approvals'])) {
+        if (!empty($draft['approvalsFollow'])) {
+            $this->planApprovalsFollow($plan);
+        } elseif (isset($draft['approvals'])) {
             $this->planApprovals((array) $draft['approvals'], $plan);
         }
         if (isset($draft['procurement'])) {
@@ -499,8 +548,8 @@ final class SettingsRepository extends Repository
         if (isset($draft['days'])) {
             $this->planDays((array) $draft['days'], $plan);
         }
-        if (isset($draft['postingAccounts'])) {
-            $this->planPostingAccounts((array) $draft['postingAccounts'], $plan);
+        if (isset($draft['postingAccounts']) || isset($draft['postingAccountsFollow'])) {
+            $this->planPostingAccounts((array) ($draft['postingAccounts'] ?? []), $plan, (array) ($draft['postingAccountsFollow'] ?? []));
         }
         if (isset($draft['payroll'])) {
             $this->planPayroll((array) $draft['payroll'], $plan);
@@ -596,6 +645,7 @@ final class SettingsRepository extends Repository
     private function planOrganisation(array $in, callable $plan): void
     {
         $current = $this->organisation();
+        $entityId = (int) $this->current()['id'];
         $fields = ['registeredName' => ['registered_name', 'Registered name', 160], 'shortName' => ['short_name', 'Short name', 40],
             'taxPin' => ['tax_pin', 'KRA PIN', 20], 'ngoReg' => ['registration_no', 'NGO Board registration', 60]];
 
@@ -607,7 +657,8 @@ final class SettingsRepository extends Repository
             if ($value === $current[$key]) {
                 continue;
             }
-            if ($value === '' && in_array($key, ['registeredName', 'shortName'], true)) {
+            // An entity other than the head office may leave them blank: it then prints the head office's.
+            if ($value === '' && $this->atHeadOffice() && in_array($key, ['registeredName', 'shortName'], true)) {
                 throw new RuleViolation('The ' . strtolower($label) . ' cannot be blank — it prints on every statement and donor report.');
             }
             if (mb_strlen($value) > $max) {
@@ -615,15 +666,15 @@ final class SettingsRepository extends Repository
             }
             if ($key === 'taxPin') {
                 $value = strtoupper($value);
-                if (preg_match('/^[AP]\d{9}[A-Z]$/', $value) !== 1) {
+                if (($value !== '' || $this->atHeadOffice()) && preg_match('/^[AP]\d{9}[A-Z]$/', $value) !== 1) {
                     throw new RuleViolation($value . ' is not a KRA PIN. A PIN is a letter, nine digits and a letter, such as P051290384H.');
                 }
                 if ($value === $current[$key]) {
                     continue;
                 }
             }
-            $plan('Organisation', $label . ' changed from ' . ($current[$key] !== '' ? $current[$key] : 'blank') . ' to ' . $value,
-                fn () => $this->db->table('entities')->where('id', $this->headOffice()['id'])->update([$column => $value, 'updated_at' => Clock::timestamp()]));
+            $plan('Organisation', $this->forEntity($label . ' changed from ' . ($current[$key] !== '' ? $current[$key] : 'blank') . ' to ' . ($value !== '' ? $value : 'blank')),
+                fn () => $this->db->table('entities')->where('id', $entityId)->update([$column => $value !== '' ? $value : null, 'updated_at' => Clock::timestamp()]));
         }
     }
 
@@ -975,9 +1026,20 @@ final class SettingsRepository extends Repository
         }
     }
 
+    /**
+     * A change to the approval bands of an entity other than the head office gives it
+     * bands of its own, starting from the head office's; the head office's are the
+     * organisation's, and every entity without its own follows them.
+     */
     private function planApprovals(array $in, callable $plan): void
     {
         $approvers = $this->approverRoles();
+        $entityId = (int) ($this->ownApprovals() || $this->atHeadOffice() ? $this->current()['id'] : $this->headOffice()['id']);
+        $steps = [];
+        $step = static function (string $area, string $what, callable $write) use (&$steps): void {
+            $steps[] = [$area, $what, $write];
+        };
+        $target = (int) $this->current()['id'];
 
         foreach ($this->approvals() as $a) {
             $change = $in[$a['key']] ?? null;
@@ -996,8 +1058,8 @@ final class SettingsRepository extends Repository
                     $from = $a['threshold'] == 0 ? 'nil' : Prototype::fmt((float) $a['threshold']);
                     $to = $threshold == 0 ? 'nil — every transaction needs sign-off' : Prototype::fmt($threshold);
                     $verb = $threshold > $a['threshold'] ? 'raised' : 'lowered';
-                    $plan('Approvals', $a['label'] . ' threshold ' . $verb . ' from ' . $from . ' to ' . $to,
-                        fn () => $this->db->table('approval_rules')->where('document_type', $type)->update(['threshold' => $threshold, 'updated_at' => Clock::timestamp()]));
+                    $step('Approvals', $this->forEntity($a['label'] . ' threshold ' . $verb . ' from ' . $from . ' to ' . $to),
+                        fn () => $this->db->table('approval_rules')->where('document_type', $type)->where('entity_id', $target)->update(['threshold' => $threshold, 'updated_at' => Clock::timestamp()]));
                 }
             }
 
@@ -1006,14 +1068,51 @@ final class SettingsRepository extends Repository
                     throw new RuleViolation('The ' . $change['approver'] . ' has no approval rights, so cannot approve ' . lcfirst($a['label']) . '. Choose ' . implode(' or ', $approvers) . '.');
                 }
                 $roleId = (int) $this->value('SELECT id FROM {roles} WHERE name = ?', [$change['approver']]);
-                $plan('Approvals', $a['label'] . ' approver changed from ' . $a['approver'] . ' to ' . $change['approver'],
-                    fn () => $this->db->table('approval_rules')->where('document_type', $type)->update(['approver_role_id' => $roleId, 'updated_at' => Clock::timestamp()]));
+                $step('Approvals', $this->forEntity($a['label'] . ' approver changed from ' . $a['approver'] . ' to ' . $change['approver']),
+                    fn () => $this->db->table('approval_rules')->where('document_type', $type)->where('entity_id', $target)->update(['approver_role_id' => $roleId, 'updated_at' => Clock::timestamp()]));
             }
+        }
+
+        if ($steps !== [] && $entityId !== $target) {
+            $plan('Approvals', $this->forEntity('Own approval bands set, starting from the head office\'s'), fn () => $this->copyApprovals($entityId, $target));
+        }
+        foreach ($steps as [$area, $what, $write]) {
+            $plan($area, $what, $write);
+        }
+    }
+
+    /** Drops the entity's own approval bands, so that it follows the head office's again. */
+    private function planApprovalsFollow(callable $plan): void
+    {
+        if (!$this->ownApprovals()) {
+            return;
+        }
+        $entityId = (int) $this->current()['id'];
+        $plan('Approvals', $this->forEntity('Approval bands follow the head office\'s again'),
+            fn () => $this->db->table('approval_rules')->where('entity_id', $entityId)->delete());
+    }
+
+    private function copyApprovals(int $from, int $to): void
+    {
+        $now = Clock::timestamp();
+        foreach ($this->db->table('approval_rules')->where('entity_id', $from)->orderBy('id')->get()->getResultArray() as $r) {
+            unset($r['id']);
+            $this->insert('approval_rules', ['entity_id' => $to, 'created_at' => $now, 'updated_at' => null] + $r);
         }
     }
 
     private function planProcurement(array $in, callable $plan): void
     {
+        if (!empty($in['follow'])) {
+            $own = $this->ownSetting(self::QUOTE_THRESHOLD_KEY);
+            if ($own !== null) {
+                $entityId = (int) $this->current()['id'];
+                $plan('Approvals', $this->forEntity('Procurement threshold follows the head office\'s again'),
+                    fn () => $this->db->table('settings')->where('entity_id', $entityId)->where('key', self::QUOTE_THRESHOLD_KEY)->delete());
+            }
+
+            return;
+        }
         if (!array_key_exists('quoteThreshold', $in)) {
             return;
         }
@@ -1029,9 +1128,10 @@ final class SettingsRepository extends Repository
         if ($threshold == round($current, 2)) {
             return;
         }
-        $plan('Approvals', 'Procurement threshold ' . ($threshold > $current ? 'raised' : 'lowered') . ' from ' . Prototype::fmt($current) . ' to ' . Prototype::fmt($threshold)
-            . ' — three quotations and a pre-qualified supplier above it',
-            fn () => $this->hold(self::QUOTE_THRESHOLD_KEY, 'approvals', (string) self::num($threshold), self::QUOTE_THRESHOLD_LABEL));
+        $entityId = (int) $this->current()['id'];
+        $plan('Approvals', $this->forEntity('Procurement threshold ' . ($threshold > $current ? 'raised' : 'lowered') . ' from ' . Prototype::fmt($current) . ' to ' . Prototype::fmt($threshold)
+            . ' — three quotations and a pre-qualified supplier above it'),
+            fn () => $this->hold(self::QUOTE_THRESHOLD_KEY, 'approvals', (string) self::num($threshold), self::QUOTE_THRESHOLD_LABEL, '', $entityId));
     }
 
     /**
@@ -1080,9 +1180,16 @@ final class SettingsRepository extends Repository
      *
      * $in: {role: account code}
      */
-    private function planPostingAccounts(array $in, callable $plan): void
+    private function planPostingAccounts(array $in, callable $plan, array $follow = []): void
     {
         $accounts = new PostingAccounts();
+        // An entity's own account for a role it pays from, dropped to follow the head office again.
+        foreach (array_map('strval', $follow) as $role) {
+            if (($what = $accounts->follow($role)) !== null) {
+                $plan('Ledger', $what, fn () => $accounts->unset($role));
+            }
+            unset($in[$role]);
+        }
         foreach ($in as $role => $code) {
             $role = (string) $role;
             $code = trim((string) $code);
@@ -1400,13 +1507,14 @@ final class SettingsRepository extends Repository
     }
 
     /**
-     * Writes a head-office setting. Written rather than updated blind: a database
-     * seeded before a given setting existed has no row to update, and a save that
-     * silently changed nothing would still have been logged as a change.
+     * Writes a setting: the head office's (the organisation's) unless another entity
+     * is named. Written rather than updated blind: a database seeded before a given
+     * setting existed has no row to update, and a save that silently changed nothing
+     * would still have been logged as a change.
      */
-    private function hold(string $key, string $kind, string $value, string $label, string $note = ''): void
+    private function hold(string $key, string $kind, string $value, string $label, string $note = '', ?int $entityId = null): void
     {
-        $entityId = $this->headOffice()['id'];
+        $entityId ??= $this->headOffice()['id'];
         // Through the builder rather than raw SQL: "key" is a reserved word, and the
         // builder quotes it for whichever database is behind this.
         $held = $this->db->table('settings')->select('id')->where('entity_id', $entityId)->where('key', $key)->get()->getRowArray();
@@ -1543,6 +1651,36 @@ final class SettingsRepository extends Repository
     {
         return $this->cached('head-office', fn () => $this->row('SELECT * FROM {entities} WHERE parent_id IS NULL ORDER BY id LIMIT 1')
             ?? throw new \RuntimeException('This instance has no organisation yet. Run `php spark db:seed BaselineSeeder` and then `php spark install`.'));
+    }
+
+    /** The entity being worked in: the head office in the consolidated view, and outside a signed-in request. */
+    private function current(): array
+    {
+        $id = $this->lookups->entityId();
+
+        return $this->cached('entity:' . $id, fn () => $this->row('SELECT * FROM {entities} WHERE id = ?', [$id]) ?? $this->headOffice());
+    }
+
+    private function atHeadOffice(): bool
+    {
+        return (int) $this->current()['id'] === (int) $this->headOffice()['id'];
+    }
+
+    /** The entity's own value of a setting, or null at the head office and where it has none. */
+    private function ownSetting(string $key): ?string
+    {
+        if ($this->atHeadOffice()) {
+            return null;
+        }
+        $value = $this->db->table('settings')->select('value')->where('entity_id', $this->current()['id'])->where('key', $key)->get()->getRowArray();
+
+        return $value === null ? null : (string) $value['value'];
+    }
+
+    /** A change to one entity's own settings, named as that entity's in the audit log. */
+    private function forEntity(string $what): string
+    {
+        return $this->atHeadOffice() ? $what : $this->current()['name'] . ': ' . $what;
     }
 
     private function settingRows(string $kind): array

@@ -6,7 +6,8 @@ use App\Libraries\Prototype;
 
 /**
  * Who may approve a document of a given type and value, from the approval rules
- * and role ceilings in Settings. Approval limits are data, not code.
+ * and role ceilings in Settings. Approval limits are data, not code. An entity may
+ * hold bands of its own; one that holds none follows the head office's.
  *
  * - Up to a rule's threshold the rule's approver role approves; the escalation
  *   role may too. A threshold of nil sends every document to the approver.
@@ -35,8 +36,9 @@ final class ApprovalPolicy extends Repository
             $r = $this->row(
                 'SELECT ar.label, ar.threshold, ar.escalation_note, r.name AS approver, e.name AS escalation
                  FROM {approval_rules} ar JOIN {roles} r ON r.id = ar.approver_role_id LEFT JOIN {roles} e ON e.id = ar.escalation_role_id
-                 WHERE ar.document_type = ? AND ar.entity_id = ?',
-                [$documentType, $this->lookups->headOfficeId()]
+                 WHERE ar.document_type = ? AND ar.entity_id IN (?, ?) ORDER BY ar.entity_id = ? DESC LIMIT 1',
+                // The entity's own band when it has set its own, else the organisation's.
+                [$documentType, $this->lookups->entityId(), $this->lookups->headOfficeId(), $this->lookups->entityId()]
             );
 
             return $r === null ? null : [

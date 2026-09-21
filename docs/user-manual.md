@@ -117,8 +117,13 @@ Running left to right across the top of every page:
   the page, and the application remembers your choice for your next sign-in.
   Someone holding a role at every entity also sees **Consolidated**, which reads
   all the entities together. It is read only: to record or approve anything,
-  choose an entity first. Settings, the chart of accounts, funds, programmes,
-  suppliers and funders are shared by the whole organisation.
+  choose an entity first. The chart of accounts, funds, programmes, suppliers,
+  funders and most settings are shared by the whole organisation. A few settings
+  are each entity's own, and Settings shows those of the entity you are in: its
+  registered name and KRA PIN, its approval thresholds and procurement threshold,
+  the bank, M-Pesa and cash accounts it pays from (**Settings → Ledger →
+  Posting accounts**), and its M-Pesa short code. An entity that has set none of
+  its own follows the head office's, and can go back to following them.
 - **Search everything (⌘K)** — a command palette that searches journals,
   accounts, suppliers, donors and awards.
 - **Financial-year pill** — the current FY and whether it is open.

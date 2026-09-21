@@ -502,8 +502,11 @@ final class PayrollRepository extends Repository
                     $missing[] = ($components[$key]['name'] ?? $key) . ' has no account to post to';
                 }
             }
-            if (($this->lookups->accounts()[PostingAccounts::of('payrollBank')] ?? null) === null) {
-                $missing[] = 'Net pay is paid from account ' . PostingAccounts::of('payrollBank') . ', which is not in the chart of accounts';
+            $bank = new PostingAccounts();
+            if (($refusal = $bank->refusal('payrollBank')) !== null) {
+                $missing[] = $refusal;
+            } elseif (($this->lookups->accounts()[$bank->code('payrollBank')] ?? null) === null) {
+                $missing[] = 'Net pay is paid from account ' . $bank->code('payrollBank') . ', which is not in the chart of accounts';
             }
             if ($this->coreFundId() === 0) {
                 $missing[] = 'There is no active general fund for the statutory liabilities to be held against';
@@ -521,7 +524,8 @@ final class PayrollRepository extends Repository
     {
         $missing = $this->unmapped();
         if ($missing !== []) {
-            throw new RuleViolation('Payroll cannot post yet: ' . lcfirst($missing[0]) . '. Set the accounts each pay component posts to in Settings → Payroll.');
+            throw new RuleViolation('Payroll cannot post yet: ' . lcfirst($missing[0])
+                . (str_contains($missing[0], 'Settings') ? '' : '. Set the accounts each pay component posts to in Settings → Payroll.'));
         }
     }
 

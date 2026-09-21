@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Libraries\Clock;
+use App\Libraries\EntityScope;
 use App\Libraries\Prototype;
 
 /**
@@ -11,8 +12,14 @@ use App\Libraries\Prototype;
  * provided against, the bank a payroll is paid from.
  *
  * The roles are the application's; the account behind each is the organisation's,
- * chosen in Settings → Ledger. A role no one has set uses its standard code from
- * the chart templates, so a new instance posts exactly as it always has.
+ * chosen in Settings → Ledger and held on the head office. A role no one has set
+ * uses its standard code from the chart templates, so a new instance posts exactly
+ * as it always has.
+ *
+ * A role that pays out of a bank or cash account (ENTITY_ROLES) is each entity's
+ * own, because bank accounts are: an entity that has chosen none follows the head
+ * office, and a posting is refused rather than paid out of a bank account that
+ * belongs to another entity.
  */
 final class PostingAccounts extends Repository
 {
@@ -47,17 +54,55 @@ final class PostingAccounts extends Repository
         'suspense'         => ['Suspense', 'Bank reconciliation', '2190', ['liability'], 'Credits on a statement no one can yet identify', true],
     ];
 
-    /** The code of the account that fills a role. */
+    /**
+     * Roles that pay out of, or into, a bank or cash account. Each entity chooses its
+     * own; the rest are chosen once for the organisation.
+     */
+    public const ENTITY_ROLES = ['advanceBank', 'advanceMpesa', 'advanceCash', 'payrollBank', 'disposalProceeds'];
+
+    private Lookups $lookups;
+
+    public function __construct(?\CodeIgniter\Database\BaseConnection $db = null)
+    {
+        parent::__construct($db);
+        $this->lookups = new Lookups();
+    }
+
+    /**
+     * The code of the account a posting made now goes to. Refused when the role pays
+     * out of a bank account another entity holds: the money would leave that
+     * entity's bank in this entity's books.
+     */
     public static function of(string $role): string
     {
-        return (new self())->code($role);
+        $accounts = new self();
+        if (($refusal = $accounts->refusal($role)) !== null) {
+            throw new RuleViolation($refusal);
+        }
+
+        return $accounts->code($role);
+    }
+
+    /** Why a posting to the role's account would be refused now, or null when it would not. */
+    public function refusal(string $role): ?string
+    {
+        $code = $this->code($role);
+        $owner = $this->otherEntitysBank($role, $code);
+
+        return $owner === null ? null : self::ROLES[$role][0] . ' is ' . $code . ', a bank account of ' . $owner . '. Choose '
+            . $this->entityName() . "'s own account for it in Settings → Ledger → Posting accounts.";
     }
 
     public function code(string $role): string
     {
         $standard = self::ROLES[$role][2] ?? throw new \InvalidArgumentException('No posting role ' . $role . '.');
 
-        return $this->chosen()[$role] ?? $standard;
+        return $this->own()[$role] ?? $this->chosen()[$role] ?? $standard;
+    }
+
+    public static function isEntityRole(string $role): bool
+    {
+        return in_array($role, self::ENTITY_ROLES, true);
     }
 
     /** Every role with the account filling it, for Settings → Ledger. */
@@ -69,11 +114,17 @@ final class PostingAccounts extends Repository
         return array_map(function (string $role) use ($accounts, $lookups) {
             [$label, $module, $standard, $types, $what, $control] = self::ROLES[$role];
             $code = $this->code($role);
+            $entity = self::isEntityRole($role);
 
             return [
                 'role' => $role, 'label' => $label, 'module' => $module, 'what' => $what, 'types' => $types,
                 'code' => $code, 'name' => $accounts[$code]['name'] ?? '', 'missing' => !isset($accounts[$code]),
-                'standard' => $standard, 'control' => $control, 'balance' => $control ? self::num($lookups->balance($code)) : null,
+                'standard' => $standard, 'control' => $control,
+                // A control account is the organisation's, so its balance is the whole organisation's.
+                'balance' => $control ? self::num(EntityScope::across(fn () => $lookups->balance($code))) : null,
+                // Chosen by each entity, and whether this one has chosen, or follows the head office.
+                'entity' => $entity, 'own' => $entity && isset($this->own()[$role]),
+                'otherEntity' => $entity ? $this->otherEntitysBank($role, $code) : null,
             ];
         }, array_keys(self::ROLES));
     }
@@ -105,32 +156,112 @@ final class PostingAccounts extends Repository
         if (!in_array($account['type'], $types, true)) {
             throw new RuleViolation($label . ' has to be ' . self::article($types[0]) . ' ' . $types[0] . ' account. ' . $code . ' ' . $account['name'] . ' is ' . self::article($account['type']) . ' ' . $account['type'] . ' account.');
         }
-        $balance = (new Lookups())->balance($current);
+        if (($owner = $this->otherEntitysBank($role, $code)) !== null) {
+            throw new RuleViolation($code . ' ' . $account['name'] . ' is a bank account of ' . $owner . ', so ' . $this->entityName() . ' cannot take '
+                . lcfirst($label) . ' from it. Choose one of ' . $this->entityName() . "'s own accounts.");
+        }
+        // The organisation's control accounts hold every entity's balance.
+        $balance = EntityScope::across(fn () => (new Lookups())->balance($current));
         if ($control && round($balance, 2) != 0) {
             throw new RuleViolation($current . ' still holds KES ' . Prototype::fmt(abs($balance)) . ' as ' . strtolower($label)
                 . '. Its entries are cleared from the account they were posted to, so it can move once that is nil — or journal the balance across to ' . $code . ' first.');
         }
 
-        return $label . ' posts to ' . $code . ' ' . $account['name'] . ' instead of ' . $current;
+        return ($this->holderId($role) === $this->lookups->headOfficeId() ? '' : $this->entityName() . ': ')
+            . $label . ' posts to ' . $code . ' ' . $account['name'] . ' instead of ' . $current;
     }
 
+    /** Sets the account for a role: the entity's own for an entity role, else the organisation's. */
     public function set(string $role, string $code): void
     {
         $id = (int) $this->value('SELECT id FROM {accounts} WHERE code = ?', [$code]);
+        $entityId = $this->holderId($role);
         $now = Clock::timestamp();
-        if ($this->value('SELECT id FROM {posting_accounts} WHERE role = ?', [$role]) === null) {
-            $this->insert('posting_accounts', ['role' => $role, 'account_id' => $id, 'created_at' => $now]);
+        $table = $this->db->table('posting_accounts');
+        if ($table->where('role', $role)->where('entity_id', $entityId)->countAllResults() === 0) {
+            $this->insert('posting_accounts', ['entity_id' => $entityId, 'role' => $role, 'account_id' => $id, 'created_at' => $now]);
         } else {
-            $this->db->table('posting_accounts')->where('role', $role)->update(['account_id' => $id, 'updated_at' => $now]);
+            $this->db->table('posting_accounts')->where('role', $role)->where('entity_id', $entityId)->update(['account_id' => $id, 'updated_at' => $now]);
         }
     }
 
-    /** @return array<string, string> role => code, for the roles someone has set */
+    /**
+     * Drops the entity's own account for a role, so that it follows the head office
+     * again. Returns what the audit log should say, or null when it already does.
+     */
+    public function follow(string $role): ?string
+    {
+        if (!self::isEntityRole($role) || !isset($this->own()[$role])) {
+            return null;
+        }
+        $label = self::ROLES[$role][0];
+        $to = $this->chosen()[$role] ?? self::ROLES[$role][2];
+
+        return $this->entityName() . ': ' . $label . ' follows the head office again, posting to ' . $to . ' instead of ' . $this->own()[$role];
+    }
+
+    public function unset(string $role): void
+    {
+        $this->db->table('posting_accounts')->where('role', $role)->where('entity_id', $this->holderId($role))->delete();
+    }
+
+    /** Whose choice a role is: the entity being worked in for an entity role, else the head office. */
+    private function holderId(string $role): int
+    {
+        return self::isEntityRole($role) ? $this->lookups->entityId() : $this->lookups->headOfficeId();
+    }
+
+    /** @return array<string, string> role => code, for the roles the organisation has set */
     private function chosen(): array
     {
-        return $this->cached('chosen', fn () => array_column($this->rows(
-            'SELECT p.role, a.code FROM {posting_accounts} p JOIN {accounts} a ON a.id = p.account_id'
-        ), 'code', 'role'));
+        return $this->cached('chosen', fn () => $this->choicesOf($this->lookups->headOfficeId()));
+    }
+
+    /** @return array<string, string> role => code, for the entity roles the entity being worked in has set */
+    private function own(): array
+    {
+        $entityId = $this->lookups->entityId();
+
+        return $entityId === $this->lookups->headOfficeId() ? [] : $this->cached('own:' . $entityId, fn () => array_intersect_key(
+            $this->choicesOf($entityId), array_flip(self::ENTITY_ROLES)
+        ));
+    }
+
+    private function choicesOf(int $entityId): array
+    {
+        return array_column($this->rows(
+            'SELECT p.role, a.code FROM {posting_accounts} p JOIN {accounts} a ON a.id = p.account_id WHERE p.entity_id = ?', [$entityId]
+        ), 'code', 'role');
+    }
+
+    /**
+     * The name of the entity that holds $code as a bank account, when a role that
+     * pays out of the bank would take it from another entity's; else null. Petty
+     * cash and other accounts no entity holds as a bank account are anyone's.
+     */
+    private function otherEntitysBank(string $role, string $code): ?string
+    {
+        if (!self::isEntityRole($role)) {
+            return null;
+        }
+        $holders = $this->cached('bank-holders', function () {
+            $out = [];
+            foreach ($this->rows('SELECT a.code, b.entity_id, e.name FROM {all:bank_accounts} b JOIN {accounts} a ON a.id = b.account_id JOIN {entities} e ON e.id = b.entity_id') as $r) {
+                $out[$r['code']][(int) $r['entity_id']] = $r['name'];
+            }
+
+            return $out;
+        });
+        $held = $holders[$code] ?? [];
+
+        return $held === [] || isset($held[$this->lookups->entityId()]) ? null : (string) reset($held);
+    }
+
+    private function entityName(): string
+    {
+        $id = $this->lookups->entityId();
+
+        return (string) $this->cached('entity-name:' . $id, fn () => $this->value('SELECT name FROM {entities} WHERE id = ?', [$id]));
     }
 
     private static function article(string $word): string

@@ -162,6 +162,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('statement-formats/sample', 'Api\StatementFormats::sample');
     $routes->post('statement-formats/assign', 'Api\StatementFormats::assign');
     $routes->post('statement-formats/account', 'Api\StatementFormats::createAccount');
+    $routes->post('statement-formats/account/(:segment)', 'Api\StatementFormats::updateAccount/$1');
     $routes->post('statement-formats/(:num)', 'Api\StatementFormats::update/$1');
     $routes->post('statement-formats/(:num)/delete', 'Api\StatementFormats::delete/$1');
     $routes->get('assets', 'Api\Assets::index');

@@ -208,6 +208,9 @@ class Settings extends BaseApiController
             'canManage'    => in_array('settings.manage', $this->actor()['permissions'] ?? [], true),
             'canManageUsers' => $this->can('users.manage'),
             'me'           => $this->actor()['email'],
+            // The entity whose own settings are shown: its registered details, approval bands,
+            // procurement threshold and the accounts it pays from. The rest are the organisation's.
+            'scope'        => $settings->scope(),
             'organisation' => $settings->organisation(),
             'entities'     => $settings->entities(),
             'funds'        => $settings->funds(),
@@ -228,6 +231,7 @@ class Settings extends BaseApiController
             'segments'     => $settings->segments(),
             'currencies'   => $settings->currencies(),
             'approvals'    => $settings->approvals(),
+            'ownApprovals' => $settings->ownApprovals(),
             'approverRoles' => $settings->approverRoles(),
             'procurement'  => $settings->procurement(),
             'days'         => $settings->dayRules(),
