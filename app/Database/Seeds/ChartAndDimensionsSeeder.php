@@ -261,7 +261,7 @@ class ChartAndDimensionsSeeder extends Seeder
                 'short_name' => $shortNames[$g['ref']] ?? $g['ref'], 'title' => $g['title'], 'programme_id' => $ctx->programmeId($g['program']),
                 'fund_id' => $fundId, 'manager_user_id' => $ctx->userId($g['manager']), 'currency' => 'KES',
                 'value_fc' => $g['value'], 'value' => $g['value'], 'starts_on' => $ctx->date($g['start']), 'ends_on' => $ctx->date($g['end']),
-                'status' => strtolower($g['status']), 'created_at' => $now,
+                'status' => strtolower($g['status']), 'indirect_cap_pct' => self::indirectCap($g['conditions']), 'created_at' => $now,
             ]);
 
             $ctx->remember('grants', $g['ref'], $id);
@@ -319,5 +319,20 @@ class ChartAndDimensionsSeeder extends Seeder
     private function chartRow(SeedContext $ctx, string $code): array
     {
         return current(array_filter($ctx->data('SEED'), static fn ($a) => $a['code'] === $code));
+    }
+
+    /**
+     * The indirect cost cap an agreement's conditions state ("Maximum 8% indirect
+     * cost recovery"), or null where they set none.
+     */
+    private static function indirectCap(array $conditions): ?float
+    {
+        foreach ($conditions as $c) {
+            if (preg_match('/(\d+(?:\.\d+)?)\s*%\s*indirect/i', $c, $m) === 1) {
+                return (float) $m[1];
+            }
+        }
+
+        return null;
     }
 }

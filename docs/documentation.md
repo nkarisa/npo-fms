@@ -426,23 +426,112 @@ programme lines, then choose whether unspent cash is returned or stays outstandi
 
 ### Funds
 
-**Purpose:** list unrestricted, restricted and endowment fund balances with
-utilisation.
+**Purpose:** the statement of changes in funds for the working year — what each
+fund opened with, received, spent and had transferred, and what it closes on.
+Restricted balances can only be spent on what the donor agreed, and unspent amounts
+are returnable when the grant closes.
 
-**On screen:** header (*Funds*), stat cards, a search and class tabs, then a table
-— Fund, Class, Funder, Opening, Income, Spend, Closing, Utilised (%).
+**On screen:** header (*Funds*) with **Fund transfer** and **Statement of funds**;
+five stat cards (total fund balance, unrestricted, restricted with its utilisation,
+endowment, and the unspent balance of restricted funds closing within 90 days);
+class tabs, a search and a note of funds closing soon; then a table — Fund (with
+its purpose), Class, Funder, Opening, Income, Expenditure, Transfers, Closing,
+Utilisation (bar and %) and Spend by, which turns rust inside 90 days. A totals
+row carries the funds forward, and the footer counts transfers not yet posted.
 
-**What you can do:** search, filter by class, and click a fund to open its detail.
+Every figure comes from the posted ledger, and the columns articulate: opening +
+income − expenditure + transfers = closing. Opening includes the year's balances
+brought forward. An overdrawn fund's closing balance shows in brackets, in rust.
+
+**The fund drawer:** click a fund for its movement for the year, how much of what
+it had available is spent, its restriction terms (funder, grant reference,
+agreement period, spend-by date, conditions), the programmes charged to it, and
+the ledger accounts carrying its movement — each opens in the general ledger. A
+fund closing within 90 days, nearly spent or overdrawn says so at the top.
+
+**Fund transfer:** moves a balance from one fund to another on a board minute.
+Choose the funds, the amount, the board minute reference and the reason; the form
+says at once whether the transfer is permitted:
+
+- A donor-restricted fund cannot be transferred out of — that needs the donor's
+  written consent, recorded as a grant amendment.
+- Endowment capital is permanently maintained and cannot be transferred.
+- No transfer may exceed what the fund has, less transfers out of it already
+  awaiting approval.
+
+**Post transfer** raises a journal and sends it for approval. It is approved in
+**Journals** by the approver the *Inter-fund transfers* rule names in Settings →
+Approvals — the Executive Director, whatever the amount — and the balances move
+only once it posts. The journal debits the giving fund's balance account and
+credits the receiving fund's, and moves the cash between the two funds on the
+operating bank account, so the bank balance itself does not change. Its lines
+cannot be edited in Journals; a returned transfer is discarded and raised again.
+
+**Statement of funds** downloads the statement as a CSV for the board pack.
+
+**Who can do what:** anyone can view. Anyone who prepares journals can raise a
+transfer; the Executive Director cannot raise one, only approve it.
 
 ### Grants and awards
 
-**Purpose:** show every donor agreement with value, spend and a burn-rate-vs-time bar.
+**Purpose:** the award portfolio from proposal to close-out. Burn is read against
+elapsed time, so an award that is behind schedule shows before the funder asks.
 
-**On screen:** header (*Grants and awards*), stat cards, a search and status tabs,
-then a list of award rows — funder, title, a status badge, a meta line (programme,
-period, spent of value), and a bar with a burn fill and an elapsed-time marker.
+**On screen:** header (*Grants and awards*) with **Reporting calendar** and
+**+ Record award**; five stat cards (live portfolio, received with what is still
+receivable, spent, unspent commitment, reports due within 45 days); status tabs and
+a search; then a table — Award (title, reference and lead programme), Funder,
+Period, Award value, Received, Spent, Burn vs elapsed, Next report and Status. The
+burn bar fills with what is spent and carries a black marker for the share of the
+agreement period gone: rust when spending runs more than 8 points ahead of time,
+amber when it lags more than 15 behind. A next report due within 45 days is rust.
 
-**What you can do:** search, filter by status, and click an award to open its detail.
+**The award drawer:** click an award for its value, received and unspent
+commitment; burn against elapsed time with what it means; budget against actual by
+line, with overspent lines in rust; the disbursement schedule (Received, Due within
+30 days, Scheduled); its reporting calendar (Submitted, Queried, Overdue, Due within
+45 days, Scheduled); the agreement terms — currency and agreement rate, period, the
+fund it is held in, the indirect cost cap and how long records are kept; and its
+compliance conditions. A suspended award, one closing with money unspent, or one
+with a report due soon says so at the top. From the drawer: **View in ledger**,
+**Record disbursement** (on Receivables, filtered to the award), **Prepare donor
+report** (on Donor reports, filtered to the award), and on a pipeline award
+**Convert to award**.
+
+**Reporting calendar:** every report still owed to a donor across the portfolio,
+soonest first, with how many days are left or how late it is.
+
+**Record award:** six steps from the signed agreement. Nothing is written until the
+last.
+
+1. **Agreement** — funder (a new one is added to the register), award reference,
+   title, lead programme and any others the award also funds, grant manager,
+   currency and value in KES (with the agreement rate for a foreign currency), start
+   and end dates, and whether it is **Pipeline** (unsigned) or **Active**.
+2. **Fund** — open a new fund for it (the normal case) or attach it to an existing
+   one. A new fund is restricted, designated or an endowment, and rolls up into the
+   Grant, Capital, General or Endowment Fund accordingly; presenting restricted
+   money in the General Fund needs a reason, recorded on the audit trail. Attaching
+   donor money to an unrestricted fund is warned against.
+3. **Budget lines** — expense and asset accounts, each once, totalling the award
+   value exactly. Lines on 53xx accounts are indirect and support costs and may not
+   exceed the indirect cost cap.
+4. **Disbursements** — when the donor expects to pay, totalling the award value.
+5. **Reporting** — the reports the donor expects, each with the period it covers
+   and its due date. The presets (quarterly financial, narrative, close-out) date
+   themselves from the agreement start.
+6. **Conditions and review** — the agreement's conditions, a summary, and what
+   recording it does.
+
+Recording opens the fund (or attaches the existing one) and writes the award, its
+budget lines, disbursements, reports and conditions in one step. The award's budget
+is what the drawer measures actuals against; the organisation budget that the
+procurement check reads changes only through a budget revision under **Budgets**.
+Disbursements are claimed from the donor under **Receivables** when they fall due.
+
+**Who can do what:** anyone can view. The Finance Manager records awards and
+converts pipeline awards — recording one opens a fund and sets the budget it is
+held to.
 
 ### Budgets
 

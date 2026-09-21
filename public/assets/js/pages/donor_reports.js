@@ -1,6 +1,7 @@
 (async function () {
   const app = document.getElementById('app');
-  let state = { status: 'All', q: '' };
+  // ?q= arrives from an award's drawer, filtered to that award.
+  let state = { status: 'All', q: new URLSearchParams(location.search).get('q') || '' };
 
   async function load() {
     const p = new URLSearchParams({ status: state.status, q: state.q });

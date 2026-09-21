@@ -220,6 +220,9 @@ final class JournalRepository extends Repository
         if (!in_array($journal['status'], ['draft', 'rejected', 'pending_approval'], true)) {
             throw new RuleViolation($ref . ' is ' . strtolower(self::label($journal['status'])) . ' and can no longer be changed. Correct it with a reversal.');
         }
+        if ($journal['source_type'] === 'fund_transfer') {
+            throw new RuleViolation($ref . ' records an inter-fund transfer, and its lines are the transfer\'s. Discard it once returned, and raise the transfer again from Funds.');
+        }
 
         $current = $this->find($ref);
         $keepDocument = ($j['docLink'] ?? 'auto') === $current['docLink'];
@@ -458,7 +461,7 @@ final class JournalRepository extends Repository
         if ((int) $journal['prepared_by'] === $actorId) {
             throw new RuleViolation($this->lookups->shortName($actorId) . ' prepared ' . $ref . ' and cannot also approve it. It needs a second approver.');
         }
-        (new ApprovalPolicy())->check('journal', (float) $this->value('SELECT COALESCE(SUM(debit), 0) FROM {journal_lines} WHERE journal_id = ?', [$journal['id']]), $actorId, $ref);
+        (new ApprovalPolicy())->check(self::approvalType($journal['source_type']), $this->approvalAmount($journal), $actorId, $ref);
         if ($journal['reverses_journal_id'] !== null) {
             $original = $this->row('SELECT reference, status FROM {journals} WHERE id = ?', [$journal['reverses_journal_id']]);
             if ($original['status'] !== 'posted') {
@@ -501,6 +504,67 @@ final class JournalRepository extends Repository
      */
     public function postFromSource(array $h, array $lines, int $preparedBy, ?int $approvedBy, string $raisedNote): string
     {
+        return $this->transaction(function () use ($h, $lines, $preparedBy, $approvedBy, $raisedNote) {
+            [$id, $ref] = $this->raiseFromSource($h, $lines, $preparedBy, $raisedNote);
+            $now = Clock::timestamp();
+            $this->db->table('journals')->where('id', $id)->update([
+                'status' => 'posted', 'approved_by' => $approvedBy, 'approved_at' => $approvedBy === null ? null : $now, 'posted_at' => $now, 'updated_at' => $now,
+            ]);
+            $this->audit('journal', $id, $ref, 'Posted to the ledger' . ($approvedBy === null ? '' : ' on approval by ' . $this->lookups->shortName($approvedBy)), $approvedBy ?? $preparedBy);
+
+            return $ref;
+        });
+    }
+
+    /**
+     * Raises an entry from a record that the journal's own approval authorises: an
+     * inter-fund transfer, say. It waits in the register for approval like any
+     * entry, under the approval rule for its document type (see approve()), and
+     * cannot be edited there — its lines are the record's. Returns [id, reference].
+     *
+     * @param array{date: string, narration: string, memo: string, sourceType: string, sourceId: int, docRef: string, series: string, type?: string} $h
+     * @param list<array{code: string, fund_id: int, programme_id: int, grant_id: int|null, desc: string, dr: float, cr: float}> $lines
+     * @return array{0: int, 1: string}
+     */
+    public function submitFromSource(array $h, array $lines, int $preparedBy, string $raisedNote): array
+    {
+        return $this->transaction(function () use ($h, $lines, $preparedBy, $raisedNote) {
+            [$id, $ref] = $this->raiseFromSource($h, $lines, $preparedBy, $raisedNote);
+            $this->db->table('journals')->where('id', $id)->update(['status' => 'pending_approval', 'submitted_at' => Clock::timestamp()]);
+            $approver = (new ApprovalPolicy())->rule(self::approvalType($h['sourceType']))['approver'] ?? $this->approverRole();
+            $this->audit('journal', $id, $ref, 'Submitted for approval to ' . $this->lookups->shortName($this->lookups->holderOf($approver), 'the approver'), $preparedBy);
+
+            return [$id, $ref];
+        });
+    }
+
+    /** The approval rule an entry is held to: its source record's, where that has one of its own. */
+    private static function approvalType(?string $sourceType): string
+    {
+        return $sourceType === 'fund_transfer' ? 'transfer' : 'journal';
+    }
+
+    /**
+     * What an approver signs off. A transfer is the amount moved — its journal debits
+     * that twice, once in each fund's balance and once in the cash it is held in.
+     */
+    private function approvalAmount(array $journal): float
+    {
+        if ($journal['source_type'] === 'fund_transfer') {
+            return (float) $this->value('SELECT amount FROM {fund_transfers} WHERE id = ?', [$journal['source_id']]);
+        }
+
+        return (float) $this->value('SELECT COALESCE(SUM(debit), 0) FROM {journal_lines} WHERE journal_id = ?', [$journal['id']]);
+    }
+
+    /**
+     * Inserts an entry raised from a sub-ledger record as a draft with its lines;
+     * the caller moves it on. Call it inside a transaction.
+     *
+     * @return array{0: int, 1: string} id, reference
+     */
+    private function raiseFromSource(array $h, array $lines, int $preparedBy, string $raisedNote): array
+    {
         $period = null;
         foreach ($this->lookups->periods() as $p) {
             if ($p['starts_on'] <= $h['date'] && $h['date'] <= $p['ends_on']) {
@@ -517,12 +581,12 @@ final class JournalRepository extends Repository
 
         $accounts = $this->lookups->accounts();
 
-        return $this->transaction(function () use ($h, $lines, $period, $accounts, $preparedBy, $approvedBy, $raisedNote) {
+        return $this->transaction(function () use ($h, $lines, $period, $accounts, $preparedBy, $raisedNote) {
             $now = Clock::timestamp();
             $ref = $this->nextReference('JV', $h['date']);
             $id  = $this->insert('journals', [
                 'entity_id' => $this->lookups->entityId(), 'period_id' => $period['id'], 'reference' => $ref, 'journal_date' => $h['date'],
-                'type' => 'standard', 'status' => 'draft',
+                'type' => $h['type'] ?? 'standard', 'status' => 'draft',
                 'document_type_id' => $this->value('SELECT id FROM {document_types} WHERE prefix = ?', [$h['series']])
                     ?? $this->value('SELECT id FROM {document_types} WHERE prefix = ?', ['JV']),
                 'document_ref' => $h['docRef'], 'source_type' => $h['sourceType'], 'source_id' => $h['sourceId'],
@@ -544,12 +608,8 @@ final class JournalRepository extends Repository
             }
 
             $this->audit('journal', $id, $ref, $raisedNote, $preparedBy);
-            $this->db->table('journals')->where('id', $id)->update([
-                'status' => 'posted', 'approved_by' => $approvedBy, 'approved_at' => $approvedBy === null ? null : $now, 'posted_at' => $now, 'updated_at' => $now,
-            ]);
-            $this->audit('journal', $id, $ref, 'Posted to the ledger' . ($approvedBy === null ? '' : ' on approval by ' . $this->lookups->shortName($approvedBy)), $approvedBy ?? $preparedBy);
 
-            return $ref;
+            return [$id, $ref];
         });
     }
 

@@ -12,7 +12,7 @@
   const esc = UI.esc;
   const fmt = UI.fmtMoney;
   const params = new URLSearchParams(location.search);
-  const state = { status: params.get('status') || 'All', age: 'All', fund: 'All funds', q: '', page: 1 };
+  const state = { status: params.get('status') || 'All', age: 'All', fund: 'All funds', q: params.get('q') || '', page: 1 };
   const selected = new Map(); // invoice no → outstanding
   let data = null;
   let editingRates = false;
@@ -54,7 +54,7 @@
       <div class="jr-filters">
         <div class="coa-seg" id="ar-tabs"></div>
         <label class="coa-search" style="flex:1 1 220px;min-width:190px;max-width:300px;width:auto;">⌕
-          <input type="search" id="ar-q" placeholder="Donor, invoice number or grant reference">
+          <input type="search" id="ar-q" placeholder="Donor, invoice number or grant reference" value="${UI.esc(state.q)}">
         </label>
         <label class="ap-fund">Fund <select id="ar-fund"></select></label>
         <div class="jr-hint" id="ar-hint"></div>

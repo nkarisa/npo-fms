@@ -164,9 +164,16 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('cashflow', 'Api\Cashflow::index');
     $routes->get('funds', 'Api\Funds::index');
     $routes->post('funds', 'Api\Funds::create');
+    $routes->get('funds/statement', 'Api\Funds::statement');
+    $routes->post('funds/transfers', 'Api\Funds::transfer');
     $routes->get('funds/(:segment)', 'Api\Funds::show/$1');
     $routes->get('grants', 'Api\Grants::index');
-    $routes->get('grants/(:segment)', 'Api\Grants::show/$1');
+    $routes->get('grants/calendar', 'Api\Grants::calendar');
+    $routes->get('grants/form', 'Api\Grants::form');
+    $routes->post('grants', 'Api\Grants::create');
+    // Award references carry slashes (DANIDA/CE-2025/27), so they span segments.
+    $routes->post('grants/(:any)/activate', 'Api\Grants::activate/$1');
+    $routes->get('grants/(:any)', 'Api\Grants::show/$1');
     $routes->get('budgets', 'Api\Budgets::index');
     $routes->get('donor-reports', 'Api\DonorReports::index');
     $routes->get('donor-reports/languages', 'Api\DonorReports::languages');
