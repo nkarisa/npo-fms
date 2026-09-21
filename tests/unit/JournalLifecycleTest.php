@@ -302,6 +302,38 @@ final class JournalLifecycleTest extends CIUnitTestCase
         }
     }
 
+    public function testADocumentStaysWithAnEntryUntilItIsTakenBackFromApproval(): void
+    {
+        $repo = new JournalRepository();
+        $achieng = $this->user('J. Achieng');
+        $entry = fn (string $status) => [
+            'date' => '2026-08-20', 'type' => 'Accrual', 'period' => 'Aug 2026', 'status' => $status, 'docLink' => 'auto',
+            'memo' => '', 'narration' => 'Audit fee accrual',
+            'lines' => [$this->line('5330', 500, 0), $this->line('2120', 0, 500)],
+        ];
+        $sent = $repo->create($entry('Pending approval'), $achieng, [$this->documentFile('engagement-letter.pdf'), $this->documentFile('fee-note.pdf')]);
+        [$letter, $note] = array_column($sent['attachments'], 'id');
+
+        // Awaiting approval: neither an edit that stays submitted nor one that saves a draft removes it.
+        foreach (['Pending approval', 'Draft'] as $status) {
+            try {
+                $repo->update($sent['ref'], $entry($status), $achieng, [], [$letter]);
+                $this->fail('A document was removed from an entry awaiting approval.');
+            } catch (RuleViolation $e) {
+                $this->assertStringContainsString('awaiting approval, and the documents it was submitted with stay with it', $e->getMessage());
+            }
+        }
+        $this->assertSame(['Pending approval', 2], [$repo->find($sent['ref'])['status'], count($repo->find($sent['ref'])['attachments'])]);
+
+        // Taken back to draft by its preparer, it can drop one.
+        $this->assertSame('Draft', $repo->update($sent['ref'], $entry('Draft'), $achieng)['status']);
+        $this->assertSame(['fee-note.pdf'], array_column($repo->update($sent['ref'], $entry('Pending approval'), $achieng, [], [$letter])['attachments'], 'name'));
+
+        // Returned to draft by the approver, likewise.
+        $repo->reject($sent['ref'], $this->user('W. Kamau'), 'Attach the signed letter instead');
+        $this->assertSame([], $repo->update($sent['ref'], $entry('Draft'), $achieng, [], [$note])['attachments']);
+    }
+
     private function draft(string $status = 'Draft'): array
     {
         return (new JournalRepository())->create([

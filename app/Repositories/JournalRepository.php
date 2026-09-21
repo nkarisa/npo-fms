@@ -226,10 +226,17 @@ final class JournalRepository extends Repository
         }
 
         $current = $this->find($ref);
+        // A document that went for approval with the entry is part of what the approver
+        // is looking at, so it stays until the entry is taken back to draft — by its
+        // preparer saving it as a draft, or by the approver returning it.
+        $removeAttachments = array_values(array_intersect(array_map('intval', $removeAttachments), array_column($current['attachments'], 'id')));
+        if ($removeAttachments !== [] && $journal['status'] === 'pending_approval') {
+            throw new RuleViolation($ref . ' is awaiting approval, and the documents it was submitted with stay with it. Save it as a draft to take it back from approval, then remove the document.');
+        }
         $keepDocument = ($j['docLink'] ?? 'auto') === $current['docLink'];
         [$period, $date, $lines] = $this->prepare(['docLink' => 'auto'] + $j);
         $source = $keepDocument ? false : $this->source($j['docLink'] ?? 'auto');
-        $kept = array_filter($current['attachments'], static fn ($a) => !in_array($a['id'], array_map('intval', $removeAttachments), true));
+        $kept = array_filter($current['attachments'], static fn ($a) => !in_array($a['id'], $removeAttachments, true));
         // A reversal is supported by the entry it reverses, and an entry raised from a
         // record (the opening balances' fiscal year, a bill) by that record.
         $link = match (true) {

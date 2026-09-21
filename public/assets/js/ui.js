@@ -505,6 +505,9 @@ const UI = (() => {
   function renderJournalFiles() {
     const { ed } = jd;
     const editable = jdCan().save;
+    // What went for approval stays in front of the approver until the entry is taken
+    // back to draft (JournalRepository::update refuses the removal too).
+    const submitted = jdStatus() === 'Pending approval';
     const size = (b) => b < 1024000 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1)} MB`;
     const kept = ed.attachments.filter(a => !ed.removed.includes(a.id));
     const ref = jd.journal ? encodeURIComponent(jd.journal.ref) : '';
@@ -512,7 +515,7 @@ const UI = (() => {
       <a class="jd-file" href="/api/journals/${ref}/attachments/${a.id}" style="text-decoration:none;color:inherit;">
         <span class="jd-file-name">${esc(a.name)}</span>
         <span class="jd-file-size">${esc(a.size)}</span>
-        ${editable ? `<button type="button" class="jd-remove" data-kept="${a.id}" aria-label="Remove ${esc(a.name)}">✕</button>` : ''}
+        ${editable && !submitted ? `<button type="button" class="jd-remove" data-kept="${a.id}" aria-label="Remove ${esc(a.name)}">✕</button>` : ''}
       </a>`).join('') + ed.files.map((f, i) => `
       <div class="jd-file">
         <span class="jd-file-name">${esc(f.name)}</span>
@@ -523,9 +526,10 @@ const UI = (() => {
     journalDrawer.querySelector('#jd-attach-label').textContent = count ? '+ Attach another document' : '+ Attach the supporting document';
     const note = journalDrawer.querySelector('#jd-files-note');
     const needed = jdDocumentNeeded();
-    note.hidden = count > 0;
-    note.classList.toggle('warn', editable && !!needed);
-    note.textContent = !editable ? 'No supporting document is attached.'
+    note.hidden = count > 0 && !(editable && submitted && kept.length);
+    note.classList.toggle('warn', editable && !!needed && !count);
+    note.textContent = editable && submitted && kept.length ? 'The documents it was submitted with stay while it awaits approval. Save it as a draft to remove one.'
+      : !editable ? 'No supporting document is attached.'
       : needed || 'The reference points at the record; the audit file wants the document itself — invoice, board minute or funder letter.';
   }
 
