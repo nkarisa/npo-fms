@@ -504,7 +504,7 @@
       const res = await UI.postJSON('/api/coa/templates/adopt', { template: ct.key, rows });
       drawerEl.hidden = true;
       UI.toast(res.message);
-      await refresh();
+      await reload();
     } catch (err) {
       UI.toast(err.message);
     } finally {
