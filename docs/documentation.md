@@ -807,3 +807,11 @@ languages. Saving is restricted to the Finance Manager.
   you type, tabs filter by status, and lists show ten rows a page.
 - **Every action confirms** with a toast, and most writes refresh the affected
   list or record so the screen always reflects the posted position.
+- **Supporting documents** are uploaded from a picker on the form, which marks
+  them **Required** or **Recommended**. A bill needs the supplier's invoice, a
+  surrender its receipts, and an active award its signed agreement. A manual
+  journal above 500,000, or an Adjustment journal, needs a document before
+  approval. Above the three-quote threshold, only quotations with their document
+  count. Claims, assets, counts and donor reports are asked for one. Documents open
+  from the record, and can be added later with **Attach a document**. See
+  [documents.md](documents.md).

@@ -5,6 +5,7 @@ namespace App\Controllers\Api;
 use App\Libraries\Prototype;
 use App\Repositories\ProcurementRepository as Repo;
 use App\Repositories\RuleViolation;
+use App\Repositories\AttachmentRepository;
 
 /**
  * Procurement (v5): requisition → quotation → purchase order → goods received → bill.
@@ -27,10 +28,6 @@ class Procurement extends BaseApiController
     public const VIEWS = ['Requisitions', 'Purchase orders', 'Goods received', 'Suppliers'];
 
     private const TABS = ['Open', 'Awaiting approval', 'Approved', 'RFQ issued', 'PO raised', 'Goods received', 'Closed', 'All'];
-
-    private const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
-
-    private const ATTACHMENT_TYPES = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'msg', 'eml'];
 
     public static function available(array $p): float
     {
@@ -186,6 +183,7 @@ class Procurement extends BaseApiController
                 'overBudget'  => self::budgetCheckPending($p),
                 'needsQuotes' => self::quotesOutstanding($p),
                 'quoteDocs'   => count(array_filter($p['quotes'], static fn ($q) => $q['document'] !== null)) . ' of ' . count($p['quotes']) . ' quotations have a document on file',
+                'quotesOnFile' => Repo::quotesOnFile($p),
             ],
             'can' => [
                 'submit'  => $p['status'] === 'Draft' && ($mine || $raiser || $actor['canPrepare']),
@@ -220,19 +218,8 @@ class Procurement extends BaseApiController
         try {
             $multipart = str_starts_with($this->request->getHeaderLine('Content-Type'), 'multipart/form-data');
             $body = $multipart ? (json_decode((string) $this->request->getPost('payload'), true) ?? []) : ($this->request->getJSON(true) ?? []);
-            $files = [];
-            foreach ($multipart ? ($this->request->getFileMultiple('documents') ?? []) : [] as $file) {
-                if (!$file->isValid()) {
-                    throw new RuleViolation($file->getClientName() . ' did not upload: ' . $file->getErrorString());
-                }
-                if ($file->getSize() > self::ATTACHMENT_MAX_BYTES) {
-                    throw new RuleViolation($file->getClientName() . ' is larger than 10 MB.');
-                }
-                if (!in_array(strtolower($file->getClientExtension()), self::ATTACHMENT_TYPES, true)) {
-                    throw new RuleViolation($file->getClientName() . ' is not a document type the procurement file accepts (PDF, image, Office, CSV, text or email).');
-                }
-                $files[] = ['path' => $file->getTempName(), 'name' => $file->getClientName(), 'size' => $file->getSize(), 'mime' => $file->getMimeType()];
-            }
+            $attachments = new AttachmentRepository();
+            $files = array_map([$attachments, 'accept'], $multipart ? ($this->request->getFileMultiple('documents') ?? []) : []);
 
             $requisition = (new Repo())->create($body, $this->actorId(), $files);
         } catch (RuleViolation $e) {
@@ -315,10 +302,11 @@ class Procurement extends BaseApiController
         if (!$actor['canPrepare']) {
             return $this->forbidden($actor['role'] . ' cannot raise supplier bills.');
         }
-        $invoiceNo = (string) (($this->request->getJSON(true) ?? [])['invoiceNo'] ?? '');
+        $body = $this->request->getJSON(true) ?? [];
+        $invoiceNo = (string) ($body['invoiceNo'] ?? '');
 
         try {
-            return $this->json((new Repo())->raiseBill((string) $no, $invoiceNo, $this->actorId()));
+            return $this->json((new Repo())->raiseBill((string) $no, $invoiceNo, $this->actorId(), $body['documents'] ?? []));
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }

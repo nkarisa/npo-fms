@@ -58,6 +58,7 @@ class AssetVerification extends BaseApiController
             'nbv'       => Prototype::fmt($a['nbv']),
             'result'    => self::resultOf($a, $results),
             'note'      => $results[$a['tag']]['note'] ?? '',
+            'documents' => $results[$a['tag']]['documents'] ?? [],
             'pending'   => self::resultOf($a, $results) === self::PENDING,
         ], $filtered);
 
@@ -181,7 +182,7 @@ class AssetVerification extends BaseApiController
         }
 
         try {
-            $recorded = $repo->record($tag, $result, $note !== '' ? $note : 'Sighted and tag verified', $this->actorId());
+            $recorded = $repo->record($tag, $result, $note !== '' ? $note : 'Sighted and tag verified', $this->actorId(), $body['documents'] ?? []);
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }

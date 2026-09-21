@@ -19,6 +19,7 @@ final class PayablesTest extends CIUnitTestCase
     use DatabaseTestTrait;
     use FeatureTestTrait;
     use \Tests\Support\SignsIn;
+    use \Tests\Support\StoresDocuments;
 
     protected $namespace = 'App';
     protected $refresh   = true;
@@ -71,9 +72,20 @@ final class PayablesTest extends CIUnitTestCase
 
         $this->withBodyFormat('json')->post('api/payables', $this->invoice(['pin' => 'P05X']))->assertStatus(422);
 
+        // The supplier's invoice goes with the bill, or the bill does not go.
+        $bare = $this->withBodyFormat('json')->post('api/payables', $this->invoice(['documents' => []]));
+        $bare->assertStatus(422);
+        $this->assertStringContainsString("Attach the supplier's invoice", json_decode($bare->getJSON(), true)['error']);
+        // Someone else's upload is not this person's to attach.
+        $theirs = $this->withBodyFormat('json')->post('api/payables', $this->invoice(['documents' => [$this->document('w.kamau@elog.or.ke')]]));
+        $theirs->assertStatus(422);
+        $this->assertStringContainsString('no longer waiting to be attached', json_decode($theirs->getJSON(), true)['error']);
+
         $created = $this->withBodyFormat('json')->post('api/payables', $this->invoice());
         $created->assertStatus(201);
         $bill = json_decode($created->getJSON(), true)['bill'];
+        $this->assertSame('supplier-invoice.pdf', $bill['documents'][0]['name']);
+        $this->assertStringContainsString('1 document attached', end($bill['trail'])['text'] ?? json_encode($bill['trail']));
 
         $this->assertSame('BILL-0453', $bill['no']);
         $this->assertSame('Awaiting approval', $bill['status']);
@@ -131,7 +143,7 @@ final class PayablesTest extends CIUnitTestCase
         $this->assertEqualsWithDelta(232000, array_sum(array_column($lines, 'debit')), 0.001);
 
         // A bill the approver captured waits for someone else.
-        $mine = $repo->capture($this->invoice(['invoiceNo' => 'MC-9']), $kamau);
+        $mine = $repo->capture($this->invoice(['invoiceNo' => 'MC-9'], 'w.kamau@elog.or.ke'), $kamau);
         $refused = $this->withBodyFormat('json')->post('api/payables/approve', ['nos' => [$mine['no']]]);
         $refused->assertStatus(422);
         $show = $this->api('api/payables/' . $mine['no']);
@@ -303,9 +315,13 @@ final class PayablesTest extends CIUnitTestCase
         return json_decode($this->get($url)->getJSON(), true);
     }
 
-    private function invoice(array $overrides = []): array
+    /** A bill as the capture form sends it, with the supplier's invoice uploaded by whoever captures it. */
+    private function invoice(array $overrides = [], string $who = 's.njeri@elog.or.ke'): array
     {
         $line = array_values(array_filter((new PayablesRepository())->budgetLines(), static fn ($l) => $l['code'] === '5150'))[0];
+        if (!array_key_exists('documents', $overrides)) {
+            $overrides['documents'] = [$this->document($who)];
+        }
 
         return $overrides + [
             'supplier' => 'Mwangaza Consultants', 'pin' => 'P051999888Q', 'category' => 'Professional fees', 'invoiceNo' => 'MC-2026-014',

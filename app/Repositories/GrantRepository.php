@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Libraries\Clock;
 use App\Libraries\Prototype;
+use Config\Documents;
 
 /**
  * Grants and awards. Received is the tranches received; spent is the
@@ -17,6 +18,9 @@ use App\Libraries\Prototype;
  */
 final class GrantRepository extends Repository
 {
+    /** Why an active award without its agreement is refused (Config\Documents::$requireGrantAgreement). */
+    public const NEEDS_AGREEMENT = 'Attach the signed grant agreement. An award goes live only with the agreement it is held to — the donor audit starts from it.';
+
     private const TRANCHE_DUE_DAYS = 30;
 
     /** Donor reports and next reports are flagged this far out. */
@@ -65,8 +69,9 @@ final class GrantRepository extends Repository
             $tranches   = $children('SELECT * FROM {grant_tranches} ORDER BY id');
             $conditions = $children('SELECT * FROM {grant_conditions} ORDER BY sort_order');
             $reports    = $children('SELECT * FROM {donor_reports} ORDER BY due_on');
+            $documents  = (new AttachmentRepository())->byObject('grant');
 
-            return array_map(function ($g) use ($spent, $lineActuals, $budgets, $tranches, $conditions, $reports) {
+            return array_map(function ($g) use ($spent, $lineActuals, $budgets, $tranches, $conditions, $reports, $documents) {
                 $id    = (int) $g['id'];
                 $next  = current(array_filter($reports[$id] ?? [], static fn ($r) => in_array($r['status'], ['draft', 'in_review'], true))) ?: null;
                 $days  = $next === null ? null : Clock::daysUntil($next['due_on']);
@@ -125,6 +130,7 @@ final class GrantRepository extends Repository
                         'state'  => self::reportState($r),
                     ], $reports[$id] ?? []),
                     'conditions' => array_column($conditions[$id] ?? [], 'text'),
+                    'documents'  => $documents[$id] ?? [],
                 ];
             }, $this->rows('SELECT g.*, f.name AS funder_name FROM {grants} g JOIN {funders} f ON f.id = g.funder_id ORDER BY g.id'));
         });
@@ -244,8 +250,13 @@ final class GrantRepository extends Repository
     public function record(array $in, int $actorId): array
     {
         $a = $this->checkAward($in);
+        $attachments = new AttachmentRepository();
+        $documents = $attachments->pending($in['documents'] ?? [], $actorId);
+        if ($a['status'] === 'active' && $documents === [] && config(Documents::class)->requireGrantAgreement) {
+            throw new RuleViolation(self::NEEDS_AGREEMENT);
+        }
 
-        return $this->transaction(function () use ($a, $actorId) {
+        return $this->transaction(function () use ($a, $actorId, $attachments, $documents) {
             $funderId = $this->lookups->funderId($a['funder']) ?? $this->insert('funders', [
                 'name' => $a['funder'], 'short_name' => mb_substr($a['funder'], 0, 60), 'created_at' => Clock::timestamp(),
             ]);
@@ -302,6 +313,7 @@ final class GrantRepository extends Repository
                 ]);
             }
 
+            $attachments->claim($documents, 'grant', $id);
             $fund = $this->lookups->funds()[$fundId] ?? $this->row('SELECT code, name FROM {funds} WHERE id = ?', [$fundId]);
             $this->audit('grant', $id, $a['ref'], 'Award recorded as ' . strtolower(ucfirst($a['status'])) . ' from the signed agreement: KES '
                 . Prototype::fmt($a['value']) . ', ' . self::dmy($a['start']) . ' – ' . self::dmy($a['end']) . ', held in ' . $fund['name'], $actorId, 'grant.recorded', $this->lookups->entityId());
@@ -488,7 +500,7 @@ final class GrantRepository extends Repository
      * its budget may be committed against. It must have its period, and its budget
      * lines and disbursements must still agree with its value.
      */
-    public function activate(string $ref, int $actorId): array
+    public function activate(string $ref, int $actorId, mixed $documentIds = []): array
     {
         $g = $this->find($ref) ?? throw new RuleViolation($ref . ' is not an award.');
         if ($g['status'] !== 'Pipeline') {
@@ -503,8 +515,14 @@ final class GrantRepository extends Repository
                 throw new RuleViolation($label . ' total ' . Prototype::fmt($total) . ' against an award value of ' . Prototype::fmt($g['value']) . '. They must agree before the award goes live.');
             }
         }
+        $attachments = new AttachmentRepository();
+        $documents = $attachments->pending($documentIds, $actorId);
+        if ($g['documents'] === [] && $documents === [] && config(Documents::class)->requireGrantAgreement) {
+            throw new RuleViolation(self::NEEDS_AGREEMENT);
+        }
 
-        $this->transaction(function () use ($g, $actorId) {
+        $this->transaction(function () use ($g, $actorId, $attachments, $documents) {
+            $attachments->claim($documents, 'grant', (int) $g['id']);
             $this->db->table('grants')->where('id', $g['id'])->update(['status' => 'active', 'updated_at' => Clock::timestamp()]);
             $this->audit('grant', $g['id'], $g['ref'], 'Converted from pipeline to active on signature of the agreement', $actorId, 'grant.activated', $this->lookups->entityId());
         });

@@ -54,7 +54,7 @@ node .claude/skills/run-fms/driver.mjs \
   goto:/journals 'text:.jr-row:has-text("JV-26-0310")'
 ```
 
-Steps: `as:<email>` (sign in as them), `logout`, `goto:<path>`, `click:<sel>`, `fill:<sel>=<v>`, `select:<sel>=<label>`,
+Steps: `as:<email>` (sign in as them), `logout`, `goto:<path>`, `click:<sel>`, `fill:<sel>=<v>`, `select:<sel>=<label>`, `upload:<sel>=<name>` (a generated file for a document picker),
 `wait:<sel>`, `text:<sel>`, `eval:<js>`, `ss:<name>`, `ssfull:<name>`, `sleep:<ms>`.
 Selectors are Playwright's (`text=…`, CSS, `role=button[name="…"]`). `--port 8096`
 targets the blank instance. `--as <email>` changes the first user; `--as none`

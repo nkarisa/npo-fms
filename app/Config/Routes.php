@@ -91,6 +91,11 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('journals', 'Api\Journals::index');
     $routes->post('journals', 'Api\Journals::create');
     $routes->get('journals/form', 'Api\Journals::form');
+    // Supporting documents for every module (Api\Attachments).
+    $routes->post('attachments', 'Api\Attachments::upload');
+    $routes->get('attachments/(:num)', 'Api\Attachments::download/$1');
+    $routes->post('attachments/(:num)/discard', 'Api\Attachments::discard/$1');
+    $routes->post('documents/(:segment)/(:any)', 'Api\Attachments::attach/$1/$2');
     $routes->get('journals/recurring', 'Api\Journals::recurring');
     $routes->post('journals/recurring', 'Api\Journals::createRecurring');
     $routes->post('journals/recurring/(:segment)/run', 'Api\Journals::runRecurring/$1');
@@ -211,7 +216,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('donor-reports', 'Api\DonorReports::index');
     $routes->get('donor-reports/languages', 'Api\DonorReports::languages');
     $routes->post('donor-reports/languages', 'Api\DonorReports::setLanguage');
-    $routes->get('donor-reports/(:segment)', 'Api\DonorReports::show/$1');
+    $routes->get('donor-reports/(:any)', 'Api\DonorReports::show/$1');
     $routes->get('reports', 'Api\Reports::index');
     $routes->get('settings', 'Api\Settings::index');
     $routes->post('settings', 'Api\Settings::save');

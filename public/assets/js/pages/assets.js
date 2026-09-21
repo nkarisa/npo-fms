@@ -361,10 +361,20 @@
             </div>`).join('')}
         </div>
         <div class="as-card">
+          <div class="as-section-head"><b>Documents</b></div>
+          <div data-asd-docs style="padding:12px 14px;"></div>
+        </div>
+        <div class="as-card">
           <div class="as-section-head"><b>History</b></div>
           ${a.trail.length ? a.trail.map(t => `<div class="as-trail"><span>${esc(t.when)}</span><span>${esc(t.what)}</span></div>`).join('')
             : '<div class="as-trail"><span></span><span style="color:#8B948F;">Nothing recorded yet.</span></div>'}
         </div>`;
+      UI.docPanel(el.querySelector('[data-asd-docs]'), {
+        kind: 'asset', ref: a.tag, docs: a.documents, canAdd: a.canAttach, recommended: true,
+        empty: 'Nothing attached. Recommended: the purchase invoice or deed of gift, and title documents for vehicles and land.',
+        label: 'Attach a document',
+        onAdded: (documents) => { a.documents = documents; },
+      });
     }
 
     function close() {
@@ -699,7 +709,7 @@
       }
       const first = data.forms.classes[0];
       form = { basis: tag ? 'found' : 'donation', tag: tag || '', class: first.name, description: '', amount: '', date: data.forms.today,
-        source: '', reference: '', reason: '', life: String(first.life), location: '', custodian: '', title: '' };
+        source: '', reference: '', reason: '', life: String(first.life), location: '', custodian: '', title: '', files: [] };
       if (tag) setFound();
       renderForm();
       renderSide();
@@ -758,7 +768,12 @@
             ${field('Title', input('title', form.title, 'placeholder="ELOG holds title — donated in kind"'))}
           </div>`}
         ${field(found ? 'Why it was never recorded, and how the value was set' : 'What was donated, and how the fair value was set',
-          `<textarea data-f="reason" rows="3">${esc(form.reason)}</textarea>`)}`;
+          `<textarea data-f="reason" rows="3">${esc(form.reason)}</textarea>`)}
+        <div data-m-docs></div>`;
+      UI.docPicker(el.querySelector('[data-m-docs]'), {
+        label: found ? 'Count sheet or photo' : 'Deed of gift, donor letter or valuation', recommended: true, files: form.files,
+        hint: found ? 'What the count recorded, and a photo of the asset with its tag.' : 'The document behind the fair value, and the donor\'s letter.',
+      });
     }
 
     function block() {
@@ -806,7 +821,9 @@
 
     async function submit() {
       if (block()) return;
-      const ok = await act('/api/assets/additions', Object.assign({}, form, { amount: money(form.amount) }), el.querySelector('[data-m-submit]'));
+      if (form.files.some(f => !f.id && !f.error)) return UI.toast('Wait for the document to finish uploading.');
+      const { files, ...fields } = form;
+      const ok = await act('/api/assets/additions', Object.assign({}, fields, { amount: money(form.amount), documents: files.filter(f => f.id).map(f => f.id) }), el.querySelector('[data-m-submit]'));
       if (ok) el.hidden = true;
     }
 

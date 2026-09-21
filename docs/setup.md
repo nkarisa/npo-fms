@@ -475,6 +475,24 @@ users have no password yet, so give each a link: `php spark user:link <email>`,
 or, once one person is in, **Email a link to set a password** under Settings → Users → Manage. The migration
 also gives the new `users.manage` permission to every role that could change settings.
 
+## Supporting documents
+
+Some records need a supporting document before they can move on: the supplier's
+invoice on a bill, the receipts on an advance surrender, the signed agreement on an
+active award, and a document on large or adjusting journals. Others are asked for
+one. [documents.md](documents.md) has the full list and how it works.
+
+- **Settings** are in `.env` as `documents.<name>`. For example,
+  `documents.journalThreshold = 250000` lowers the amount above which a journal
+  needs a document, and `documents.requireBillInvoice = false` turns off the invoice
+  rule, though an auditor will expect it on.
+- **Files** are stored under `writable/uploads/`. The web server must be able to
+  write there. **Back it up with the database**; the database only records where
+  each file is.
+- **Upgrading** needs no migration. Bills, surrenders and awards recorded before
+  the rules keep working, and their panels offer **Attach a document** so the
+  paperwork can be added.
+
 ---
 
 ## Resetting a database

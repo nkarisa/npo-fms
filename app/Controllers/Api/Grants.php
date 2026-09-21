@@ -115,8 +115,11 @@ class Grants extends BaseApiController
             'tranches' => array_map(static fn ($t) => ['no' => $t['no'], 'date' => $t['date'], 'amount' => Prototype::fmt($t['amount']), 'status' => $t['status']], $g['tranches']),
             'reports' => array_map(static fn ($r) => ['ref' => $r['ref'], 'name' => $r['name'], 'period' => $r['period'], 'due' => $r['due'], 'state' => $r['state']], $g['reports']),
             'conditions' => $g['conditions'],
+            'documents'  => $g['documents'],
             'ledgerAccount' => $g['budget'][0]['code'] ?? null,
             'canReceipt' => in_array($g['status'], ['Active', 'Closing'], true),
+            'canAttach'  => $this->canManage(),
+            'requireAgreement' => config(\Config\Documents::class)->requireGrantAgreement,
             'canActivate' => $g['status'] === 'Pipeline' && $this->canManage(),
             'reportAction' => match ($g['status']) {
                 'Pipeline' => 'Convert to award',
@@ -151,7 +154,10 @@ class Grants extends BaseApiController
     /** What the award form chooses from. */
     public function form()
     {
-        return $this->json((new GrantRepository())->formOptions() + ['nextFundCode' => (new GrantRepository())->nextFundCode()]);
+        return $this->json((new GrantRepository())->formOptions() + [
+            'nextFundCode' => (new GrantRepository())->nextFundCode(),
+            'requireAgreement' => config(\Config\Documents::class)->requireGrantAgreement,
+        ]);
     }
 
     /**
@@ -189,7 +195,7 @@ class Grants extends BaseApiController
         }
 
         try {
-            $g = (new GrantRepository())->activate($ref, $this->actorId());
+            $g = (new GrantRepository())->activate($ref, $this->actorId(), ($this->request->getJSON(true) ?? [])['documents'] ?? []);
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }

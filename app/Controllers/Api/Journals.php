@@ -5,6 +5,7 @@ namespace App\Controllers\Api;
 use App\Libraries\Clock;
 use App\Libraries\Prototype;
 use App\Repositories\ApprovalPolicy;
+use App\Repositories\AttachmentRepository;
 use App\Repositories\GrantRepository;
 use App\Repositories\JournalRepository;
 use App\Repositories\PeriodRepository;
@@ -13,11 +14,6 @@ use App\Repositories\RuleViolation;
 
 class Journals extends BaseApiController
 {
-    /** Supporting documents the form accepts: at most this many bytes each. */
-    private const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
-
-    private const ATTACHMENT_TYPES = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'msg', 'eml'];
-
     /** Rows per page of the register. */
     private const PAGE_SIZE = 10;
 
@@ -390,19 +386,8 @@ class Journals extends BaseApiController
         $multipart = str_starts_with($this->request->getHeaderLine('Content-Type'), 'multipart/form-data');
         $body = $multipart ? (json_decode((string) $this->request->getPost('payload'), true) ?? []) : ($this->request->getJSON(true) ?? []);
 
-        $files = [];
-        foreach ($multipart ? ($this->request->getFileMultiple('attachments') ?? []) : [] as $file) {
-            if (!$file->isValid()) {
-                throw new RuleViolation($file->getClientName() . ' did not upload: ' . $file->getErrorString());
-            }
-            if ($file->getSize() > self::ATTACHMENT_MAX_BYTES) {
-                throw new RuleViolation($file->getClientName() . ' is larger than 10 MB.');
-            }
-            if (!in_array(strtolower($file->getClientExtension()), self::ATTACHMENT_TYPES, true)) {
-                throw new RuleViolation($file->getClientName() . ' is not a document type the audit file accepts (PDF, image, Office, CSV, text or email).');
-            }
-            $files[] = ['path' => $file->getTempName(), 'name' => $file->getClientName(), 'size' => $file->getSize(), 'mime' => $file->getMimeType()];
-        }
+        $attachments = new AttachmentRepository();
+        $files = array_map([$attachments, 'accept'], $multipart ? ($this->request->getFileMultiple('attachments') ?? []) : []);
 
         $status = (string) ($body['status'] ?? 'Draft');
         if (!in_array($status, ['Draft', 'Pending approval'], true)) {

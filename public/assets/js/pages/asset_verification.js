@@ -123,6 +123,7 @@
       <div style="padding:14px 18px;">
         ${facts.map(([k, v]) => `<div class="detail-row"><span class="k">${UI.esc(k)}</span><span class="v">${UI.esc(v)}</span></div>`).join('')}
         ${asset.note ? `<div class="muted" style="font-size:11.5px;margin-top:10px;line-height:1.5;">${UI.esc(asset.note)}</div>` : ''}
+        ${asset.documents && asset.documents.length ? `<div style="margin-top:10px;">${UI.docList(asset.documents)}</div>` : ''}
       </div>
       <div style="border-top:1px solid #E4E2DB;padding:14px 18px;background:#FBFAF7;">
         <div style="font-weight:600;font-size:12.5px;margin-bottom:9px;">Record the count</div>
@@ -132,16 +133,23 @@
         <input id="av-note" placeholder="What was found" value="${UI.esc(asset.note || '')}"
                style="width:100%;box-sizing:border-box;margin-top:8px;border:1px solid #DDDAD2;border-radius:6px;padding:7px 8px;font-size:12px;">
         <div class="muted" style="font-size:11px;margin-top:7px;line-height:1.5;">Anything other than "Sighted" needs a note — a count without a reason is not evidence.</div>
+        <div id="av-docs" style="margin-top:10px;"></div>
         <button id="av-save" style="margin-top:10px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;">Save result</button>
       </div>`);
 
+    const photos = UI.docPicker(document.getElementById('av-docs'), {
+      label: 'Photo', recommended: true,
+      hint: 'The asset with its tag showing, or the damage found. It stays with the count as evidence.',
+    });
     document.getElementById('av-save').addEventListener('click', async (e) => {
+      if (photos.busy()) return UI.toast('Wait for the photo to finish uploading.');
       e.target.disabled = true;
       try {
         // The tag carries slashes; the API expects them as path segments.
         await UI.postJSON('/api/asset-verification/' + asset.tag, {
           result: document.getElementById('av-result').value,
           note: document.getElementById('av-note').value,
+          documents: photos.ids(),
         });
         UI.closeDrawer();
         UI.toast('Count recorded');

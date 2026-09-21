@@ -136,6 +136,7 @@ second-step screens.
 | `click:<selector>` | Click something, e.g. `'click:text=Approve and post'` |
 | `fill:<selector>=<value>` | Type into a field |
 | `select:<selector>=<label>` | Choose from a drop-down by its visible label |
+| `upload:<selector>=<name>` | Give a file input a small generated file with that name (e.g. `upload:#nb-docs input[type=file]=invoice.pdf`), and wait for the upload |
 | `wait:<selector>` | Wait until something is showing, e.g. a message — fails after 15 seconds |
 | `text:<selector>` | Print the text of something |
 | `eval:<javascript>` | Run JavaScript in the page and print the result |

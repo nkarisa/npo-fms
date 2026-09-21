@@ -62,12 +62,15 @@ class DonorReports extends BaseApiController
         ]);
     }
 
-    public function show($ref)
+    /** One report. Its reference carries slashes (DANIDA/CE-2025/27/R4), so it arrives in segments. */
+    public function show(string ...$ref)
     {
+        $ref = rawurldecode(implode('/', $ref));
         foreach ((new DonorReportRepository())->all() as $r) {
             if ($r['ref'] === $ref) {
                 $r['cumulative'] = self::cumOf($r);
                 $r['reported']   = self::reportedOf($r);
+                $r['canAttach']  = $this->can('journal.prepare');
                 return $this->json($r);
             }
         }

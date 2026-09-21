@@ -20,6 +20,7 @@ final class JournalLifecycleTest extends CIUnitTestCase
     use DatabaseTestTrait;
     use FeatureTestTrait;
     use \Tests\Support\SignsIn;
+    use \Tests\Support\StoresDocuments;
 
     protected $namespace = 'App';
     protected $refresh   = true;
@@ -269,6 +270,38 @@ final class JournalLifecycleTest extends CIUnitTestCase
         $repo->fromJournal($draft['ref'], $this->user('J. Achieng'));
     }
 
+    public function testALargeOrAdjustingEntryGoesForApprovalOnlyWithItsDocument(): void
+    {
+        $repo = new JournalRepository();
+        $achieng = $this->user('J. Achieng');
+        $entry = static fn (string $type, float $amount, string $status) => [
+            'date' => '2026-08-20', 'type' => $type, 'period' => 'Aug 2026', 'status' => $status, 'docLink' => 'auto',
+            'memo' => '', 'narration' => 'Consultancy accrual',
+        ];
+        $lines = fn (float $amount) => ['lines' => [$this->line('5330', $amount, 0), $this->line('2120', 0, $amount)]];
+
+        // Above the threshold: a draft saves, but it is not submitted without its document.
+        $draft = $repo->create($entry('Accrual', 750000, 'Draft') + $lines(750000), $achieng);
+        $this->assertSame('Draft', $draft['status']);
+        try {
+            $repo->update($draft['ref'], $entry('Accrual', 750000, 'Pending approval') + $lines(750000), $achieng);
+            $this->fail('A 750,000 entry went for approval without its document.');
+        } catch (RuleViolation $e) {
+            $this->assertStringContainsString('above the 500,000 at which a journal needs its supporting document', $e->getMessage());
+        }
+        $sent = $repo->update($draft['ref'], $entry('Accrual', 750000, 'Pending approval') + $lines(750000), $achieng, [$this->documentFile('consultancy-contract.pdf')]);
+        $this->assertSame(['Pending approval', 'consultancy-contract.pdf'], [$sent['status'], $sent['attachments'][0]['name']]);
+
+        // At or below it, only the types that always need one are stopped.
+        $this->assertSame('Pending approval', $repo->create($entry('Accrual', 500000, 'Pending approval') + $lines(500000), $achieng)['status']);
+        try {
+            $repo->create($entry('Adjustment', 400, 'Pending approval') + $lines(400), $achieng);
+            $this->fail('An adjustment went for approval without its document.');
+        } catch (RuleViolation $e) {
+            $this->assertStringContainsString('adjustment journal goes for approval only with the document', $e->getMessage());
+        }
+    }
+
     private function draft(string $status = 'Draft'): array
     {
         return (new JournalRepository())->create([
@@ -286,7 +319,7 @@ final class JournalLifecycleTest extends CIUnitTestCase
             'date' => '2026-08-21', 'type' => 'Adjustment', 'period' => 'Aug 2026', 'status' => 'Pending approval', 'docLink' => 'auto',
             'memo' => '', 'narration' => 'Reclassify stationery',
             'lines' => [$this->line('5330', 400, 0), $this->line('5310', 0, 400)],
-        ], $this->user('J. Achieng'));
+        ], $this->user('J. Achieng'), [$this->documentFile('reclassification-memo.pdf')]);
 
         return $repo->approve($journal['ref'], $this->user('W. Kamau'));
     }

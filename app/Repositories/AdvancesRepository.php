@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Libraries\Clock;
 use App\Libraries\Prototype;
+use Config\Documents;
 
 /**
  * Staff and observer advances.
@@ -61,8 +62,9 @@ final class AdvancesRepository extends Repository
                 $reminders[(int) $r['advance_id']][] = ['level' => (int) $r['level'], 'on' => self::dmy($r['sent_on']), 'to' => $r['sent_to']];
             }
             $trails = $this->trails('advance');
+            $documents = (new AttachmentRepository())->byObject('advance');
 
-            return array_map(function ($a) use ($surrenders, $recovered, $reminders, $trails) {
+            return array_map(function ($a) use ($surrenders, $recovered, $reminders, $trails, $documents) {
                 $id   = (int) $a['id'];
                 $fund = $this->lookups->funds()[$a['fund_id']];
 
@@ -85,6 +87,7 @@ final class AdvancesRepository extends Repository
                     'issueDate' => self::dmy($a['issued_on'], ''),
                     'accounted' => self::num(array_sum(array_column($surrenders[$id] ?? [], 'amount'))),
                     'receipts'  => $surrenders[$id] ?? [],
+                    'documents' => $documents[$id] ?? [],
                     'recovered' => self::num($recovered[$id] ?? 0),
                     'reminders' => $reminders[$id] ?? [],
                     'trail'     => $trails[$id] ?? [],
@@ -322,7 +325,7 @@ final class AdvancesRepository extends Repository
      * @param  list<array{code: string, desc: string, amount: float}> $receipts
      * @return array{balance: float, journal: string, accounted: float, cleared: bool}
      */
-    public function surrender(string $ref, array $receipts, string $mode, int $actorId): array
+    public function surrender(string $ref, array $receipts, string $mode, int $actorId, mixed $documentIds = []): array
     {
         $advance = $this->requireAdvance($ref);
         $current = $this->find($ref);
@@ -339,6 +342,11 @@ final class AdvancesRepository extends Repository
             if (trim($r['desc']) === '') {
                 throw new RuleViolation('Every receipt line needs a description — the audit file has to say what was bought.');
             }
+        }
+        $attachments = new AttachmentRepository();
+        $documents = $attachments->pending($documentIds, $actorId);
+        if ($documents === [] && config(Documents::class)->requireAdvanceReceipts) {
+            throw new RuleViolation('Attach the receipts for what was spent — a scan or photo of each. The surrender codes them to the programme, and the audit file needs the receipts themselves.');
         }
 
         // What is still to be accounted for, so a second surrender picks up where
@@ -370,7 +378,7 @@ final class AdvancesRepository extends Repository
             default        => 'Surrendered in full with receipts',
         };
 
-        return $this->transaction(function () use ($advance, $ref, $receipts, $lines, $note, $partial, $balance, $accounted, $actorId) {
+        return $this->transaction(function () use ($advance, $ref, $receipts, $lines, $note, $partial, $balance, $accounted, $actorId, $attachments, $documents) {
             $journal = (new JournalRepository())->postFromSource([
                 'date' => Clock::date(), 'sourceType' => 'advance', 'sourceId' => (int) $advance['id'], 'docRef' => $ref, 'series' => 'JV',
                 'narration' => 'Surrender of ' . $ref . ' — ' . $advance['holder_name'],
@@ -398,7 +406,9 @@ final class AdvancesRepository extends Repository
                 }
             }
 
-            $this->audit('advance', $id, $ref, $note . ' · ' . $journal . ' by ' . $this->lookups->shortName($actorId), $actorId);
+            $attachments->claim($documents, 'advance', $id);
+            $this->audit('advance', $id, $ref, $note . ' · ' . $journal . ' by ' . $this->lookups->shortName($actorId)
+                . ($documents === [] ? '' : ' · ' . count($documents) . ' receipt document' . (count($documents) === 1 ? '' : 's') . ' attached'), $actorId);
 
             return ['balance' => $balance, 'journal' => $journal, 'accounted' => $accounted, 'cleared' => !$partial];
         });

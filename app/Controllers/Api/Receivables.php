@@ -167,6 +167,7 @@ class Receivables extends BaseApiController
                 'writeOff' => Repo::isLate($i) && $actor['canApprove'],
                 'recover'  => $i['status'] === 'Written off' && Repo::outstanding($i) > 0 && $actor['canApprove'],
                 'allowance' => Repo::canCarryAllowance($i) && $actor['canApprove'],
+                'attach'   => $actor['canPrepare'],
                 'note'     => $draft && $mine && $actor['canApprove']
                     ? 'You built this claim, so a second person must issue it.'
                     : ($draft && !$actor['canApprove'] ? 'Issuing a claim needs an approver — it raises the receivable and recognises the income.' : ''),

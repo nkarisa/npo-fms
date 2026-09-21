@@ -542,11 +542,12 @@ final class AssetRepository extends Repository
 
         return $this->cached('results', function () use ($round) {
             $out = [];
+            $documents = (new AttachmentRepository())->byObject('verification_result');
             foreach ($this->rows(
-                'SELECT a.tag, r.result, r.note FROM {verification_results} r JOIN {assets} a ON a.id = r.asset_id WHERE r.verification_round_id = ?',
+                'SELECT r.id, a.tag, r.result, r.note FROM {verification_results} r JOIN {assets} a ON a.id = r.asset_id WHERE r.verification_round_id = ?',
                 [$round['id']]
             ) as $r) {
-                $out[$r['tag']] = ['result' => self::RESULT_LABELS[$r['result']], 'note' => $r['note'] ?? ''];
+                $out[$r['tag']] = ['result' => self::RESULT_LABELS[$r['result']], 'note' => $r['note'] ?? '', 'id' => (int) $r['id'], 'documents' => $documents[(int) $r['id']] ?? []];
             }
 
             return $out;
@@ -554,7 +555,7 @@ final class AssetRepository extends Repository
     }
 
     /** Records (or re-records) the count result for one asset. */
-    public function record(string $tag, string $result, string $note, int $actorId): array
+    public function record(string $tag, string $result, string $note, int $actorId, mixed $documentIds = []): array
     {
         $round = $this->round();
         $asset = $this->row('SELECT id FROM {assets} WHERE tag = ?', [$tag]);
@@ -570,11 +571,16 @@ final class AssetRepository extends Repository
             'counted_by' => $actorId, 'counted_at' => Clock::timestamp(), 'updated_at' => Clock::timestamp(),
         ];
 
-        $this->transaction(function () use ($round, $asset, $row, $tag, $result, $actorId) {
+        // Recommended: a photo of the asset and its tag, or of the damage found.
+        $attachments = new AttachmentRepository($this->db);
+        $documents = $attachments->pending($documentIds, $actorId);
+
+        $this->transaction(function () use ($round, $asset, $row, $tag, $result, $actorId, $attachments, $documents) {
             $existing = $this->value('SELECT id FROM {verification_results} WHERE verification_round_id = ? AND asset_id = ?', [$round['id'], $asset['id']]);
             $existing === null
-                ? $this->insert('verification_results', $row + ['verification_round_id' => $round['id'], 'asset_id' => $asset['id'], 'created_at' => Clock::timestamp()])
+                ? $existing = $this->insert('verification_results', $row + ['verification_round_id' => $round['id'], 'asset_id' => $asset['id'], 'created_at' => Clock::timestamp()])
                 : $this->db->table('verification_results')->where('id', $existing)->update($row);
+            $attachments->claim($documents, 'verification_result', (int) $existing);
             $this->audit('asset', (int) $asset['id'], $tag, 'Counted in ' . $round['reference'] . ': ' . $result . ' (' . $this->lookups->shortName($actorId) . ')', $actorId);
         });
 

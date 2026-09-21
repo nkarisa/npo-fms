@@ -22,6 +22,7 @@ final class AdvancesTest extends CIUnitTestCase
     use DatabaseTestTrait;
     use FeatureTestTrait;
     use \Tests\Support\SignsIn;
+    use \Tests\Support\StoresDocuments;
 
     protected $namespace = 'App';
     protected $refresh   = true;
@@ -101,9 +102,13 @@ final class AdvancesTest extends CIUnitTestCase
         $this->refusal('api/advances/ADV-26-0047/surrender', [
             'receipts' => [['code' => '5140', 'desc' => '', 'amount' => 1000]],
         ], 'needs a description');
+        $this->refusal('api/advances/ADV-26-0047/surrender', [
+            'receipts' => [['code' => '5140', 'desc' => 'Fuel', 'amount' => 1000]],
+        ], 'Attach the receipts for what was spent');
 
         $res = $this->send('api/advances/ADV-26-0047/surrender', [
             'mode' => 'refund',
+            'documents' => [$this->document('s.njeri@elog.or.ke', 'receipts.pdf')],
             'receipts' => [
                 ['code' => '5140', 'desc' => 'Fuel, Nakuru to Naivasha, three vehicles', 'amount' => 148000],
                 ['code' => '5110', 'desc' => 'Field kit handling and porterage', 'amount' => 96000],
@@ -117,6 +122,7 @@ final class AdvancesTest extends CIUnitTestCase
 
         $advance = $this->show('ADV-26-0047');
         $this->assertSame('Surrendered', $advance['status']);
+        $this->assertSame(['receipts.pdf'], array_column($advance['documents'], 'name'));
         $this->assertSame('—', $advance['outstanding']);
 
         // The expenditure lands on the programme lines and 1220 comes down by the
@@ -133,6 +139,7 @@ final class AdvancesTest extends CIUnitTestCase
         $this->actAs('s.njeri@elog.or.ke');
         $this->send('api/advances/ADV-26-0047/surrender', [
             'mode' => 'outstanding',
+            'documents' => [$this->document('s.njeri@elog.or.ke', 'receipts.pdf')],
             'receipts' => [['code' => '5140', 'desc' => 'Fuel and tolls, first leg', 'amount' => 100000]],
         ])->assertOK();
 
@@ -143,6 +150,7 @@ final class AdvancesTest extends CIUnitTestCase
         // A second surrender picks up from what is left, not the whole advance.
         $res = $this->send('api/advances/ADV-26-0047/surrender', [
             'mode' => 'refund',
+            'documents' => [$this->document('s.njeri@elog.or.ke', 'receipts.pdf')],
             'receipts' => [['code' => '5110', 'desc' => 'Field kit handling, remaining counties', 'amount' => 154000]],
         ]);
         $res->assertOK();
@@ -157,6 +165,7 @@ final class AdvancesTest extends CIUnitTestCase
         $this->actAs('s.njeri@elog.or.ke');
         $res = $this->send('api/advances/ADV-26-0039/surrender', [
             'mode' => 'refund',
+            'documents' => [$this->document('s.njeri@elog.or.ke', 'receipts.pdf')],
             'receipts' => [['code' => '5140', 'desc' => 'Deployment transport and lodging', 'amount' => 92000]],
         ]);
         $res->assertOK();
@@ -257,6 +266,7 @@ final class AdvancesTest extends CIUnitTestCase
         $this->actAs('s.njeri@elog.or.ke');
         $this->send('api/advances/ADV-26-0039/surrender', [
             'mode' => 'outstanding',
+            'documents' => [$this->document('s.njeri@elog.or.ke', 'receipts.pdf')],
             'receipts' => [['code' => '5140', 'desc' => 'Deployment transport', 'amount' => 40000]],
         ])->assertOK();
 

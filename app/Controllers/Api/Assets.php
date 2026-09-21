@@ -8,6 +8,7 @@ use App\Repositories\AssetAdditionRepository;
 use App\Repositories\AssetRepository;
 use App\Repositories\Lookups;
 use App\Repositories\RuleViolation;
+use App\Repositories\AttachmentRepository;
 
 /**
  * Asset register (v5): the register with its stats and tabs, the monthly
@@ -66,6 +67,8 @@ class Assets extends BaseApiController
                 'year' => $y['year'], 'opening' => $fmt($y['opening']), 'charge' => $fmt($y['charge']), 'closing' => $fmt($y['closing']), 'current' => $y['current'],
             ], $repo->schedule($a, $posted ? $disposal : null)),
             'trail' => $a['trail'],
+            'documents' => (new AttachmentRepository())->for('asset', (int) $a['id']),
+            'canAttach' => $actor['canPrepare'],
             'facts' => [
                 ['label' => 'Class', 'value' => $a['cls']],
                 ['label' => 'Acquired', 'value' => $a['acquired'] . ($a['doc'] !== '' ? ' · ' . $a['doc'] : '')],
@@ -147,7 +150,7 @@ class Assets extends BaseApiController
                 'description' => (string) ($b['description'] ?? ''), 'amount' => self::amount($b['amount'] ?? 0), 'date' => (string) ($b['date'] ?? ''),
                 'source' => (string) ($b['source'] ?? ''), 'reference' => (string) ($b['reference'] ?? ''), 'reason' => (string) ($b['reason'] ?? ''),
                 'life' => (int) ($b['life'] ?? 0), 'location' => (string) ($b['location'] ?? ''), 'custodian' => (string) ($b['custodian'] ?? ''),
-                'title' => (string) ($b['title'] ?? ''),
+                'title' => (string) ($b['title'] ?? ''), 'documents' => $b['documents'] ?? [],
             ], $this->actorId());
         } catch (RuleViolation $e) {
             return $this->refused($e);

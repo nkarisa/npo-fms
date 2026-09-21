@@ -20,6 +20,7 @@ final class GrantsTest extends CIUnitTestCase
     use DatabaseTestTrait;
     use FeatureTestTrait;
     use \Tests\Support\SignsIn;
+    use \Tests\Support\StoresDocuments;
 
     protected $namespace = 'App';
     protected $refresh   = true;
@@ -140,6 +141,7 @@ final class GrantsTest extends CIUnitTestCase
             [['reports' => [['name' => 'Financial report', 'due' => '']]], 'Every report needs a name and a due date'],
             [['conditions' => ['  ']], 'Record at least one condition'],
             [['currency' => 'XYZ'], 'not a currency this instance holds'],
+            [['documents' => []], 'Attach the signed grant agreement'],
         ] as [$change, $expected]) {
             try {
                 (new GrantRepository())->record(array_merge($this->award(), $change), $kamau);
@@ -180,17 +182,22 @@ final class GrantsTest extends CIUnitTestCase
     public function testAPipelineAwardIsConvertedOnSignature(): void
     {
         $kamau = $this->user('w.kamau@elog.or.ke');
-        (new GrantRepository())->record(array_merge($this->award(), ['status' => 'Pipeline']), $kamau);
+        // A proposal may be recorded before there is an agreement to attach…
+        (new GrantRepository())->record(array_merge($this->award(), ['status' => 'Pipeline', 'documents' => []]), $kamau);
 
         $this->actAs('m.otieno@elog.or.ke');
         $this->post('api/grants/SIDA/CE-2027/activate')->assertStatus(403);
 
+        // …but it goes live only with the signed agreement.
         $this->actAs('w.kamau@elog.or.ke');
-        $done = $this->post('api/grants/SIDA/CE-2027/activate');
+        $this->assertStringContainsString('Attach the signed grant agreement', json_decode($this->post('api/grants/SIDA/CE-2027/activate')->getJSON(), true)['error']);
+        $done = $this->withBodyFormat('json')->post('api/grants/SIDA/CE-2027/activate', ['documents' => [$this->document('w.kamau@elog.or.ke', 'signed-agreement.pdf')]]);
         $done->assertStatus(200);
         $this->assertSame('SIDA/CE-2027 is active. Its budget may be committed against from today.', json_decode($done->getJSON(), true)['message']);
         $this->seeInDatabase('grants', ['award_ref' => 'SIDA/CE-2027', 'status' => 'active']);
         $this->seeInDatabase('audit_events', ['object_ref' => 'SIDA/CE-2027', 'action' => 'grant.activated']);
+        Repository::forget();
+        $this->assertSame(['signed-agreement.pdf'], array_column((new GrantRepository())->find('SIDA/CE-2027')['documents'], 'name'));
 
         // The seeded proposal has no agreement period yet, and an active award is not converted twice.
         $this->assertStringContainsString('Record the agreement period', json_decode($this->post('api/grants/HIVOS/PROP-2026/activate')->getJSON(), true)['error']);
@@ -200,9 +207,11 @@ final class GrantsTest extends CIUnitTestCase
     // ------------------------------------------------------------------
 
     /** A complete award as the form sends it: USD, a new restricted fund, two budget lines and tranches. */
+    /** The award form as grants.js sends it, with the signed agreement uploaded by the Finance Manager. */
     private function award(): array
     {
         return [
+            'documents' => [$this->document('w.kamau@elog.or.ke', 'grant-agreement.pdf')],
             'funder' => 'Embassy of Sweden', 'ref' => 'SIDA/CE-2027', 'title' => 'County civic education and voter information 2027',
             'program' => 'Civic Education', 'alsoPrograms' => ['Election Observation'], 'manager' => 'M. Otieno',
             'currency' => 'USD', 'rate' => 129.4, 'value' => 12000000, 'start' => '2026-10-01', 'end' => '2028-09-30', 'status' => 'Active',

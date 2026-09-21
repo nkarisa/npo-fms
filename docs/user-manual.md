@@ -127,6 +127,7 @@ General:
 
 - [About the application](#about-the-application)
 - [Getting started](#getting-started)
+- [Supporting documents](#supporting-documents)
 
 Pages, in sidebar order. ✅ means the section is written; *coming soon* means it
 is planned.
@@ -756,3 +757,78 @@ but you can change their permissions. A role you added can be removed with
 | Someone lost their phone and codes | Users → **Manage** → **Reset second step** |
 | Create a role | Roles → **New role** → name, permissions → **Add role** |
 | Change what a role can do | Roles → **Edit** on its card → tick or untick permissions → **Save role** |
+
+---
+
+## Supporting documents
+
+An auditor, or a donor checking how their money was spent, picks transactions and
+asks for the paper behind each one. The application keeps that paper with the
+record. For some records it is required: you cannot go on without it.
+
+### 1. Attaching a document on a form
+
+Forms that take a document show a box headed with what it is for, such as
+**Supplier's invoice** or **Receipts**. The box is marked **Required** or
+**Recommended**.
+
+1. Click **+ Attach a document** and choose the file. A scan, a photo from your
+   phone, or the PDF you were sent is fine. You can choose several at once.
+2. The file uploads straight away and appears with its size. While it says
+   *Uploading…*, wait before saving.
+3. To take a file off, click **✕** next to it.
+4. Save the form as usual. The documents are filed with the record.
+
+Accepted: PDF, images (PNG, JPG, GIF, WebP, HEIC), Word, Excel, CSV, text and saved
+emails. Each file can be up to 10 MB.
+
+### 2. What is required
+
+| Where | What you must attach | When |
+|---|---|---|
+| Payables → **+ New bill** | The supplier's invoice | Before **Capture bill** |
+| Procurement → **Raise supplier bill** | The supplier's invoice | Before the bill is raised |
+| Staff advances → **Surrender with receipts** | The receipts | Before **Post surrender** |
+| Grants and awards → **+ Record award** | The signed grant agreement | When **Record as** is **Active**. A **Pipeline** award can be recorded without it. |
+| Grants and awards → **Convert to award** | The signed agreement | Attach it on the award first |
+| Journals | The supporting document | Before **Submit for approval**, if the entry is over 500,000 or is an **Adjustment**. The editor tells you when this applies. You can save a draft without it. |
+| Procurement → quotations | Each supplier's quotation | Above 500,000, only quotations with their document count towards the three required |
+
+If something is missing, the form says what to attach, and nothing is saved.
+
+### 3. What is recommended
+
+These records do not need a document, but have a place for one:
+
+- **Receivables:** the donor's request for the claim, or the claim as sent.
+- **Asset register:** the deed of gift, valuation, purchase invoice or title.
+- **Asset verification:** a photo of the asset with its tag, or of the damage.
+- **Donor reports:** the report as submitted and the donor's acknowledgement.
+
+### 4. Opening a document and adding one later
+
+Open the record: a bill, advance, award, invoice, asset or donor report. Its
+documents are listed with who attached them and when. Click one to download it.
+
+To add a document to a record that already exists, for example a signed agreement
+that arrived after the award was recorded:
+
+1. Under the documents, click **+ Attach a document** and choose the file.
+2. Click **Add to the file**.
+
+Records from before documents were required may say *No supporting document on
+file*. Attach the paper when you find it.
+
+A document cannot be removed once it is on a record: it is part of the audit
+trail. If the wrong file went on, attach the right one; the history shows both.
+
+### 5. Quick reference
+
+| Task | How |
+|---|---|
+| Capture a bill | Payables → **+ New bill** → fill in → **+ Attach a document** (the invoice) → **Capture bill** |
+| Surrender an advance | Open the advance → **Surrender with receipts** → code the receipts → attach them → **Post surrender** |
+| Record a signed award | Grants → **+ Record award** → **Record as: Active** → attach the agreement → continue through the steps |
+| Convert a pipeline award | Open the award → **+ Attach a document** → **Add to the file** → **Convert to award** |
+| Add paperwork later | Open the record → **+ Attach a document** → **Add to the file** |
+

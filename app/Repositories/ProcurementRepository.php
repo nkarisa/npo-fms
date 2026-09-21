@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Libraries\Clock;
 use App\Libraries\Prototype;
+use Config\Documents;
 
 /**
  * Requisition → quotation → purchase order → goods received → bill.
@@ -163,7 +164,18 @@ final class ProcurementRepository extends Repository
 
     public static function needsQuotes(array $p): bool
     {
-        return $p['amount'] > self::QUOTE_THRESHOLD && count($p['quotes']) < 3;
+        return $p['amount'] > self::QUOTE_THRESHOLD && self::quotesOnFile($p) < 3;
+    }
+
+    /**
+     * The quotations that count towards the three: those with their document
+     * attached, while Config\Documents::$requireQuotationDocuments holds.
+     */
+    public static function quotesOnFile(array $p): int
+    {
+        return config(Documents::class)->requireQuotationDocuments
+            ? count(array_filter($p['quotes'], static fn ($q) => ($q['document'] ?? null) !== null))
+            : count($p['quotes']);
     }
 
     /**
@@ -491,7 +503,9 @@ final class ProcurementRepository extends Repository
         }
         if (self::needsQuotes($current) && $waiver === '') {
             throw new RuleViolation($no . ' is ' . Prototype::fmt($current['amount']) . ', above the ' . Prototype::fmt(self::QUOTE_THRESHOLD)
-                . ' threshold, and has ' . count($current['quotes']) . ' of the 3 quotations required. Record the missing quotations or give a single-source justification.');
+                . ' threshold, and has ' . self::quotesOnFile($current) . ' of the 3 quotations required'
+                . (count($current['quotes']) > self::quotesOnFile($current) ? ' with their documents attached — a quotation counts only with the supplier\'s document' : '')
+                . '. Record the missing quotations or give a single-source justification.');
         }
         $supplier = $this->row('SELECT * FROM {suppliers} WHERE LOWER(name) = ?', [strtolower($supplierName)]);
         if ($supplier === null) {
@@ -600,7 +614,7 @@ final class ProcurementRepository extends Repository
      * Raises the supplier bill in Payables on the three-way match: the order, the goods
      * received note and the supplier's invoice. The requisition closes.
      */
-    public function raiseBill(string $no, string $invoiceNo, int $actorId): array
+    public function raiseBill(string $no, string $invoiceNo, int $actorId, mixed $documents = []): array
     {
         $req = $this->header($no);
         $grn = $this->row(
@@ -615,8 +629,8 @@ final class ProcurementRepository extends Repository
             throw new RuleViolation($grn['po_ref'] . ' has already been billed.');
         }
 
-        $bill = $this->transaction(function () use ($req, $grn, $invoiceNo, $actorId) {
-            $bill = (new PayablesRepository())->captureFromReceipt((int) $grn['id'], $invoiceNo, $actorId);
+        $bill = $this->transaction(function () use ($req, $grn, $invoiceNo, $actorId, $documents) {
+            $bill = (new PayablesRepository())->captureFromReceipt((int) $grn['id'], $invoiceNo, $actorId, $documents);
             $now = Clock::timestamp();
             $this->db->table('purchase_orders')->where('id', $grn['po_id'])->update(['status' => 'closed', 'updated_at' => $now]);
             $this->db->table('requisitions')->where('id', $req['id'])->update(['status' => 'closed', 'updated_at' => $now]);
@@ -662,23 +676,7 @@ final class ProcurementRepository extends Repository
     /** Keeps a quotation document under writable/uploads and records it. Returns the stored path. */
     private function storeDocument(int $quotationId, array $file, int $actorId): string
     {
-        $key  = self::ATTACHMENT_DIR . '/' . bin2hex(random_bytes(16)) . (pathinfo($file['name'], PATHINFO_EXTENSION) !== '' ? '.' . strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) : '');
-        $path = WRITEPATH . 'uploads/' . $key;
-        if (!is_dir(dirname($path))) {
-            mkdir(dirname($path), 0775, true);
-        }
-        if (!copy($file['path'], $path)) {
-            throw new RuleViolation('The quotation ' . $file['name'] . ' could not be stored.');
-        }
-
-        $this->insert('attachments', [
-            'entity_id' => $this->lookups->entityId(), 'object_type' => 'quotation', 'object_id' => $quotationId,
-            'filename' => mb_substr($file['name'], 0, 255), 'mime_type' => mb_substr($file['mime'] ?: 'application/octet-stream', 0, 100),
-            'size_bytes' => $file['size'], 'storage_key' => $key, 'sha256' => hash_file('sha256', $path),
-            'uploaded_by' => $actorId, 'uploaded_at' => Clock::timestamp(),
-        ]);
-
-        return $path;
+        return (new AttachmentRepository($this->db))->store('quotation', $quotationId, $file, $actorId, self::ATTACHMENT_DIR)[1];
     }
 
     private static function size(int $bytes): string

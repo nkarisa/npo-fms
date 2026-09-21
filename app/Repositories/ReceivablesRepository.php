@@ -90,7 +90,9 @@ final class ReceivablesRepository extends Repository
                 }
             }
 
-            return array_map(function ($i) use ($lines, $receipts, $trails, $allowances) {
+            $documents = (new AttachmentRepository())->byObject('invoice');
+
+            return array_map(function ($i) use ($lines, $receipts, $trails, $allowances, $documents) {
                 $id = (int) $i['id'];
                 $invoice = [
                     'no'         => $i['reference'],
@@ -117,6 +119,7 @@ final class ReceivablesRepository extends Repository
                     'lines'      => $lines[$id] ?? [],
                     'receipts'   => $receipts[$id] ?? [],
                     'trail'      => $trails[$id] ?? [],
+                    'documents'  => $documents[$id] ?? [],
                 ];
 
                 return $i['currency'] === 'KES' ? $invoice : $invoice + ['fx' => (float) $i['fx_rate'], 'amountFc' => self::num($i['amount_fc'])];
@@ -353,8 +356,12 @@ final class ReceivablesRepository extends Repository
 
         $total = array_sum(array_column($lines, 'amount'));
         $who = $this->lookups->shortName($actorId);
+        // Recommended, not required: the claim is assembled from the ledger, but the
+        // donor's request or the signed contract for other income belongs with it.
+        $attachments = new AttachmentRepository();
+        $documents = $attachments->pending($f['documents'] ?? [], $actorId);
 
-        $no = $this->transaction(function () use ($other, $f, $grant, $type, $period, $basis, $ccy, $fx, $lines, $total, $actorId, $who) {
+        $no = $this->transaction(function () use ($other, $f, $grant, $type, $period, $basis, $ccy, $fx, $lines, $total, $actorId, $who, $attachments, $documents) {
             $now = Clock::timestamp();
             $today = Clock::date();
             $grantId = $grant === null ? null : $this->lookups->grantId($grant['ref']);
@@ -380,7 +387,9 @@ final class ReceivablesRepository extends Repository
                     'description' => $l['desc'], 'amount_fc' => $fc, 'amount' => $l['amount'],
                 ]);
             }
-            $this->audit('invoice', $id, $no, 'Draft ' . ($other ? 'invoice raised' : 'claim built from the ' . $grant['ref'] . ' budget') . ' by ' . $who, $actorId, 'history', $this->lookups->entityId());
+            $attachments->claim($documents, 'invoice', $id);
+            $this->audit('invoice', $id, $no, 'Draft ' . ($other ? 'invoice raised' : 'claim built from the ' . $grant['ref'] . ' budget') . ' by ' . $who
+                . ($documents === [] ? '' : ' · ' . count($documents) . ' document' . (count($documents) === 1 ? '' : 's') . ' attached'), $actorId, 'history', $this->lookups->entityId());
 
             return $no;
         });

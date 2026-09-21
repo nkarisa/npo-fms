@@ -21,6 +21,7 @@ final class ProcurementTest extends CIUnitTestCase
     use DatabaseTestTrait;
     use FeatureTestTrait;
     use \Tests\Support\SignsIn;
+    use \Tests\Support\StoresDocuments;
 
     protected $namespace = 'App';
     protected $refresh   = true;
@@ -117,10 +118,11 @@ final class ProcurementTest extends CIUnitTestCase
         $before = $repo->find('REQ-26-0060');
 
         $this->actAs('s.njeri@elog.or.ke');
-        // Two quotations on a 1,340,000 requisition: the order needs a single-source justification.
+        // Two quotations on a 1,340,000 requisition, neither with its document: the order
+        // needs a single-source justification.
         $refused = $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', []);
         $refused->assertStatus(422);
-        $this->assertStringContainsString('2 of the 3 quotations', json_decode($refused->getJSON(), true)['error']);
+        $this->assertStringContainsString('0 of the 3 quotations required with their documents attached', json_decode($refused->getJSON(), true)['error']);
         $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', ['supplier' => 'Computech Ltd', 'waiver' => 'Framework'])->assertStatus(422);
 
         $ordered = $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', ['waiver' => 'Framework rates agreed under tender ELOG/T/2025/04']);
@@ -138,7 +140,8 @@ final class ProcurementTest extends CIUnitTestCase
         $this->assertEqualsWithDelta($accrued + 1340000, $lookups->balance('2120'), 0.001);
 
         $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/bill', ['invoiceNo' => ''])->assertStatus(422);
-        $billed = json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/bill', ['invoiceNo' => 'RVCH-2026-311'])->getJSON(), true);
+        $this->assertStringContainsString("Attach the supplier's invoice", json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/bill', ['invoiceNo' => 'RVCH-2026-311'])->getJSON(), true)['error']);
+        $billed = json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/bill', ['invoiceNo' => 'RVCH-2026-311', 'documents' => [$this->document('s.njeri@elog.or.ke')]])->getJSON(), true);
         $this->assertSame('Closed', $billed['requisition']['status']);
         $this->assertSame(['Awaiting approval', 1340000, 67000], [$billed['bill']['status'], $billed['bill']['taxable'], $billed['bill']['wht']]);
 
@@ -156,7 +159,7 @@ final class ProcurementTest extends CIUnitTestCase
         $this->post('api/procurement/REQ-26-0061/rfq')->assertStatus(422);
 
         // REQ-26-0055 was received before the ledger was migrated: its bill charges the cost.
-        $billed = json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0055/bill', ['invoiceNo' => 'SAF-INV-88120'])->getJSON(), true);
+        $billed = json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0055/bill', ['invoiceNo' => 'SAF-INV-88120', 'documents' => [$this->document('s.njeri@elog.or.ke')]])->getJSON(), true);
         $this->assertSame('Closed', $billed['requisition']['status']);
         $bill = (new PayablesRepository())->approve([$billed['bill']['no']], (new Lookups())->userId('w.kamau@elog.or.ke'))['done'][0];
         $this->assertSame('Approved', $bill['status']);

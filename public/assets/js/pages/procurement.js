@@ -221,6 +221,7 @@
   const Requisition = (() => {
     let el;
     let current = null; // { requisition, can }
+    let billDocs = null; // the invoice picker while a bill is being raised
     let mode = null; // 'reject' | 'po' | 'receive' | 'bill'
 
     function build() {
@@ -269,7 +270,8 @@
             return run(() => UI.postJSON(url('receive'), { receivedBy: value('pqd-received-by'), note: value('pqd-note') }),
               (d) => `Goods received against ${r.no} on ${d.requisition.grn}; the commitment is released and the cost accrued.`);
           case 'confirm-bill':
-            return run(() => UI.postJSON(url('bill'), { invoiceNo: value('pqd-invoice') }),
+            if (billDocs && billDocs.busy()) return UI.toast('Wait for the invoice to finish uploading.');
+            return run(() => UI.postJSON(url('bill'), { invoiceNo: value('pqd-invoice'), documents: billDocs ? billDocs.ids() : [] }),
               (d) => `${d.bill.no} created in Payables from ${r.no}, awaiting approval.`);
         }
       });
@@ -313,7 +315,7 @@
         </div>` : ''}
         ${r.needsQuotes ? `<div class="pq-alert warn">
           <span class="pq-alert-mark">!</span>
-          <span>Three quotations are required above KES ${fmt(data ? data.threshold : 500000)}. Fewer are on file — attach the rest or record a single-source justification when the order is raised.</span>
+          <span>Three quotations, each with the supplier's document, are required above KES ${fmt(data ? data.threshold : 500000)}. ${r.quotesOnFile} ${r.quotesOnFile === 1 ? 'is' : 'are'} on file — attach the rest or record a single-source justification when the order is raised.</span>
         </div>` : ''}
         ${r.status === 'Rejected' && r.rejectedReason ? `<div class="ap-reject-note">Rejected — ${esc(r.rejectedReason)}</div>` : ''}
         <div class="ar-figures" style="grid-template-columns:repeat(4,minmax(0,1fr));">
@@ -389,7 +391,7 @@
               ? r.quotes.map(q => `<option value="${esc(q.supplier)}" ${q === chosen ? 'selected' : ''}>${esc(q.supplier)} · ${fmt(q.amount)}</option>`).join('')
               : `<option value="${esc(r.supplier)}">${esc(r.supplier || 'Name the supplier on the requisition first')}</option>`}</select>
           </label>
-          ${r.needsQuotes ? `<label class="ap-f warn" style="flex:1 1 100%;"><span>Single-source justification — ${r.quotes.length} of 3 quotations on file</span>
+          ${r.needsQuotes ? `<label class="ap-f warn" style="flex:1 1 100%;"><span>Single-source justification — ${r.quotesOnFile} of 3 documented quotations on file</span>
             <input id="pqd-waiver" placeholder="e.g. Framework rates agreed under tender ELOG/T/2025/04"></label>` : ''}
           <div style="display:flex;gap:9px;margin-inline-start:auto;">${cancel}<button type="button" class="btn btn-primary" data-act="confirm-po">Raise purchase order</button></div>`;
         return;
@@ -404,8 +406,10 @@
       if (mode === 'bill') {
         foot.innerHTML = `
           <label class="ap-f" style="flex:1 1 200px;"><span>Supplier invoice number</span><input class="mono" id="pqd-invoice" placeholder="INV-2026-0871"></label>
+          <div id="pqd-bill-docs" style="flex:1 1 100%;"></div>
           <span class="ap-note" style="flex:1 1 100%;">Matches ${esc(r.po)}, ${esc(r.grn)} and the invoice. The bill waits for approval in Payables; approving it clears the accrual.</span>
           <div style="display:flex;gap:9px;margin-inline-start:auto;">${cancel}<button type="button" class="btn btn-primary" data-act="confirm-bill">Raise supplier bill</button></div>`;
+        billDocs = UI.docPicker(foot.querySelector('#pqd-bill-docs'), { label: "Supplier's invoice", required: true, hint: 'The third leg of the match. The bill does not go for approval without it.' });
         return;
       }
       foot.innerHTML = `

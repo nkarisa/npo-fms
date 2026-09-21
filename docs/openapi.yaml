@@ -105,6 +105,8 @@ tags:
     description: The signed-in user's own password, second factor and recovery codes.
   - name: Roles and users
     description: Roles and their permissions, and who holds which role where. Changes need `users.manage`.
+  - name: Documents
+    description: Supporting documents for every module. Upload first, then name the upload in the form's `documents`, or attach it to a record that already exists. See docs/documents.md.
   - name: Me
     description: The signed-in user, the menu, and (training instances only) the act-as switch.
   - name: Notifications
@@ -229,6 +231,21 @@ components:
         name: { type: string, maxLength: 60 }
         description: { type: string }
         permissions: { type: array, items: { type: string }, description: Permission keys from the catalogue. }
+    Document:
+      type: object
+      description: A supporting document on a record. Download it from `GET /attachments/{id}`.
+      properties:
+        id: { type: integer }
+        name: { type: string, example: supplier-invoice.pdf }
+        size: { type: string, example: 184 KB }
+        by: { type: string, description: Who attached it, example: S. Njeri }
+        on: { type: string, example: 31 Aug 2026 }
+
+    DocumentIds:
+      type: array
+      description: Ids of the uploads (`POST /attachments`) to attach with this record. Each must be an upload by the same person that is still waiting to be attached.
+      items: { type: integer }
+
     Message:
       type: object
       description: A write acknowledgement plus the refreshed view of the resource.
@@ -1109,6 +1126,120 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/Unprocessable' }
 
+  /attachments:
+    post:
+      tags: [Documents]
+      summary: Upload a supporting document
+      description: >
+        Keeps the file against the uploader until a form attaches it (its `documents`) or it is
+        attached to an existing record (`POST /documents/{kind}/{ref}`). Uploads nobody attaches are
+        removed after `documents.unclaimedHours`. At most `documents.maxBytes`, and one of the
+        accepted types (PDF, images, Office, CSV, text, email).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: The upload, waiting to be attached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      name: { type: string }
+                      size: { type: string }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /attachments/{id}:
+    get:
+      tags: [Documents]
+      summary: Download a supporting document
+      description: For its uploader, or anyone holding a role at the entity it belongs to. A document still waiting to be attached opens only for its uploader.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: The file.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /attachments/{id}/discard:
+    post:
+      tags: [Documents]
+      summary: Remove an upload that was not attached
+      description: Only its uploader, and only while it waits. A document on a record stays with it as evidence.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  discarded: { type: integer }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /documents/{kind}/{ref}:
+    post:
+      tags: [Documents]
+      summary: Attach uploads to a record that already exists
+      description: >
+        Adding to a bill, advance, invoice, asset, count, journal or donor report needs
+        `journal.prepare`. Adding to an award needs `settings.manage`. The addition is recorded in the
+        record's history.
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema: { type: string, enum: [bill, advance, grant, invoice, asset, verification_result, donor_report, journal] }
+        - name: ref
+          in: path
+          required: true
+          description: The record's reference, award ref, asset tag, or the count result's id. Slashes are allowed.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documents]
+              properties:
+                documents: { $ref: '#/components/schemas/DocumentIds' }
+      responses:
+        '200':
+          description: The record's documents now.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents: { type: array, items: { $ref: '#/components/schemas/Document' } }
+                  message: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
   /journals/{ref}/attachments/{id}:
     get:
       tags: [Journals]
@@ -1353,7 +1484,9 @@ paths:
             schema:
               type: object
               additionalProperties: true
-              description: 'A bill-capture object: supplier, PIN, category, invoice number and date, terms, budget line, coded lines and WHT.'
+              description: 'A bill-capture object: supplier, PIN, category, invoice number and date, terms, budget line, coded lines and WHT. `documents` must carry the supplier''s invoice while `documents.requireBillInvoice` holds.'
+              properties:
+                documents: { $ref: '#/components/schemas/DocumentIds' }
       responses:
         '201':
           description: The captured bill.
@@ -1584,12 +1717,16 @@ paths:
     post:
       tags: [Receivables]
       summary: Build a draft donor claim or other-income invoice
-      description: Preparer only. Nothing hits the ledger until it is issued.
+      description: Preparer only. Nothing hits the ledger until it is issued. `documents` (recommended) files the donor's request or the contract with it.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, additionalProperties: true }
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                documents: { $ref: '#/components/schemas/DocumentIds' }
       responses:
         '201':
           description: The created invoice.
@@ -2151,7 +2288,7 @@ paths:
     post:
       tags: [Procurement]
       summary: Raise a supplier bill from a requisition
-      description: Preparer only. Creates a bill in Payables awaiting approval.
+      description: Preparer only. Creates a bill in Payables awaiting approval. `documents` must carry the supplier's invoice.
       parameters:
         - name: "no"
           in: path
@@ -2165,6 +2302,7 @@ paths:
               type: object
               properties:
                 invoiceNo: { type: string }
+                documents: { $ref: '#/components/schemas/DocumentIds' }
       responses:
         '200':
           description: The bill created in Payables.
@@ -2639,6 +2777,7 @@ paths:
                 location: { type: string }
                 custodian: { type: string }
                 title: { type: string }
+                documents: { $ref: '#/components/schemas/DocumentIds' }
       responses:
         '200':
           description: The refreshed register with a message.
@@ -2835,6 +2974,7 @@ paths:
               properties:
                 result: { type: string, enum: [Sighted, Not found, Condition issue] }
                 note: { type: string }
+                documents: { $ref: '#/components/schemas/DocumentIds' }
       responses:
         '200':
           description: The recorded result.
@@ -3280,6 +3420,9 @@ paths:
                       code: { type: string }
                       desc: { type: string }
                       amount: { type: number }
+                documents:
+                  $ref: '#/components/schemas/DocumentIds'
+                  description: The receipts. Required while `documents.requireAdvanceReceipts` holds.
       responses:
         '200':
           description: The outcome with a verdict and a message.
@@ -3357,6 +3500,41 @@ paths:
                   tabs: { type: array, items: { $ref: '#/components/schemas/Tab' } }
                   stats: { type: array, items: { $ref: '#/components/schemas/StatCard' } }
                   locale: { $ref: '#/components/schemas/Locale' }
+    post:
+      tags: [Funds]
+      summary: Open a fund
+      description: |
+        Finance Manager only. A fund is the first coding every posting carries, so an
+        instance cannot post anything until it has one. The restriction and the ledger
+        column have to agree: an endowment is reported as one and rolls up as one, and
+        the grant and capital columns report money held for a donor, so a fund in them
+        cannot be unrestricted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, restriction, ledgerGroup]
+              properties:
+                code: { type: string, example: FND-100, description: 2 to 20 letters, digits and hyphens. }
+                name: { type: string, example: General Fund }
+                restriction: { type: string, enum: [unrestricted, restricted, designated, endowment] }
+                ledgerGroup: { type: string, enum: [general, grant, capital, endowment] }
+                funder: { type: string, description: A funder already on the register, where the fund holds one donor's money. }
+                purpose: { type: string }
+                deedRef: { type: string }
+                startsOn: { type: string, format: date }
+                spendBy: { type: string, format: date }
+                conditions: { type: string }
+      responses:
+        '200':
+          description: The fund and the register as it now stands, so the panel redraws without a second call.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /funds/{code}:
     get:
@@ -3402,6 +3580,31 @@ paths:
                   tabs: { type: array, items: { $ref: '#/components/schemas/Tab' } }
                   stats: { type: array, items: { $ref: '#/components/schemas/StatCard' } }
                   locale: { $ref: '#/components/schemas/Locale' }
+    post:
+      tags: [Grants]
+      summary: Record an award from its agreement
+      description: >
+        `settings.manage` only. Opens or attaches a fund and writes the award, its
+        budget, disbursements, reporting calendar and conditions in one go. An award recorded as
+        Active needs its signed agreement in `documents`; a Pipeline award does not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                status: { type: string, enum: [Pipeline, Active] }
+                documents: { $ref: '#/components/schemas/DocumentIds' }
+      responses:
+        '200':
+          description: The award reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /grants/{ref}:
     get:
@@ -3422,7 +3625,38 @@ paths:
                 additionalProperties: true
                 properties:
                   locale: { $ref: '#/components/schemas/Locale' }
+                  documents: { type: array, items: { $ref: '#/components/schemas/Document' } }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /grants/{ref}/activate:
+    post:
+      tags: [Grants]
+      summary: Convert a pipeline award on signature
+      description: >
+        `settings.manage` only. The award needs its agreement period, and its budget and
+        disbursements must agree with its value. It also needs its signed agreement: already on
+        file, or sent here as `documents`.
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          description: The award reference; slashes are allowed.
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                documents: { $ref: '#/components/schemas/DocumentIds' }
+      responses:
+        '200':
+          description: The award is active.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   # ------------------------------------------------------------------- Budgets
   /budgets:
@@ -3746,43 +3980,6 @@ paths:
       responses:
         '200':
           description: The refreshed settings with a message.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Message' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '422': { $ref: '#/components/responses/Unprocessable' }
-
-  /funds:
-    post:
-      tags: [Funds]
-      summary: Open a fund
-      description: |
-        Finance Manager only. A fund is the first coding every posting carries, so an
-        instance cannot post anything until it has one. The restriction and the ledger
-        column have to agree: an endowment is reported as one and rolls up as one, and
-        the grant and capital columns report money held for a donor, so a fund in them
-        cannot be unrestricted.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [code, name, restriction, ledgerGroup]
-              properties:
-                code: { type: string, example: FND-100, description: 2 to 20 letters, digits and hyphens. }
-                name: { type: string, example: General Fund }
-                restriction: { type: string, enum: [unrestricted, restricted, designated, endowment] }
-                ledgerGroup: { type: string, enum: [general, grant, capital, endowment] }
-                funder: { type: string, description: A funder already on the register, where the fund holds one donor's money. }
-                purpose: { type: string }
-                deedRef: { type: string }
-                startsOn: { type: string, format: date }
-                spendBy: { type: string, format: date }
-                conditions: { type: string }
-      responses:
-        '200':
-          description: The fund and the register as it now stands, so the panel redraws without a second call.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Message' }

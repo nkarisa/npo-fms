@@ -165,6 +165,7 @@ class Payables extends BaseApiController
                 // Releasing this payment needs the reference for an authority outside the system.
                 'payNeedsAuthority' => $release !== null && $release['needsAuthority'],
                 'method'   => self::isOpen($b) && ($actor['canPrepare'] || $actor['canApprove']),
+                'attach'   => $actor['canPrepare'],
                 // Why an approver sees no approve or pay button: their own bill, or a value
                 // the approval rules give to another role.
                 'sodNote'  => $mine && $actor['canApprove'] && ($awaiting || $payable)
@@ -190,6 +191,7 @@ class Payables extends BaseApiController
             'whtRates'    => PayablesRepository::WHT_RATES,
             'vatRate'     => PayablesRepository::VAT_RATE,
             'today'       => \App\Libraries\Clock::date(),
+            'requireInvoice' => config(\Config\Documents::class)->requireBillInvoice,
             // For the duplicate-invoice warning.
             'bills'       => array_map(static fn ($b) => ['no' => $b['no'], 'supplier' => $b['supplier'], 'taxable' => $b['taxable'], 'invoiceNo' => $b['invoiceNo']], $repo->all()),
         ]);

@@ -176,6 +176,10 @@
           <div class="fd-terms">${terms.map(([label, value]) => `<div class="fd-term"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('')}</div>
         </div>
         <div>
+          <div class="pg-section-label">Signed agreement</div>
+          <div id="gr-docs"></div>
+        </div>
+        <div>
           <div class="pg-section-label">Compliance conditions</div>
           <div class="gr-conditions">${d.conditions.map((c) => `<div><span>·</span>${esc(c)}</div>`).join('') || '<div>None recorded.</div>'}</div>
         </div>
@@ -189,12 +193,25 @@
           : `<a class="btn btn-primary" href="/donor-reports?q=${encodeURIComponent(d.ref)}">${esc(d.reportAction)}</a>`}
       </div>`, { wide: true });
 
+    UI.docPanel(document.getElementById('gr-docs'), {
+      kind: 'grant', ref: d.ref, docs: d.documents, canAdd: d.canAttach,
+      empty: d.status === 'Pipeline' ? 'No agreement on file yet. Attach the signed copy before converting the award.'
+        : 'No signed agreement on file. Awards recorded before documents were required may not have one — attach it.',
+      label: 'Attach the signed agreement or a variation',
+      onAdded: (documents) => { d.documents = documents; },
+    });
     document.querySelector('[data-do="close"]').addEventListener('click', UI.closeDrawer);
     const activate = document.querySelector('[data-do="activate"]');
-    if (activate) activate.addEventListener('click', () => convert(d.ref, activate));
+    if (activate) activate.addEventListener('click', () => convert(d, activate));
   }
 
-  async function convert(ref, button) {
+  async function convert(d, button) {
+    const ref = d.ref;
+    if (d.requireAgreement && !d.documents.length) {
+      UI.toast('Attach the signed agreement first — an award goes live only with the agreement it is held to.');
+      document.getElementById('gr-docs').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
     button.disabled = true;
     try {
       const result = await UI.postJSON('/api/grants/' + ref.split('/').map(encodeURIComponent).join('/') + '/activate', {});
@@ -280,6 +297,7 @@
       tranches: [{ no: 'Tranche 1', date: '', amount: '' }],
       reports: [{ name: 'Financial report Q1', from: '', to: '', due: '' }],
       conditions: ['Costs must be incurred within the agreement period; no retroactive charges.'],
+      files: [],
     };
     closeModal();
     drawWizard();
@@ -306,6 +324,7 @@
       if (wz.currency !== 'KES' && num(wz.rate) <= 0) return 'Enter the agreement rate: what 1 ' + wz.currency + ' is worth in KES.';
       if (!wz.start || !wz.end) return 'Enter the start and end dates of the agreement.';
       if (wz.end < wz.start) return 'The award ends before it starts.';
+      if (wz.status === 'Active' && opts.requireAgreement && !wz.files.some((f) => f.id)) return 'Attach the signed grant agreement. An award goes live only with the agreement it is held to.';
       return '';
     }
     if (i === 1) {
@@ -392,13 +411,28 @@
     const body = modalEl.querySelector('#gr-wz-body');
     body.innerHTML = stepBody();
     body.scrollTop = 0;
+    mountAgreement();
     refreshDerived();
   }
 
   /** Redraws only the step's body — for a structural change: a row added or removed, a mode switched. */
   function redrawBody() {
     modalEl.querySelector('#gr-wz-body').innerHTML = stepBody();
+    mountAgreement();
     refreshDerived();
+  }
+
+  /** The signed agreement, on the first step: required for an Active award, asked for on a pipeline one. */
+  function mountAgreement() {
+    const host = modalEl.querySelector('#gr-agreement');
+    if (!host) return;
+    const active = wz.status === 'Active';
+    UI.docPicker(host, {
+      label: 'Signed grant agreement', required: active && opts.requireAgreement, recommended: !active, files: wz.files,
+      onChange: () => refreshDerived(),
+      hint: active ? 'The signed copy, with its annexes. The donor audit starts from it.'
+        : 'Attach the draft or proposal if you have it. The signed agreement is needed when the award is converted.',
+    });
   }
 
   function field(label, input, extra) {
@@ -441,7 +475,8 @@
           ${field('End date', `<input type="date" data-k="end" value="${esc(wz.end)}">`)}
           ${field('Record as', select('status', ['Pipeline', 'Active'], wz.status))}
         </div>
-        <div class="pg-note">Record as <strong>Pipeline</strong> while the agreement is unsigned — the budget is visible but nothing may be committed against it and no receivable is raised. Move it to <strong>Active</strong> only on signature.</div>`;
+        <div class="pg-note">Record as <strong>Pipeline</strong> while the agreement is unsigned — the budget is visible but nothing may be committed against it and no receivable is raised. Move it to <strong>Active</strong> only on signature.</div>
+        <div id="gr-agreement"></div>`;
     }
 
     if (wz.step === 1) {
@@ -660,7 +695,7 @@
       wz.rate = wz.currency === 'KES' ? '1.00' : String(c ? c.rate : wz.rate);
     }
     if (k === 'program') wz.also = wz.also.filter((p) => p !== wz.program);
-    if (['currency', 'program', 'fundCls', 'fundExisting'].includes(k)) {
+    if (['currency', 'program', 'fundCls', 'fundExisting', 'status'].includes(k)) {
       if (k === 'fundCls' && wz.fundCls !== 'Restricted') { wz.capital = false; wz.override = false; }
       redrawBody();
     }
@@ -741,6 +776,7 @@
   async function commit(button) {
     const error = firstError();
     if (error) { UI.toast(error); return; }
+    if (wz.files.some((f) => !f.id && !f.error)) { UI.toast('Wait for the agreement to finish uploading.'); return; }
     button.disabled = true;
     try {
       const result = await UI.postJSON('/api/grants', {
@@ -749,6 +785,7 @@
         fundMode: wz.fundMode, fundExisting: wz.fundExisting, fundName: wz.fundName.trim(), fundCls: wz.fundCls,
         capital: wz.capital, ledgerOverride: wz.override, overrideReason: wz.overrideReason.trim(), purpose: wz.purpose.trim(),
         indirectCap: wz.indirectCap, budget: wz.budget, tranches: wz.tranches, reports: wz.reports, conditions: wz.conditions,
+        documents: wz.files.filter((f) => f.id).map((f) => f.id),
       });
       closeModal();
       UI.toast(result.message);

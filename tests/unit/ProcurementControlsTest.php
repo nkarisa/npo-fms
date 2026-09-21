@@ -93,7 +93,8 @@ final class ProcurementControlsTest extends CIUnitTestCase
 
     public function testThreeQuoteRuleAppliesOnlyAboveTheThreshold(): void
     {
-        $quote = ['supplier' => 'X', 'amount' => 1, 'note' => '', 'chosen' => false, 'file' => ''];
+        $quote = ['supplier' => 'X', 'amount' => 1, 'note' => '', 'chosen' => false, 'file' => 'quote.pdf', 'document' => ['id' => 1, 'name' => 'quote.pdf', 'size' => '12 KB']];
+        $unfiled = ['document' => null, 'file' => ''] + $quote;
 
         // At or below the threshold, quotations are not compelled.
         $this->assertFalse(Procurement::needsQuotes($this->requisition(['amount' => 500000, 'quotes' => []])));
@@ -101,5 +102,8 @@ final class ProcurementControlsTest extends CIUnitTestCase
         // Above it, fewer than three is a block.
         $this->assertTrue(Procurement::needsQuotes($this->requisition(['amount' => 500001, 'quotes' => [$quote, $quote]])));
         $this->assertFalse(Procurement::needsQuotes($this->requisition(['amount' => 500001, 'quotes' => [$quote, $quote, $quote]])));
+
+        // A quotation counts only with the supplier's document behind it.
+        $this->assertTrue(Procurement::needsQuotes($this->requisition(['amount' => 500001, 'quotes' => [$quote, $quote, $unfiled]])));
     }
 }

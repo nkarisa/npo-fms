@@ -183,7 +183,7 @@ class Advances extends BaseApiController
                         . 'The control account picks the movement up as each voucher and journal posts; until then the register leads the ledger.',
             ],
 
-            'form' => $repo->formOptions(),
+            'form' => $repo->formOptions() + ['requireReceipts' => config(\Config\Documents::class)->requireAdvanceReceipts],
         ]);
     }
 
@@ -244,6 +244,7 @@ class Advances extends BaseApiController
             'canReject'    => $a['status'] === 'Requested',
             'canIssue'     => $a['status'] === 'Approved',
             'canSurrender' => $out > 0,
+            'canAttach'    => $this->actor()['canPrepare'],
             'canRemind'    => $out > 0 && $a['dueIn'] < 0,
             'canRecover'   => $out > 0 && $a['dueIn'] < -AdvancesRepository::RECOVERY_AFTER_DAYS && !$a['left'] && $a['staffId'] !== null,
             'surrenderTarget' => $out,
@@ -320,7 +321,7 @@ class Advances extends BaseApiController
         }
 
         try {
-            $result = $this->repo()->surrender($ref, $lines, $mode, $this->actorId());
+            $result = $this->repo()->surrender($ref, $lines, $mode, $this->actorId(), $body['documents'] ?? []);
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }

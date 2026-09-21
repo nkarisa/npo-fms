@@ -12,6 +12,7 @@
 //   click:<selector>      Playwright selector: `text=Approve and post`, `#id`, `role=button[name="Reject"]`
 //   fill:<selector>=<v>   type into an input
 //   select:<selector>=<v> choose an <option> by label
+//   upload:<selector>=<name>  give a file input a small generated file (e.g. invoice.pdf), then wait for its upload
 //   wait:<selector>       wait until visible
 //   text:<selector>       print innerText (first match)
 //   eval:<js>             evaluate in the page, print the JSON result
@@ -87,6 +88,14 @@ try {
       case 'click': await page.locator(arg).first().click(); await settle(); break;
       case 'fill': { const j = arg.lastIndexOf('='); await page.locator(arg.slice(0, j)).first().fill(arg.slice(j + 1)); break; }
       case 'select': { const j = arg.lastIndexOf('='); await page.locator(arg.slice(0, j)).first().selectOption({ label: arg.slice(j + 1) }); await settle(); break; }
+      case 'upload': {
+        const j = arg.lastIndexOf('=');
+        const name = arg.slice(j + 1);
+        const mimeType = /\.pdf$/i.test(name) ? 'application/pdf' : /\.(png|jpe?g)$/i.test(name) ? 'image/' + name.split('.').pop().replace('jpg', 'jpeg') : 'text/plain';
+        await page.locator(arg.slice(0, j)).first().setInputFiles({ name, mimeType, buffer: Buffer.from('%PDF-1.4 run-fms ' + name) });
+        await settle();
+        break;
+      }
       case 'wait': await page.locator(arg).first().waitFor({ state: 'visible', timeout: 15000 }); break;
       case 'text': console.log((await page.locator(arg).first().innerText()).trim()); break;
       case 'eval': console.log(JSON.stringify(await page.evaluate(arg), null, 2)); break;

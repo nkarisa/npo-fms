@@ -443,6 +443,10 @@
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:9px;">
+          <div class="jd-caps">Supplier's invoice</div>
+          <div id="apd-docs"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;">
           <div class="jd-caps">Tax and settlement</div>
           <div class="ap-settle">
             <div><span>Taxable amount</span><span>${fmt(b.taxable)}</span></div>
@@ -472,6 +476,12 @@
               <span style="color:#A3ABA7;font-family:'IBM Plex Mono',monospace;font-size:11px;min-width:56px;">${esc(t.when)}</span><span>${esc(t.what)}</span>
             </div>`).join('')}
         </div>`;
+      UI.docPanel(el.querySelector('#apd-docs'), {
+        kind: 'bill', ref: b.no, docs: b.documents, canAdd: current.can.attach,
+        empty: "No supplier's invoice on file. Bills captured before documents were required may not have one — attach it before approving.",
+        label: 'Attach the invoice or a supporting document',
+        onAdded: (documents) => { b.documents = documents; },
+      });
 
       renderFoot();
     }
@@ -534,6 +544,7 @@
     let form = null; // /api/payables/form
     let f = null;
     let lines = null;
+    let docs = null;
     let saving = false;
 
     const blank = () => ({
@@ -559,7 +570,7 @@
             </div>
             <button type="button" class="rt-close" data-nb-close aria-label="Close">×</button>
           </div>
-          <div class="ap-modal-body" id="nb-body"></div>
+          <div class="ap-modal-body"><div id="nb-body" style="display:contents;"></div><div id="nb-docs"></div></div>
           <div class="ap-modal-foot">
             <div style="min-width:0;flex:1;font-size:12px;line-height:1.5;" id="nb-status"></div>
             <button type="button" class="btn" data-nb-close style="height:34px;padding:0 14px;">Cancel</button>
@@ -640,6 +651,7 @@
         : coded.some(l => !l.desc) ? 'Every coded line needs a description of what was supplied.'
         : whtOverridden && !f.whtReason.trim() ? 'Overriding the withholding rate needs a reason — the tax file has to explain it.'
         : overBudget && !f.overReason.trim() ? 'This bill takes the line over budget. Say why before it goes for approval, or split the coding.'
+        : form.requireInvoice && docs && !docs.ids().length ? "Attach the supplier's invoice. A bill goes for approval only with the document it pays."
         : '';
 
       return {
@@ -751,11 +763,12 @@
         UI.toast(d.err);
         return;
       }
+      if (docs.busy()) return UI.toast('Wait for the invoice to finish uploading.');
       if (saving) return;
       saving = true;
       el.querySelector('#nb-create').disabled = true;
       try {
-        const res = await UI.postJSON('/api/payables', { ...f, lines });
+        const res = await UI.postJSON('/api/payables', { ...f, lines, documents: docs.ids() });
         const bill = res.bill;
         close();
         UI.toast(`${bill.no} captured for ${bill.supplier} — ${fmt(bill.net)} payable${bill.wht ? `, WHT ${fmt(bill.wht)} to be held for KRA` : ', no withholding tax'}. It posts to the ledger once a second person approves it.`);
@@ -781,6 +794,10 @@
       }
       f = blank();
       lines = [{ desc: '', amount: '' }];
+      docs = UI.docPicker(el.querySelector('#nb-docs'), {
+        label: "Supplier's invoice", required: form.requireInvoice, onChange: () => renderDerived(),
+        hint: 'A scan or the PDF the supplier sent. The approver and the auditor see it with the bill.',
+      });
       renderBody();
       el.hidden = false;
       el.querySelector('[data-nb="supplier"]').focus();

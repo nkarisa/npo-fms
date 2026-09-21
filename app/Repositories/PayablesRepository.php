@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Libraries\Clock;
 use App\Libraries\Prototype;
+use Config\Documents;
 
 /**
  * Supplier bills from capture to payment, and the withholding tax they hold for KRA.
@@ -36,6 +37,9 @@ final class PayablesRepository extends Repository
     /** Payment run numbers continue from the prototype's last run, PR-26-0087. */
     private const RUN_FLOOR = 87;
 
+    /** Why a bill without its invoice is refused (Config\Documents::$requireBillInvoice). */
+    public const NEEDS_INVOICE = "Attach the supplier's invoice. A bill goes for approval only with the document it pays — it is the first thing an audit asks for.";
+
     private Lookups $lookups;
 
     public function __construct()
@@ -63,8 +67,9 @@ final class PayablesRepository extends Repository
             $budgets = $this->budgetPositions();
             $banks   = array_column($this->lookups->bankAccounts(), null, 'id');
             $trails  = $this->trails('bill');
+            $documents = (new AttachmentRepository())->byObject('bill');
 
-            return array_map(function ($b) use ($lines, $budgets, $banks, $trails) {
+            return array_map(function ($b) use ($lines, $budgets, $banks, $trails, $documents) {
                 $billLines = $lines[(int) $b['id']] ?? [];
                 $first     = $billLines[0] ?? null;
                 $position  = $first === null ? null : ($budgets[$first['account_id'] . ':' . $first['fund_id'] . ':' . $first['programme_id']] ?? null);
@@ -105,6 +110,7 @@ final class PayablesRepository extends Repository
                         'code' => $l['code'], 'name' => $l['account_name'], 'desc' => $l['description'], 'amount' => self::num($l['amount']),
                     ], $billLines),
                     'trail'     => $trails[(int) $b['id']] ?? [],
+                    'documents' => $documents[(int) $b['id']] ?? [],
                 ];
             }, $this->rows(
                 'SELECT b.*, s.name AS supplier_name, s.kra_pin, s.category, j.reference AS journal_ref,
@@ -330,6 +336,8 @@ final class PayablesRepository extends Repository
         $whtRate = ($f['wht'] ?? 'auto') === 'auto' ? $whtDefault : (float) $f['wht'];
         $whtOverridden = ($f['wht'] ?? 'auto') !== 'auto' && $whtRate != $whtDefault;
         $overBudget = $line !== null && $taxable > $line['remaining'];
+        $attachments = new AttachmentRepository();
+        $documents = $attachments->pending($f['documents'] ?? [], $actorId);
 
         $error = match (true) {
             $name === ''                                   => 'Name the supplier as it appears on the invoice.',
@@ -345,6 +353,7 @@ final class PayablesRepository extends Repository
             !in_array((int) $whtRate, self::WHT_RATES, true) || $whtRate != (int) $whtRate => 'Withholding tax must be 0%, 3%, 5% or 10%.',
             $whtOverridden && trim((string) $f['whtReason']) === '' => 'Overriding the withholding rate needs a reason — the tax file has to explain it.',
             $overBudget && trim((string) $f['overReason']) === ''   => 'This bill takes the line over budget. Say why before it goes for approval, or split the coding.',
+            $documents === [] && config(Documents::class)->requireBillInvoice => self::NEEDS_INVOICE,
             default                                        => null,
         };
         if ($error !== null) {
@@ -374,7 +383,7 @@ final class PayablesRepository extends Repository
         $who   = $this->lookups->shortName($actorId);
         $entity = $this->lookups->entityId();
 
-        $no = $this->transaction(function () use ($f, $name, $pin, $category, $invoiceNo, $date, $terms, $line, $method, $coded, $taxable, $vat, $wht, $whtRate, $whtDefault, $whtOverridden, $overBudget, $supplier, $actorId, $who, $entity) {
+        $no = $this->transaction(function () use ($f, $name, $pin, $category, $invoiceNo, $date, $terms, $line, $method, $coded, $taxable, $vat, $wht, $whtRate, $whtDefault, $whtOverridden, $overBudget, $supplier, $actorId, $who, $entity, $attachments, $documents) {
             $now = Clock::timestamp();
             $supplierId = $supplier['id'] ?? null;
             if ($supplier === null) {
@@ -403,7 +412,8 @@ final class PayablesRepository extends Repository
                 ]);
             }
 
-            $this->audit('bill', $id, $no, 'Captured and coded by ' . $who . ' — supplier invoice ' . $invoiceNo, $actorId, 'history', $entity);
+            $attachments->claim($documents, 'bill', $id);
+            $this->audit('bill', $id, $no, 'Captured and coded by ' . $who . ' — supplier invoice ' . $invoiceNo . self::documentNote($documents), $actorId, 'history', $entity);
             if ($whtOverridden) {
                 $this->audit('bill', $id, $no, 'Withholding tax set to ' . self::num($whtRate) . '% against the ' . self::num($whtDefault) . '% default — ' . trim((string) $f['whtReason']), $actorId, 'history', $entity);
             }
@@ -424,7 +434,7 @@ final class PayablesRepository extends Repository
      * withholding rate (or its spend category's), and waits for approval like any
      * other. Call it inside the caller's transaction.
      */
-    public function captureFromReceipt(int $grnId, string $invoiceNo, int $actorId): array
+    public function captureFromReceipt(int $grnId, string $invoiceNo, int $actorId, mixed $documentIds = []): array
     {
         $grn = $this->row(
             'SELECT g.*, po.id AS po_id, po.reference AS po_ref, po.supplier_id, s.name AS supplier, s.kra_pin, s.category, s.wht_rate_pct
@@ -434,6 +444,11 @@ final class PayablesRepository extends Repository
         $invoiceNo = trim($invoiceNo);
         if ($invoiceNo === '') {
             throw new RuleViolation("Enter the supplier's invoice number. It completes the three-way match and is the duplicate-payment check.");
+        }
+        $attachments = new AttachmentRepository();
+        $documents = $attachments->pending($documentIds, $actorId);
+        if ($documents === [] && config(Documents::class)->requireBillInvoice) {
+            throw new RuleViolation(self::NEEDS_INVOICE);
         }
         if ($grn['kra_pin'] === null) {
             throw new RuleViolation($grn['supplier'] . ' has no KRA PIN on the register — the VAT and WHT on its invoice cannot be filed.');
@@ -452,7 +467,7 @@ final class PayablesRepository extends Repository
         $method = $this->methodOptions()[0] ?? throw new RuleViolation('There is no active bank account to pay from.');
         $who = $this->lookups->shortName($actorId);
 
-        $no = $this->transaction(function () use ($grn, $invoiceNo, $lines, $taxable, $whtRate, $vat, $wht, $method, $actorId, $who) {
+        $no = $this->transaction(function () use ($grn, $invoiceNo, $lines, $taxable, $whtRate, $vat, $wht, $method, $actorId, $who, $attachments, $documents) {
             $now = Clock::timestamp();
             $today = Clock::date();
             $no = $this->nextBillReference();
@@ -469,7 +484,8 @@ final class PayablesRepository extends Repository
                     'grant_id' => $l['grant_id'], 'purchase_order_line_id' => $l['id'], 'description' => $l['description'], 'amount' => $l['amount'],
                 ]);
             }
-            $this->audit('bill', $id, $no, 'Raised from ' . $grn['po_ref'] . ' on three-way match (PO, GRN ' . $grn['reference'] . ', invoice ' . $invoiceNo . ') by ' . $who, $actorId, 'history', (int) $grn['entity_id']);
+            $attachments->claim($documents, 'bill', $id);
+            $this->audit('bill', $id, $no, 'Raised from ' . $grn['po_ref'] . ' on three-way match (PO, GRN ' . $grn['reference'] . ', invoice ' . $invoiceNo . ') by ' . $who . self::documentNote($documents), $actorId, 'history', (int) $grn['entity_id']);
 
             return $no;
         });
@@ -796,6 +812,12 @@ final class PayablesRepository extends Repository
     private static function methodLabel(array $bank, ?string $method): string
     {
         return $method === 'cheque' ? 'Cheque' : Lookups::paymentMethod($bank);
+    }
+
+    /** " · 2 documents attached", for the history line. */
+    private static function documentNote(array $documents): string
+    {
+        return $documents === [] ? '' : ' · ' . count($documents) . ' document' . (count($documents) === 1 ? '' : 's') . ' attached';
     }
 
     private function header(string $no): array

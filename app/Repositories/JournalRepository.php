@@ -3,6 +3,8 @@
 namespace App\Repositories;
 
 use App\Libraries\Clock;
+use App\Libraries\Prototype;
+use Config\Documents;
 
 /**
  * Journals and their lines.
@@ -133,6 +135,7 @@ final class JournalRepository extends Repository
     public function create(array $j, int $actorId, array $files = []): array
     {
         [$period, $date, $lines, $source] = $this->prepare($j);
+        $this->assertSupported($j, isset($j['reversalOf']) ? 'reversal' : (string) ($j['docLink'] ?? 'auto'), count($files));
 
         $stored = [];
         try {
@@ -228,6 +231,16 @@ final class JournalRepository extends Repository
         $keepDocument = ($j['docLink'] ?? 'auto') === $current['docLink'];
         [$period, $date, $lines] = $this->prepare(['docLink' => 'auto'] + $j);
         $source = $keepDocument ? false : $this->source($j['docLink'] ?? 'auto');
+        $kept = array_filter($current['attachments'], static fn ($a) => !in_array($a['id'], array_map('intval', $removeAttachments), true));
+        // A reversal is supported by the entry it reverses, and an entry raised from a
+        // record (the opening balances' fiscal year, a bill) by that record.
+        $link = match (true) {
+            ($current['reversalOf'] ?? '') !== '' => 'reversal',
+            $journal['source_type'] !== null      => 'source:' . $journal['source_type'],
+            $keepDocument                         => (string) $current['docLink'],
+            default                               => (string) ($j['docLink'] ?? 'auto'),
+        };
+        $this->assertSupported($j, $link, count($kept) + count($files));
 
         $stored = [];
         $removed = [];
@@ -426,6 +439,8 @@ final class JournalRepository extends Repository
             'allowClosed' => $this->allowsClosedPeriods(),
             'periods'     => array_map(static fn ($p) => ['name' => $p['name'], 'min' => $p['starts_on'], 'max' => $p['ends_on'], 'closed' => $p['status'] === 'closed'], $periods),
             'types'       => self::TYPES,
+            // When the editor asks for a supporting document before submitting (documentRule()).
+            'documentRule' => ['threshold' => config(Documents::class)->journalThreshold, 'types' => config(Documents::class)->journalTypes],
             'docRefs'     => array_combine(self::TYPES, array_map(fn ($t) => $this->autoDocRef($t), self::TYPES)),
             'documents'   => $this->documentRegister(),
             'accounts'    => array_values(array_map(static fn ($a) => ['code' => $a['code'], 'label' => $a['code'] . ' · ' . $a['name']], $accounts)),
@@ -940,25 +955,42 @@ final class JournalRepository extends Repository
      */
     private function storeAttachment(int $journalId, array $file, int $actorId): string
     {
-        $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $key = self::ATTACHMENT_DIR . '/' . bin2hex(random_bytes(16)) . ($extension !== '' ? '.' . $extension : '');
-        $path = WRITEPATH . 'uploads/' . $key;
+        return (new AttachmentRepository($this->db))->store('journal', $journalId, $file, $actorId, self::ATTACHMENT_DIR)[1];
+    }
 
-        if (!is_dir(dirname($path)) && !mkdir(dirname($path), 0775, true) && !is_dir(dirname($path))) {
-            throw new RuleViolation('Supporting documents cannot be stored right now.');
+    /**
+     * Why a manual entry needs a supporting document before it goes for approval,
+     * or null: its debits pass Config\Documents::$journalThreshold, or its type is
+     * one of $journalTypes. An entry raised from a bill, a payroll run, a bank line
+     * or a recurring template carries that record as its evidence, and a reversal
+     * the entry it reverses.
+     */
+    public static function documentRule(string $type, float $debits, string $docLink = 'auto'): ?string
+    {
+        if ($docLink !== '' && $docLink !== 'auto' && !str_starts_with($docLink, 'existing:')) {
+            return null;
         }
-        $sha = hash_file('sha256', $file['path']);
-        if (!(is_uploaded_file($file['path']) ? move_uploaded_file($file['path'], $path) : rename($file['path'], $path))) {
-            throw new RuleViolation($file['name'] . ' could not be stored.');
+        $config = config(Documents::class);
+
+        return match (true) {
+            in_array($type, $config->journalTypes, true) => 'An ' . strtolower($type) . ' journal goes for approval only with the document that supports it — a board minute, a reconciliation or the auditor\'s note.',
+            $config->journalThreshold > 0 && $debits > $config->journalThreshold => 'This entry is ' . Prototype::fmt($debits) . ', above the ' . Prototype::fmt($config->journalThreshold)
+                . ' at which a journal needs its supporting document. Attach the invoice, board minute or funder letter before submitting — a draft can be saved without it.',
+            default => null,
+        };
+    }
+
+    /** Refuses to submit a manual entry that needs a document and has none. */
+    private function assertSupported(array $j, string $docLink, int $documents): void
+    {
+        if (($j['status'] ?? 'Draft') !== 'Pending approval' || $documents > 0) {
+            return;
         }
-
-        $this->insert('attachments', [
-            'entity_id' => $this->lookups->entityId(), 'object_type' => 'journal', 'object_id' => $journalId,
-            'filename' => mb_substr($file['name'], 0, 255), 'mime_type' => mb_substr($file['mime'], 0, 100), 'size_bytes' => $file['size'],
-            'storage_key' => $key, 'sha256' => $sha, 'uploaded_by' => $actorId, 'uploaded_at' => Clock::timestamp(),
-        ]);
-
-        return $path;
+        $debits = array_sum(array_map(static fn ($l) => (float) ($l['dr'] ?? 0), $j['lines'] ?? []));
+        $why = self::documentRule((string) ($j['type'] ?? 'Standard'), round($debits, 2), $docLink);
+        if ($why !== null) {
+            throw new RuleViolation($why);
+        }
     }
 
     /**

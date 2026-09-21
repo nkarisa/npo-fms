@@ -250,6 +250,10 @@
           ${d.facts.map((f) => `<div class="adv-fact"><span>${UI.esc(f.label)}</span><span>${UI.esc(f.value)}</span></div>`).join('')}
         </div>
         ${receipts}
+        <div>
+          <div class="adv-section-label">Receipt documents</div>
+          <div id="adv-docs"></div>
+        </div>
         ${reminders}
         <div>
           <div class="adv-section-label">Audit trail</div>
@@ -267,6 +271,12 @@
         ${d.canSurrender ? '<button type="button" class="btn btn-primary" data-do="surrender">Surrender with receipts</button>' : ''}
       </div>`, { wide: true });
 
+    UI.docPanel(document.getElementById('adv-docs'), {
+      kind: 'advance', ref: d.ref, docs: d.documents, canAdd: d.canAttach && d.status !== 'Requested',
+      empty: d.receipts.length ? 'No receipts on file. This advance was surrendered before receipts were required — attach them if they are to hand.' : 'Receipts are attached when the advance is surrendered.',
+      label: 'Attach a receipt',
+      onAdded: (documents) => { d.documents = documents; },
+    });
     document.querySelectorAll('[data-do]').forEach((b) => b.addEventListener('click', () => act(b, b.dataset.do)));
   }
 
@@ -301,7 +311,7 @@
   let surrender = null;
 
   function openSurrender() {
-    surrender = { lines: [{ code: data.form.codes[0].code, desc: '', amount: '' }], mode: 'refund' };
+    surrender = { lines: [{ code: data.form.codes[0].code, desc: '', amount: '' }], mode: 'refund', files: [] };
     drawSurrender();
   }
 
@@ -349,6 +359,8 @@
           </div>
         </div>` : ''}
 
+      <div id="adv-receipt-docs"></div>
+
       <div class="adv-note">${
         diff > 0 && surrender.mode === 'outstanding'
           ? 'The receipted amount comes off 1220 and the rest stays owed by the holder, still ageing.'
@@ -362,6 +374,10 @@
       'Posting moves the receipted amount off 1220 and onto the programme expenditure lines. Nothing is written until you post.');
 
     const el = document.getElementById('adv-surrender');
+    surrender.docs = UI.docPicker(el.querySelector('#adv-receipt-docs'), {
+      label: 'Receipts', required: data.form.requireReceipts !== false, files: surrender.files,
+      hint: 'A scan or photo of each receipt. One file can hold several.',
+    });
     el.querySelectorAll('[data-l]').forEach((input) => input.addEventListener('change', () => {
       surrender.lines[+input.dataset.l][input.dataset.k] = input.value;
       if (input.dataset.k === 'amount') drawSurrender();
@@ -382,11 +398,13 @@
   }
 
   async function submitSurrender(button) {
+    if (surrender.docs.busy()) return UI.toast('Wait for the receipts to finish uploading.');
     button.disabled = true;
     try {
       const result = await UI.postJSON('/api/advances/' + encodeURIComponent(detail.ref) + '/surrender', {
         mode: surrender.mode,
         receipts: surrender.lines.map((l) => ({ code: l.code, desc: l.desc, amount: amountOf(l.amount) })),
+        documents: surrender.docs.ids(),
       });
       closeModal();
       UI.closeDrawer();

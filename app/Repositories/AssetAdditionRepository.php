@@ -229,8 +229,11 @@ final class AssetAdditionRepository extends Repository
         $found = $f['basis'] === 'found';
         $who = $this->lookups->shortName($actorId);
         $credit = $this->lookups->accounts()[$found ? self::FUND_BALANCE : self::DONATED];
+        // Recommended: the donor's letter, the valuation or a photo of what was found.
+        $attachments = new AttachmentRepository($this->db);
+        $documents = $attachments->pending($f['documents'] ?? [], $actorId);
 
-        return $this->transaction(function () use ($f, $found, $who, $credit, $actorId) {
+        return $this->transaction(function () use ($f, $found, $who, $credit, $actorId, $attachments, $documents) {
             $now = Clock::timestamp();
             if ($found) {
                 $asset = current(array_filter($this->uncapitalised(), static fn ($a) => $a['tag'] === $f['tag']));
@@ -255,8 +258,10 @@ final class AssetAdditionRepository extends Repository
                 'recognised_on' => $f['date'], 'source' => trim($f['source']), 'reference' => trim($f['reference']) !== '' ? trim($f['reference']) : null,
                 'reason' => trim($f['reason']), 'credit_account_id' => $credit['id'], 'status' => 'pending_approval', 'requested_by' => $actorId, 'created_at' => $now,
             ]);
+            $attachments->claim($documents, 'asset', (int) $assetId);
             $this->audit('asset', $assetId, $tag, ($found ? 'Found in the count; addition at deemed cost of ' : 'Donated by ' . trim($f['source']) . '; addition at fair value of ')
-                . Prototype::fmt($f['amount']) . ' proposed by ' . $who . ' — waiting for approval', $actorId);
+                . Prototype::fmt($f['amount']) . ' proposed by ' . $who . ' — waiting for approval'
+                . ($documents === [] ? '' : ' · ' . count($documents) . ' document' . (count($documents) === 1 ? '' : 's') . ' attached'), $actorId);
 
             return $tag;
         });
@@ -274,6 +279,11 @@ final class AssetAdditionRepository extends Repository
             $this->audit('asset', (int) $d['asset_id'], $tag, 'Addition withdrawn by ' . $this->lookups->shortName($actorId), $actorId);
             $this->db->table('asset_additions')->where('id', $d['id'])->delete();
             if ($d['basis'] === 'donation') {
+                // The asset proposed with it goes, and so do the documents filed against it.
+                foreach ($this->rows("SELECT storage_key FROM {attachments} WHERE object_type = 'asset' AND object_id = ?", [(int) $d['asset_id']]) as $a) {
+                    @unlink(WRITEPATH . 'uploads/' . $a['storage_key']);
+                }
+                $this->db->table('attachments')->where(['object_type' => 'asset', 'object_id' => (int) $d['asset_id']])->delete();
                 $this->db->table('assets')->where('id', $d['asset_id'])->delete();
             }
         });

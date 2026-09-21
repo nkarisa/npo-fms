@@ -497,6 +497,10 @@
             </div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:9px;">
+          <div class="jd-caps">Supporting documents</div>
+          <div id="ard-docs"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:9px;">
           <div class="jd-caps">Audit trail</div>
           ${i.trail.map(t => `
             <div style="display:flex;gap:12px;font-size:12px;color:#3E4A44;">
@@ -504,6 +508,12 @@
               <span style="line-height:1.5;">${esc(t.what)}</span>
             </div>`).join('')}
         </div>`;
+      UI.docPanel(el.querySelector('#ard-docs'), {
+        kind: 'invoice', ref: i.no, docs: i.documents, canAdd: current.can.attach, recommended: true,
+        empty: 'Nothing attached. Recommended: the claim as sent, the donor\'s request or acknowledgement.',
+        label: 'Attach a document',
+        onAdded: (documents) => { i.documents = documents; },
+      });
 
       renderFoot();
     }
@@ -566,6 +576,7 @@
     let f = null;
     let claims = null; // budget line code → text entered
     let saving = false;
+    let docs = null;
 
     const num = (v) => parseFloat(String(v || '').replace(/[^0-9.]/g, '')) || 0;
 
@@ -583,7 +594,7 @@
             </div>
             <button type="button" class="rt-close" data-an-close aria-label="Close">×</button>
           </div>
-          <div class="ap-modal-body" id="an-body"></div>
+          <div class="ap-modal-body"><div id="an-body" style="display:contents;"></div><div id="an-docs"></div></div>
           <div class="ap-modal-foot">
             <div style="min-width:0;flex:1;font-size:12px;line-height:1.5;" id="an-status"></div>
             <button type="button" class="btn" data-an-close style="height:34px;padding:0 14px;">Cancel</button>
@@ -766,11 +777,12 @@
     async function create() {
       const d = derive();
       if (d.err) return UI.toast(d.err);
+      if (docs.busy()) return UI.toast('Wait for the document to finish uploading.');
       if (saving) return;
       saving = true;
       el.querySelector('#an-create').disabled = true;
       try {
-        const res = await UI.postJSON('/api/receivables', { ...f, award: d.g ? d.g.ref : '—', claims });
+        const res = await UI.postJSON('/api/receivables', { ...f, award: d.g ? d.g.ref : '—', claims, documents: docs.ids() });
         const inv = res.invoice;
         close();
         UI.toast(`${inv.no} built as a draft ${d.other ? 'invoice' : 'claim'} of ${fmt(inv.amount)}${d.indirect ? ` including ${fmt(d.indirect)} of indirect recovery` : ''}. Nothing hits 1210 until it is issued to the donor.`);
@@ -799,6 +811,10 @@
         ccy: 'KES', fx: '1', indirect: true, basis: '', payer: '', amount: '', account: (form.otherAccounts.find(a => a.code === '4220') || form.otherAccounts[0] || {}).code || '',
       };
       claims = {};
+      docs = UI.docPicker(el.querySelector('#an-docs'), {
+        label: 'Supporting documents', recommended: true,
+        hint: "The donor's call for the claim or the signed contract for other income — whatever the donor will ask to see with it.",
+      });
       renderBody();
       el.hidden = false;
     }

@@ -266,6 +266,7 @@ const UI = (() => {
         ed.docLink = e.target.value;
       }
       renderJournalMeta();
+      renderJournalFiles();
     });
 
     // ---- Lines ----
@@ -466,6 +467,7 @@ const UI = (() => {
 
   function renderJournalSummary() {
     const { ed } = jd;
+    if (journalDrawer.querySelector('#jd-files-note')) renderJournalFiles();
     const $ = (id) => journalDrawer.querySelector('#' + id);
     const dr = ed.lines.reduce((a, l) => a + (parseFloat(l.dr) || 0), 0);
     const cr = ed.lines.reduce((a, l) => a + (parseFloat(l.cr) || 0), 0);
@@ -520,8 +522,28 @@ const UI = (() => {
     const count = kept.length + ed.files.length;
     journalDrawer.querySelector('#jd-attach-label').textContent = count ? '+ Attach another document' : '+ Attach the supporting document';
     const note = journalDrawer.querySelector('#jd-files-note');
+    const needed = jdDocumentNeeded();
     note.hidden = count > 0;
-    note.textContent = editable ? 'The reference points at the record; the audit file wants the document itself — invoice, board minute or funder letter.' : 'No supporting document is attached.';
+    note.classList.toggle('warn', editable && !!needed);
+    note.textContent = !editable ? 'No supporting document is attached.'
+      : needed || 'The reference points at the record; the audit file wants the document itself — invoice, board minute or funder letter.';
+  }
+
+  /**
+   * Why this entry needs a supporting document before it goes for approval, or ''
+   * (JournalRepository::documentRule): a manual entry above the threshold, or of a
+   * type that always needs one. A reversal and an entry raised from a record have
+   * that record behind them.
+   */
+  function jdDocumentNeeded() {
+    const { ed, form } = jd;
+    const rule = form.documentRule || { threshold: 0, types: [] };
+    const manual = !(jd.journal && jd.journal.reversalOf) && (ed.docLink === 'auto' || ed.docLink.startsWith('existing:'));
+    if (!manual) return '';
+    const dr = ed.lines.reduce((a, l) => a + (parseFloat(l.dr) || 0), 0);
+    if (rule.types.includes(ed.type)) return `Required before submitting: an ${ed.type.toLowerCase()} journal goes for approval only with the document that supports it — a board minute, a reconciliation or the auditor's note.`;
+    if (rule.threshold > 0 && dr > rule.threshold) return `Required before submitting: this entry is ${fmtMoney(dr)}, above the ${fmtMoney(rule.threshold)} at which a journal needs its supporting document. A draft can be saved without it.`;
+    return '';
   }
 
   function renderJournalTrail() {
@@ -717,6 +739,128 @@ const UI = (() => {
   }
 
 
+  // ---- Supporting documents, shared by every module (Api\Attachments) ----
+
+  const DOC_ACCEPT = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.msg,.eml';
+
+  /** A record's documents as links that download them. */
+  function docList(docs, empty = 'No supporting document on file.') {
+    if (!docs || !docs.length) return `<div class="doc-empty">${esc(empty)}</div>`;
+    return `<div class="doc-list">${docs.map(d => `
+      <a class="doc-row" href="/api/attachments/${d.id}">
+        <span class="doc-name">${esc(d.name)}</span>
+        <span class="doc-meta">${esc([d.size, d.by, d.on].filter(Boolean).join(' · '))}</span>
+      </a>`).join('')}</div>`;
+  }
+
+  /**
+   * A document picker for a form. Each file uploads as it is chosen and waits,
+   * held against the uploader, until the form is saved with `ids()` as its
+   * `documents`. `required` and `recommended` label it; the server enforces what
+   * is required.
+   *
+   *   const docs = UI.docPicker(el, { label: "Supplier's invoice", required: true, hint: '…' });
+   *   postJSON(url, { ...form, documents: docs.ids() });
+   *
+   * A form that redraws itself passes the same `files` array each time, so the
+   * uploads — finished or still going — carry over to the new picker.
+   */
+  function docPicker(host, opts = {}) {
+    const files = opts.files || [];
+    host.innerHTML = `
+      <div class="doc-pick">
+        <div class="doc-pick-head">
+          <span>${esc(opts.label || 'Supporting documents')}</span>
+          ${opts.required ? '<span class="doc-tag req">Required</span>' : opts.recommended ? '<span class="doc-tag rec">Recommended</span>' : ''}
+        </div>
+        <div class="doc-files"></div>
+        <label class="doc-add"><span class="doc-add-label">+ Attach a document</span><input type="file" multiple hidden accept="${DOC_ACCEPT}"></label>
+        ${opts.hint ? `<div class="doc-hint">${esc(opts.hint)}</div>` : ''}
+      </div>`;
+    const list = host.querySelector('.doc-files');
+    const input = host.querySelector('input[type=file]');
+
+    const render = () => {
+      list.innerHTML = files.map((f, i) => `
+        <div class="doc-row${f.error ? ' bad' : ''}">
+          <span class="doc-name">${esc(f.name)}</span>
+          <span class="doc-meta">${esc(f.error || (f.id ? f.size : 'Uploading…'))}</span>
+          <button type="button" class="doc-x" data-i="${i}" aria-label="Remove ${esc(f.name)}">✕</button>
+        </div>`).join('');
+      host.querySelector('.doc-add-label').textContent = files.some(f => f.id) ? '+ Attach another' : '+ Attach a document';
+      if (opts.onChange) opts.onChange(files.filter(f => f.id).length);
+    };
+    // An upload that finishes after a redraw updates whichever picker now shows the files.
+    files.render = render;
+
+    input.addEventListener('change', () => {
+      for (const file of input.files) {
+        const entry = { name: file.name, id: null, size: '', error: '' };
+        files.push(entry);
+        const body = new FormData();
+        body.append('file', file, file.name);
+        fetch('/api/attachments', { method: 'POST', body })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`);
+            Object.assign(entry, data.document);
+          })
+          .catch((e) => { entry.error = e.message; })
+          .finally(() => files.render());
+      }
+      input.value = '';
+      render();
+    });
+    list.addEventListener('click', (e) => {
+      const b = e.target.closest('.doc-x');
+      if (!b) return;
+      const [f] = files.splice(+b.dataset.i, 1);
+      if (f && f.id) fetch(`/api/attachments/${f.id}/discard`, { method: 'POST' }).catch(() => {});
+      render();
+    });
+
+    if (files.length) render();
+
+    return {
+      ids: () => files.filter(f => f.id).map(f => f.id),
+      busy: () => files.some(f => !f.id && !f.error),
+      clear: () => { files.length = 0; render(); },
+    };
+  }
+
+  /**
+   * A record's documents, with a picker to add more when the person may
+   * (POST /api/documents/{kind}/{ref}). `onAdded(documents)` runs once they are on file.
+   */
+  function docPanel(host, { kind, ref, docs, canAdd, label, empty, hint, recommended, onAdded }) {
+    host.innerHTML = `
+      <div class="doc-panel">
+        <div class="doc-panel-list">${docList(docs, empty)}</div>
+        ${canAdd ? '<div class="doc-panel-add"></div><button type="button" class="btn doc-panel-save" hidden>Add to the file</button>' : ''}
+      </div>`;
+    if (!canAdd) return;
+    const save = host.querySelector('.doc-panel-save');
+    const picker = docPicker(host.querySelector('.doc-panel-add'), {
+      label: label || 'Add a document', recommended, hint,
+      onChange: (n) => { save.hidden = n === 0; },
+    });
+    save.addEventListener('click', async () => {
+      if (picker.busy()) return toast('Wait for the upload to finish.');
+      save.disabled = true;
+      try {
+        const res = await postJSON(`/api/documents/${kind}/${String(ref).split('/').map(encodeURIComponent).join('/')}`, { documents: picker.ids() });
+        host.querySelector('.doc-panel-list').innerHTML = docList(res.documents, empty);
+        picker.clear();
+        toast(res.message);
+        if (onAdded) onAdded(res.documents);
+      } catch (e) {
+        toast(e.message);
+      } finally {
+        save.disabled = false;
+      }
+    });
+  }
+
   // ---- Generic record drawer, shared by the modules added for the v5 nav ----
 
   let recordDrawer;
@@ -780,5 +924,5 @@ const UI = (() => {
     return `<span class="bar-track" style="display:block;"><span class="bar-fill" style="width:${width}%;background:${colour};"></span></span>`;
   }
 
-  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill };
+  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill, docList, docPicker, docPanel };
 })();

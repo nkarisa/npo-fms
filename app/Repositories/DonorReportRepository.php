@@ -49,7 +49,9 @@ final class DonorReportRepository extends Repository
             $queries = $children('SELECT * FROM {donor_report_queries} ORDER BY raised_on');
             $trails  = $this->trails('donor_report');
 
-            return array_map(function ($r) use ($lines, $checks, $queries, $trails) {
+            $documents = (new AttachmentRepository())->byObject('donor_report');
+
+            return array_map(function ($r) use ($lines, $checks, $queries, $trails, $documents) {
                 $id = (int) $r['id'];
 
                 return [
@@ -71,7 +73,8 @@ final class DonorReportRepository extends Repository
                         'code' => $l['code'], 'budget' => self::num($l['budget']), 'period' => self::num($l['period_amount']), 'cumulative' => self::num($l['cumulative_amount']),
                     ], $lines[$id] ?? []),
                     'compliance'  => array_column($checks[$id] ?? [], 'text'),
-                    'attachments' => [],
+                    // Recommended: the report as submitted, and the donor's acknowledgement.
+                    'attachments' => $documents[$id] ?? [],
                     'queries'     => array_map(static fn ($q) => [
                         'ref' => $q['reference'], 'when' => self::dmy($q['raised_on']), 'text' => $q['text'], 'response' => $q['response'] ?? '',
                     ], $queries[$id] ?? []),
