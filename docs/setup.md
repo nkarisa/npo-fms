@@ -393,6 +393,9 @@ as their job needs, each at all entities or only some. Define new roles under
 
 ## Signing in
 
+How it works in full — stages, protections, roles and the API — is in
+[authentication.md](authentication.md).
+
 People sign in at `/login` with their email and password, then a second step:
 
 - **An authenticator app** (recommended): Google Authenticator, Microsoft

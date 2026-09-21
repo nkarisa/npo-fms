@@ -56,7 +56,7 @@ final class RoleRepository extends Repository
             }
             $holders = [];
             foreach ($this->rows(
-                "SELECT DISTINCT ur.role_id, u.short_name, u.status FROM {user_entity_roles} ur JOIN {users} u ON u.id = ur.user_id ORDER BY u.id"
+                "SELECT DISTINCT ur.role_id, u.id, u.short_name, u.status FROM {user_entity_roles} ur JOIN {users} u ON u.id = ur.user_id ORDER BY u.id"
             ) as $r) {
                 $holders[(int) $r['role_id']][] = ['name' => $r['short_name'], 'active' => $r['status'] === 'active'];
             }

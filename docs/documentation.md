@@ -95,7 +95,7 @@ Running left to right across the top of every page:
 ## Signing in
 
 **Purpose:** let only the people the organisation has given access in, and prove
-each one is who they say.
+each one is who they say. The design is in [authentication.md](authentication.md).
 
 **On screen:** a standalone page at `/login`, outside the shell. Opening any page
 while signed out lands here and returns to that page afterwards.
