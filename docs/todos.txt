@@ -49,4 +49,6 @@ Never repeat previous passwords
 
 Maintaince Mode 
 
+Multiple attempts password locking
+
 Show the password complexity policy on the reset-password screen - Done
