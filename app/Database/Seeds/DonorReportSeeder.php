@@ -13,7 +13,10 @@ use CodeIgniter\Database\Seeder;
  * same grant and due date. Schedule-only reports have no reference in the
  * prototype and get one from their award ("USAID/URAIA/2026/R1"); those shown as
  * submitted are dated as submitted on their due date, the latest they could have
- * been. Attachment names are not seeded: there are no files behind them.
+ * been. Their figures were never taken from the ledger, so they carry none until
+ * a draft is refreshed. A detailed report's figures date from its "Report
+ * generated from ledger" entry. Attachment names are not seeded: there are no
+ * files behind them.
  */
 class DonorReportSeeder extends Seeder
 {
@@ -35,6 +38,7 @@ class DonorReportSeeder extends Seeder
             $review    = $this->trailMatch($ctx, $r['trail'], '/^(?:Sent for review to|Approved by) ([A-Z]\. [A-Z][a-z]+)/');
             $submitted = $ctx->trailEntry($r['trail'], '/^Submitted/');
             $accepted  = $ctx->trailEntry($r['trail'], '/^Accepted/');
+            $generated = $ctx->trailEntry($r['trail'], '/^Report generated from ledger/');
             $grant     = $ctx->require('grants', $r['grantRef']);
 
             $id = $ctx->insert('donor_reports', [
@@ -43,7 +47,8 @@ class DonorReportSeeder extends Seeder
                 'due_on' => $ctx->date($r['due']), 'status' => $status, 'funds_received' => $r['received'],
                 'reported_adjustment' => $r['reportedAdj'], 'note' => $r['note'] !== '' ? $r['note'] : null,
                 'prepared_by' => $ctx->userOrSystem($r['preparer']), 'reviewed_by' => $ctx->userId($review),
-                'submitted_at' => $submitted['when'] ?? null, 'accepted_at' => $accepted['when'] ?? null, 'created_at' => $now,
+                'submitted_at' => $submitted['when'] ?? null, 'accepted_at' => $accepted['when'] ?? null,
+                'figures_taken_at' => $generated['when'] ?? null, 'created_at' => $now,
             ]);
             $covered[$grant . '|' . $ctx->date($r['due'])] = true;
 

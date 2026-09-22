@@ -232,6 +232,17 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('donor-reports', 'Api\DonorReports::index');
     $routes->get('donor-reports/languages', 'Api\DonorReports::languages');
     $routes->post('donor-reports/languages', 'Api\DonorReports::setLanguage');
+    $routes->get('donor-reports/export', 'Api\DonorReports::export');
+    $routes->post('donor-reports', 'Api\DonorReports::create');
+    $routes->post('donor-reports/refresh', 'Api\DonorReports::refresh');
+    $routes->post('donor-reports/remove-adjustment', 'Api\DonorReports::removeAdjustment');
+    $routes->post('donor-reports/review', 'Api\DonorReports::review');
+    $routes->post('donor-reports/send-back', 'Api\DonorReports::sendBack');
+    $routes->post('donor-reports/submit', 'Api\DonorReports::submit');
+    $routes->post('donor-reports/query', 'Api\DonorReports::raiseQuery');
+    $routes->post('donor-reports/respond', 'Api\DonorReports::answer');
+    $routes->post('donor-reports/accept', 'Api\DonorReports::accept');
+    $routes->post('donor-reports/note', 'Api\DonorReports::note');
     $routes->get('donor-reports/(:any)', 'Api\DonorReports::show/$1');
     $routes->get('reports', 'Api\Reports::index');
     $routes->get('settings', 'Api\Settings::index');

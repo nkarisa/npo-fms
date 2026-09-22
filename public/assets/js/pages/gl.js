@@ -9,7 +9,7 @@
   const PAGE = 10;
   const params = new URLSearchParams(window.location.search);
   const state = {
-    account: params.get('account') || '', period: '', fund: 'All funds', program: 'All programmes', grant: 'All awards', q: '', page: 0,
+    account: params.get('account') || '', period: '', fund: 'All funds', program: 'All programmes', grant: params.get('grant') || 'All awards', q: '', page: 0,
   };
   let data = null;
 

@@ -301,7 +301,7 @@ final class GrantRepository extends Repository
             }
             foreach ($a['reports'] as $r) {
                 $this->insert('donor_reports', [
-                    'entity_id' => $this->lookups->entityId(), 'reference' => $this->nextReportReference($r['due']), 'grant_id' => $id,
+                    'entity_id' => $this->lookups->entityId(), 'reference' => (new DonorReportRepository())->nextReference($r['due']), 'grant_id' => $id,
                     'title' => $r['name'], 'type' => $r['type'], 'period_starts_on' => $r['from'], 'period_ends_on' => $r['to'],
                     'due_on' => $r['due'], 'status' => 'draft', 'funds_received' => 0, 'reported_adjustment' => 0,
                     'prepared_by' => $a['managerId'], 'created_at' => $now,
@@ -476,18 +476,6 @@ final class GrantRepository extends Repository
         }
 
         return 'FND-' . ($highest + 10);
-    }
-
-    /** DR-26-019: the donor report series for the year the report falls due. */
-    private function nextReportReference(string $due): string
-    {
-        $prefix = 'DR-' . substr($due, 2, 2) . '-';
-        $last = 0;
-        foreach ($this->rows('SELECT reference FROM {all:donor_reports} WHERE reference LIKE ?', [$prefix . '%']) as $r) {
-            $last = max($last, (int) substr($r['reference'], strlen($prefix)));
-        }
-
-        return $prefix . str_pad((string) ($last + 1), 3, '0', STR_PAD_LEFT);
     }
 
     /**

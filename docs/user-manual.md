@@ -172,7 +172,7 @@ is planned.
 | Funds and grants | Funds | Coming soon |
 | Funds and grants | Grants and awards | Coming soon |
 | Funds and grants | [Budgets](#budgets) | ✅ |
-| Funds and grants | Donor reports | Coming soon |
+| Funds and grants | [Donor reports](#donor-reports) | ✅ |
 | Insight | Cashflow forecast | Coming soon |
 | Insight | Reports | Coming soon |
 | Insight | Settings | Coming soon ([Users and roles](#users-and-roles) ✅) |
@@ -863,6 +863,69 @@ A draft you no longer want can be **Discarded**.
 | Approve a revision | Choose the *(pending approval)* version → **Approve** |
 | Start next year's budget | **New financial year** → assumptions → **Derive the budget** → **Raise** |
 | Send the variance report | **Export variance report** (CSV) |
+
+---
+
+## Donor reports
+
+**Funds and grants → Donor reports.** Expenditure reports to funders, built from
+the ledger rather than typed in. Every report shows whether what the funder is
+told **ties** to what is posted for the award, and a report that does not tie
+cannot be sent for review or submitted.
+
+### 1. Reading the page
+
+- The **stat cards** count the reports still with you (draft, in review or
+  overdue), those due soon (with the earliest date), those overdue, what has
+  been reported to funders this year, and the reports that do not tie.
+- The **tabs** filter by status; the search finds a funder, award, reference or
+  period. Reports still waiting on you come first, soonest due at the top.
+- **Reconciled** shows *✓ Ties*, the difference in red, or *No figures yet* for a
+  scheduled report whose figures have not been taken. A due date in red is inside
+  the warning window.
+- **Reporting calendar** lists everything still to go, month by month; click a
+  report to open it. **Report language** sets the language each funder receives
+  its pack in and previews the cover — headings translate, figures stay in KES.
+
+### 2. Preparing a report
+
+1. **+ New report.** Choose the award, give the title, type, period and the date
+   the funder expects it, then **Generate report**. Its figures are taken from
+   what is posted to the award: this period and cumulative, by account, against
+   the award's budget. (Reports scheduled when an award was recorded are already
+   on the list; open one and **Refresh from ledger** to fill it.)
+2. Check the three tabs. **Expenditure** is the schedule and the fund position;
+   **Reconciliation** compares what is reported with the ledger and holds the
+   supporting schedules — attach the ledger extract and anything else the funder
+   asks for; **Compliance** has the funder's conditions, the audit trail and a
+   note for the reviewer.
+3. If the report does not tie, post the missing journal and **Refresh from
+   ledger**, or **Remove the adjustment**.
+4. **Send for review.**
+
+### 3. Review, submission and the funder's reply
+
+- Someone who approves documents — never the preparer — opens the report and
+  either **Submits to funder** or **Returns to preparer** with what to change.
+  Submitting confirms the compliance statements.
+- When the funder asks a question, **Record funder query** with their reference
+  and wording. Answer it on the Compliance tab and **Respond to query**; the
+  report goes back to *Submitted*.
+- When the acceptance letter arrives, attach it and **File acceptance letter**.
+- **Export pack** downloads the schedule, the reconciliation, the compliance
+  record and the queries as a spreadsheet.
+
+### 4. Quick reference
+
+| Task | How |
+|---|---|
+| Start a report | **+ New report** → award, title, type, period, due date → **Generate report** |
+| Fill a scheduled report | Open it → **Refresh from ledger** |
+| Clear a difference | Post the correction, then **Refresh from ledger** — or **Remove the adjustment** |
+| Send it on | **Send for review**; the reviewer **Submits to funder** |
+| Answer a funder | **Record funder query** → write the response → **Respond to query** |
+| Close it off | **File acceptance letter** |
+| Change a funder's language | **Report language** → choose the language on the funder's row |
 
 ---
 

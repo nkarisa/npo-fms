@@ -3971,15 +3971,23 @@ paths:
   /donor-reports:
     get:
       tags: [Donor reports]
-      summary: Financial reports to funders
+      summary: The donor report register
+      description: >-
+        Open and queried reports first, soonest due at the top, then the rest most
+        recent first; ten a page. Each row says whether the report ties to the
+        ledger. `calendar` lists every report still to go; `newReport` (null
+        without journal.prepare) carries the awards a report can be raised for.
       parameters:
         - name: status
           in: query
-          schema: { type: string, default: All }
+          schema: { type: string, enum: [All, Draft, In review, Submitted, Queried, Overdue, Accepted], default: All }
         - { $ref: '#/components/parameters/Search' }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
       responses:
         '200':
-          description: Reports with whether each ties to the ledger.
+          description: The register.
           content:
             application/json:
               schema:
@@ -3987,9 +3995,277 @@ paths:
                 additionalProperties: true
                 properties:
                   rows: { type: array, items: { type: object, additionalProperties: true } }
-                  tabs: { type: array, items: { $ref: '#/components/schemas/Tab' } }
+                  tabs: { type: array, items: { type: object, properties: { key: { type: string }, label: { type: string } } } }
                   stats: { type: array, items: { $ref: '#/components/schemas/StatCard' } }
+                  hint: { type: string }
+                  footer: { type: string }
+                  calendar: { type: array, items: { type: object, additionalProperties: true } }
+                  page: { type: integer }
+                  pages: { type: integer }
+                  pageSize: { type: integer }
+                  filtered: { type: integer }
+                  total: { type: integer }
+                  warningDays: { type: integer }
+                  canPrepare: { type: boolean }
+                  newReport: { type: object, nullable: true, additionalProperties: true }
                   locale: { $ref: '#/components/schemas/Locale' }
+    post:
+      tags: [Donor reports]
+      summary: Raise a report with its figures taken from the ledger
+      description: >-
+        The period must fall inside the award and the report cannot fall due
+        before it ends. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grant, title, type, from, to, due]
+              properties:
+                grant: { type: string, description: The award reference. }
+                title: { type: string }
+                type: { type: string, enum: [financial, narrative, close_out] }
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+                due: { type: string, format: date }
+      responses:
+        '200':
+          description: The new report's reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/export:
+    get:
+      tags: [Donor reports]
+      summary: The report pack as CSV
+      parameters:
+        - name: ref
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: The schedule, reconciliation, compliance record, queries and documents list.
+          content:
+            text/csv:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /donor-reports/refresh:
+    post:
+      tags: [Donor reports]
+      summary: Retake a draft's figures from the ledger
+      description: Removes any manual adjustment. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/remove-adjustment:
+    post:
+      tags: [Donor reports]
+      summary: Remove a draft's manual adjustment
+      description: The report then reports what is posted. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/review:
+    post:
+      tags: [Donor reports]
+      summary: Send a draft for review
+      description: Refused unless it ties and, for a financial or close-out report, has figures. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/send-back:
+    post:
+      tags: [Donor reports]
+      summary: Return a report in review to its preparer
+      description: The note is required. Needs journal.approve; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+                note: { type: string }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/submit:
+    post:
+      tags: [Donor reports]
+      summary: Submit a report in review to the funder
+      description: Refused unless it ties, and to whoever prepared it. Confirms its compliance statements. Needs journal.approve; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/query:
+    post:
+      tags: [Donor reports]
+      summary: Record the funder's query on a submitted report
+      description: Without a reference one is numbered Q-yyyy-nn. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+                text: { type: string }
+                queryRef: { type: string, nullable: true }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/respond:
+    post:
+      tags: [Donor reports]
+      summary: Answer the open queries and resubmit
+      description: Each open query needs an answer, given here or already drafted on it. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+                responses: { type: object, additionalProperties: { type: string }, description: Answers by query reference. }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/accept:
+    post:
+      tags: [Donor reports]
+      summary: File the acceptance letter on a submitted report
+      description: Refused while a query is open. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /donor-reports/note:
+    post:
+      tags: [Donor reports]
+      summary: Save the reviewer's note
+      description: Refused once accepted. Needs journal.prepare; refused in the consolidated view.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ref]
+              properties:
+                ref: { type: string, description: The report reference. }
+                note: { type: string }
+      responses:
+        '200':
+          description: The report reference and a message.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /donor-reports/languages:
     get:
@@ -4013,6 +4289,7 @@ paths:
     post:
       tags: [Donor reports]
       summary: Set the report language for a funder
+      description: Needs journal.prepare.
       requestBody:
         required: true
         content:
@@ -4047,7 +4324,9 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: The report detail with its lines.
+          description: >-
+            The report with its lines, reconciliation, compliance record, queries,
+            trail and documents, and `can`: the steps the signed-in user may take.
           content:
             application/json:
               schema:

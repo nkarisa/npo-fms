@@ -621,13 +621,57 @@ the approved version of the working year.
 
 ### Donor reports
 
-**Purpose:** track financial reports to funders and whether each ties to the ledger.
+**Purpose:** expenditure reports to funders, built from the ledger rather than
+re-keyed, and their path from draft to the funder's acceptance.
 
-**On screen:** header (*Donor reports*), stat cards, a search and status tabs, then
-a table — Ref, Title, Funder, Period, Due, Status (Submitted/Accepted/Overdue/
-Queried/Draft), Reported, Ledger actual, Ties? (Ties / Does not tie).
+**On screen:** header (*Donor reports*) with **Report language**, **Reporting
+calendar** and **+ New report**; five stat cards (Open reports, Due within the
+report warning window, Overdue, Reported this year, Not reconciled); status tabs
+with counts (All, Draft, In review, Submitted, Queried, Overdue, Accepted), a
+search and a tie hint; then the register — Report (title, reference and award),
+Funder, Period, Type, Reported, Ledger actual, Reconciled (✓ Ties, the
+difference, or *No figures yet*), Due (highlighted within the warning window) and
+Status — ten a page. Open and queried reports come first, soonest due at the top.
 
-**What you can do:** search, filter by status, and click a report to open its detail.
+**A report** opens on three tabs:
+
+- *Expenditure* — the schedule by account: budget, this period, cumulative and
+  the share of budget used, with the fund position (received, spent, unspent).
+  A draft can **Refresh from ledger**.
+- *Reconciliation* — reported expenditure against posted actuals, the
+  difference, funds received and the unspent balance; the supporting schedules
+  attached; and, where a manual adjustment stops the report tying, **Remove the
+  adjustment**.
+- *Compliance* — the funder's compliance statements, its queries (with a
+  response box while one is open), the audit trail and a reviewer note.
+
+**The path:** Draft → **Send for review** → **Submit to funder** (or **Return to
+preparer** with a reason) → Submitted → **Record funder query** / **Respond to
+query** as often as needed → **File acceptance letter** → Accepted. A draft past
+its due date shows as Overdue.
+
+**Rules:**
+- A report's figures are a snapshot of the ledger for its award and period:
+  expense accounts in donor reports (and any account the award budgets for) with
+  postings coded to the award, cumulative to the period's end. The snapshot is
+  retaken only while the report is a draft, and retaking it removes any manual
+  adjustment.
+- What the funder is told is the snapshot plus any manual adjustment. A report
+  that does not tie cannot be sent for review or submitted.
+- A financial or close-out report needs figures before it goes for review.
+- Preparing (new report, refresh, review, queries, acceptance, the note, the
+  delivery language) needs `journal.prepare`. Submitting and returning need
+  `journal.approve`, and the preparer can never submit their own report.
+  Submitting confirms the compliance statements. Nothing can be changed in the
+  consolidated view.
+- A new report's period must fall inside the award, and it cannot fall due
+  before the period ends. References run DR-yy-nnn by the year it falls due, the
+  same series the award wizard uses for its reporting calendar.
+
+**Report language** sets the language each funder's pack is delivered in and
+previews its cover. Headings translate; figures, dates and currency stay in the
+reporting locale. **Export pack** downloads the schedule, reconciliation,
+compliance record, queries and documents list as CSV.
 
 ---
 
