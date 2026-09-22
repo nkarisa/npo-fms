@@ -46,6 +46,8 @@ A sign-in moves through stages, which are kept in the session
 signedOut ──password──▶ mfa ───code──────────────────▶ done
                    │
                    └──▶ enrol ──set up a second step──▶ done
+
+(any step that would reach done, with an expired password) ──▶ renew ──new password──▶ done
 ```
 
 | Stage | Meaning | What the browser may call |
@@ -53,6 +55,7 @@ signedOut ──password──▶ mfa ───code─────────�
 | `signedOut` | Nobody is signed in | `POST /api/auth/login` |
 | `mfa` | Password accepted; the person has a second step and must give a code | `POST /api/auth/verify`, `POST /api/auth/code` (resend the emailed code) |
 | `enrol` | Password accepted; the person must have a second step but has not set one up | `POST /api/auth/enrol/start`, `POST /api/auth/enrol/confirm` |
+| `renew` | Password and second step accepted, but the password is older than the policy allows | `POST /api/auth/renew` |
 | `done` | Signed in | The whole application |
 
 Every response from `/api/auth/*` includes `stage`. The sign-in page
@@ -163,16 +166,38 @@ sign-in.
   step.
 - A reset request gets the same answer whether or not the email has an account.
 
-### Password rules
+### Password policy
 
-Checked in `AuthRepository::assertStrong()`:
+Set in **Settings → Users → Password policy** by anyone with `users.manage`, and held
+as one setting (`passwordPolicy`) on the head office. Every change goes in the audit
+log in words. The rules live in
+[PasswordPolicy.php](../app/Libraries/PasswordPolicy.php):
 
-- At least `auth.minPasswordLength` characters (12 by default), and no more than
-  200.
-- At least five different characters.
-- It must not contain the part of the email address before the `@`, if that part is
-  three characters or longer.
-- It must not be one of a short list of obvious passwords.
+| Rule | Range | Standard |
+|---|---|---|
+| Minimum length | 8–64 (never more than 200) | `auth.minPasswordLength` (12) |
+| Different characters | 1–20, and no more than the length | 5 |
+| Kinds of character mixed (capital, small, digit, symbol or space) | 1–4 | 1 |
+| Minimum of each kind | 0–10 each | 0 |
+| Refuse the person's own name or email address | on/off | on |
+| Refuse common passwords, also with digits or symbols added at the end | on/off | on |
+| Earlier passwords that cannot be used again (the current one counts as the first) | 0–24 | 0 |
+| Days a password lasts | 0 (never) or 30–365 | 0 |
+
+The matrix and the history are checked whenever a password is chosen: from an
+invitation or reset link, on My account, at `renew`, and by the installer. They
+never apply at sign-in, so tightening them locks nobody out.
+
+Expiry is the exception. Once a password is older than the limit, the person
+chooses a new one at their next sign-in, after the second step (the `renew` stage).
+When expiry is turned on, passwords with no `password_changed_at` are counted from
+that day. My account shows when the password expires.
+
+The forms list the rules and tick them off as the person types
+(`UI.passwordRules`). An invitation leaves out the history rule, as a new person has
+no earlier passwords. After a new password is saved, the page passes it to the
+browser's password manager where the browser supports it (Chrome, Edge), so the next
+sign-in does not fill in the old one.
 
 Passwords are stored with PHP's `password_hash()`. If PHP's default algorithm
 changes, a password is re-hashed at the next successful sign-in.
@@ -328,7 +353,7 @@ overridden in `.env` as `auth.<name>` (or `auth_<name>` in an environment variab
 | `maxFailedSignIns` / `lockMinutes` | 5 / 15 | Wrong passwords before a lockout, and how long it lasts |
 | `idleMinutes` | 30 | Idle time before a session ends |
 | `inviteHours` / `resetHours` | 168 / 1 | How long invitation and reset links work |
-| `minPasswordLength` | 12 | |
+| `minPasswordLength` | 12 | The standard minimum length, until a password policy is saved in Settings → Users |
 | `recoveryCodes` | 10 | |
 | `actAs` | `false` | See [Act as](#act-as-training-only) |
 
@@ -350,6 +375,7 @@ The migration `2026-09-21-100033_CreateAuthentication` adds these to the existin
 | `users.password_changed_at` | |
 | `auth_tokens` | Invitation and reset links (SHA-256) and emailed codes (`password_hash`). Columns: `purpose`, `expires_at`, `attempts`, `used_at` |
 | `user_recovery_codes` | Hashed recovery codes and when each was used |
+| `password_history` | The hashes of each person's earlier passwords, the latest 24 (`2026-09-22-100044_CreatePasswordHistory`) |
 | permission `users.manage` | Given to every role that already holds `settings.manage`, so nobody loses access when the migration runs. `settings.manage` itself was later split by `SplitSettingsPermissions` (see Permissions above) |
 
 ## API
@@ -364,9 +390,10 @@ request and response bodies.
 | `POST auth/verify` | `{code}`: an authenticator code, an emailed code or a recovery code |
 | `POST auth/code` | Send a new emailed code |
 | `POST auth/enrol/start`, `auth/enrol/confirm` | Set up a second step during sign-in |
+| `POST auth/renew` | `{password}`: a new password in place of an expired one |
 | `POST auth/logout` | |
 | `POST auth/forgot` | `{email}`: send a reset link |
-| `GET` / `POST auth/invite`, `auth/reset` | Check a link's token, then set the password from it |
+| `GET` / `POST auth/invite`, `auth/reset` | Check a link's token (the answer carries the password rules, since no sign-in has begun), then set the password from it |
 | `GET account` | The person's details, roles, second step, and recovery codes left |
 | `POST account/password`, `account/mfa/start`, `account/mfa/confirm`, `account/mfa/remove`, `account/recovery-codes` | Changes on My account; these ask for the current password where noted above |
 | `GET roles` | Roles, their permissions and holders, the permission catalogue, `canManage` |

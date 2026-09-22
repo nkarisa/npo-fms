@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\PasswordPolicy;
 use App\Repositories\AuthRepository;
 use App\Repositories\RoleRepository;
 use App\Repositories\RuleViolation;
@@ -126,7 +127,25 @@ class Account extends BaseApiController
             'activity' => array_map(static fn ($e) => [
                 'when' => date('d M Y H:i', strtotime($e['occurred_at'])), 'what' => $e['summary'], 'from' => (string) $e['ip_address'],
             ], $events),
-            'minLength' => config(\Config\Auth::class)->minPasswordLength,
+            'passwordExpires' => self::expiry($auth->passwordExpiresAt($me['id'])),
+        ] + self::passwordRules();
+    }
+
+    /** When the password expires under the policy: {date, days}, or null when it does not. */
+    private static function expiry(?int $at): ?array
+    {
+        return $at === null ? null : ['date' => date('d M Y', $at), 'days' => max(0, (int) ceil(($at - time()) / 86400))];
+    }
+
+    /** What a new password has to be, for the form to list and tick off as it is typed. */
+    public static function passwordRules(): array
+    {
+        $policy = PasswordPolicy::current();
+
+        return [
+            'minLength' => $policy['minLength'],
+            'passwordPolicy' => $policy,
+            'passwordRules' => PasswordPolicy::describe($policy),
         ];
     }
 }

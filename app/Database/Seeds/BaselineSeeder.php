@@ -37,9 +37,25 @@ class BaselineSeeder extends Seeder
     public const LOCALE = ['code' => 'en-GB', 'label' => 'English (UK)', 'native_name' => 'English',
         'direction' => 'ltr', 'is_source' => 1, 'status' => 'source', 'reviewer' => 'Source strings'];
 
-    /** The roles an instance starts with. Finance Manager is the one that can change settings. */
-    public const ROLES = ['Finance Manager', 'Senior Accountant', 'Accountant', 'Programme Officer',
+    /**
+     * The roles an instance starts with. Administrator holds every permission there
+     * is; Finance Manager is the working role that can change settings.
+     */
+    public const ROLES = ['Administrator', 'Finance Manager', 'Senior Accountant', 'Accountant', 'Programme Officer',
         'Executive Director', 'Auditor (read only)', 'Finance Director', 'Grants Lead'];
+
+    /**
+     * The role that holds every permission, whatever the list grows to, so that
+     * whoever sets a new instance up is never short of one.
+     *
+     * Holding every permission is not the same as being an approver. Which role
+     * signs a document off is set per entity in `approval_rules` (see
+     * APPROVAL_RULES and App\Repositories\ApprovalPolicy), which matches on the
+     * role's name rather than on what it permits, so this role approves nothing
+     * until it is named there. It is offered as an approver because it holds
+     * journal.approve, and it carries no ceiling (see CEILINGS).
+     */
+    public const ADMIN_ROLE = 'Administrator';
 
     public const PERMISSIONS = [
         'ledger.view'           => 'View the ledger, reports and supporting records',
@@ -62,6 +78,11 @@ class BaselineSeeder extends Seeder
         'users.manage'          => 'Invite users, assign their roles and define roles',
     ];
 
+    /**
+     * What each role permits. Administrator is not listed: it holds every key in
+     * PERMISSIONS, taken from that list when the seeder runs (see rolePermissions())
+     * so a permission added to the application is never left out of it.
+     */
     public const ROLE_PERMISSIONS = [
         'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view',
             'settings.view', 'settings.organisation', 'settings.ledger', 'settings.approvals', 'settings.banking', 'settings.integrations', 'settings.payroll',
@@ -74,7 +95,7 @@ class BaselineSeeder extends Seeder
     ];
 
     /** What a role may approve in one transaction. Null is no ceiling. */
-    public const CEILINGS = ['Finance Manager' => 5000000, 'Executive Director' => null];
+    public const CEILINGS = [self::ADMIN_ROLE => null, 'Finance Manager' => 5000000, 'Executive Director' => null];
 
     /** [code, name, indicative rate to the base currency, active]. Rates are indicative and edited in Settings. */
     public const CURRENCIES = [
@@ -225,6 +246,18 @@ class BaselineSeeder extends Seeder
         'signoff'   => ['Authorised by the Executive Director', 'confirmation', 'Executive Director', 'period.authorise', 'Authorised before the period was locked'],
     ];
 
+    /**
+     * What each role permits, with the Administrator's set taken from PERMISSIONS
+     * rather than repeated: a permission added to the application is held by it
+     * from the moment it is seeded, and cannot be forgotten here.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function rolePermissions(): array
+    {
+        return self::ROLE_PERMISSIONS + [self::ADMIN_ROLE => array_keys(self::PERMISSIONS)];
+    }
+
     public function run(): void
     {
         $now = date('Y-m-d H:i:s');
@@ -239,7 +272,7 @@ class BaselineSeeder extends Seeder
         foreach (self::PERMISSIONS as $key => $description) {
             $this->ensure('permissions', ['key' => $key], ['key' => $key, 'description' => $description]);
         }
-        foreach (self::ROLE_PERMISSIONS as $role => $keys) {
+        foreach (self::rolePermissions() as $role => $keys) {
             foreach ($keys as $key) {
                 $this->link('role_permissions', [
                     'role_id' => $this->idOf('roles', ['name' => $role]),

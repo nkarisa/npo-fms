@@ -31,18 +31,41 @@ $routes->get('settings', 'Pages::settings');
 $routes->get('user-manual', 'Pages::userManual');
 $routes->get('account', 'Pages::account');
 
+// Standing a new instance up. Open without a sign-in, because there is nobody to
+// sign in as yet, and answered as not found once the instance is installed
+// (App\Filters\Installed). The same work as `php spark install`, in a browser.
+$routes->get('install', 'Install::index');
+
 // Signing in. These and /api/auth/* are the only routes open without a sign-in (Config\Filters).
 $routes->get('login', 'Pages::login');
 $routes->get('accept-invite', 'Pages::acceptInvite');
 $routes->get('reset-password', 'Pages::resetPassword');
 
 $routes->group('api', static function (RouteCollection $routes) {
+    // Standing the instance up. Each step checks its own answers and says which step
+    // the wizard is on next; the last four do the writing, in this order, so a
+    // browser that gives up part way leaves something the CLI can finish.
+    $routes->get('install', 'Api\Install::index');
+    $routes->post('install/token', 'Api\Install::token');
+    $routes->post('install/server', 'Api\Install::server');
+    $routes->post('install/database', 'Api\Install::database');
+    $routes->post('install/data', 'Api\Install::data');
+    $routes->post('install/organisation', 'Api\Install::organisation');
+    $routes->post('install/entities', 'Api\Install::entities');
+    $routes->post('install/user', 'Api\Install::user');
+    $routes->post('install/back', 'Api\Install::back');
+    $routes->post('install/env', 'Api\Install::env');
+    $routes->post('install/migrate', 'Api\Install::migrate');
+    $routes->post('install/seed', 'Api\Install::seed');
+    $routes->post('install/finish', 'Api\Install::finish');
+
     $routes->get('auth', 'Api\Auth::status');
     $routes->post('auth/login', 'Api\Auth::login');
     $routes->post('auth/verify', 'Api\Auth::verify');
     $routes->post('auth/code', 'Api\Auth::code');
     $routes->post('auth/enrol/start', 'Api\Auth::enrolStart');
     $routes->post('auth/enrol/confirm', 'Api\Auth::enrolConfirm');
+    $routes->post('auth/renew', 'Api\Auth::renew');
     $routes->post('auth/logout', 'Api\Auth::logout');
     $routes->post('auth/forgot', 'Api\Auth::forgot');
     $routes->get('auth/invite', 'Api\Auth::link/invite');

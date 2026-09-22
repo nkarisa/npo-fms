@@ -6,6 +6,7 @@ use App\Libraries\Brand;
 use App\Libraries\Clock;
 use App\Libraries\EntityCalendar;
 use App\Libraries\EntityScope;
+use App\Libraries\PasswordPolicy;
 use App\Libraries\Prototype;
 use App\Libraries\SettingsAccess;
 use App\Libraries\Theme;
@@ -351,6 +352,20 @@ final class SettingsRepository extends Repository
         return in_array(30, $terms, true) ? 30 : $terms[0];
     }
 
+    /**
+     * The password policy as the matrix in Settings → Users shows it: the rules in
+     * force, the standard they started from, and the kinds of character in order.
+     */
+    public function passwordPolicy(): array
+    {
+        return [
+            'policy'   => PasswordPolicy::current($this->db),
+            'standard' => PasswordPolicy::standard(),
+            'kinds'    => array_map(static fn ($key, $k) => ['key' => $key, 'name' => $k[0], 'examples' => $k[1]], array_keys(PasswordPolicy::KINDS), PasswordPolicy::KINDS),
+            'ranges'   => PasswordPolicy::RANGES,
+        ];
+    }
+
     /** The rules with their values, for the screen. */
     public function dayRules(): array
     {
@@ -593,6 +608,10 @@ final class SettingsRepository extends Repository
         if (isset($draft['users'])) {
             $from('users');
             $this->planUsers((array) $draft['users'], $plan);
+        }
+        if (isset($draft['passwordPolicy'])) {
+            $from('passwordPolicy');
+            $this->planPasswordPolicy((array) $draft['passwordPolicy'], $plan);
         }
         if (isset($draft['entities'])) {
             $from('entities');
@@ -1214,6 +1233,29 @@ final class SettingsRepository extends Repository
             }
             $plan('Terms', $label . ' changed from ' . (int) $current . ' to ' . (int) $text . ' days', fn () => $this->hold($key, 'terms', (string) (int) $text, $label));
         }
+    }
+
+    /**
+     * The password policy of Settings → Users. The matrix and the history apply to
+     * the next password each person chooses; expiry is asked at sign-in, counted
+     * from when each password was set.
+     */
+    private function planPasswordPolicy(array $in, callable $plan): void
+    {
+        $current = PasswordPolicy::current($this->db);
+        $next = PasswordPolicy::normalise($in);
+        if ($next == $current) {
+            return;
+        }
+        $plan('Users', 'Password policy changed to: ' . PasswordPolicy::summary($next), function () use ($next) {
+            $this->hold(PasswordPolicy::KEY, 'security', json_encode($next), 'Password policy', 'What a new password has to be. Set in Settings → Users.');
+            // A password with no date it was set (one seeded, or set before dates were
+            // kept) is counted from today, so turning expiry on does not expire them all at once.
+            if ($next['maxAgeDays'] > 0) {
+                $this->db->table('users')->where('password_changed_at', null)->where('password_hash IS NOT NULL', null, false)
+                    ->update(['password_changed_at' => date('Y-m-d H:i:s')]);
+            }
+        });
     }
 
     /**

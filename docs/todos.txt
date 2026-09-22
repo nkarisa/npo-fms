@@ -43,3 +43,10 @@ Provide permission to restrict who sees what in the settings page - Done
 Propose how consolidation works when various entities would use difference currency?
 
 Allow switching a role (a priviledge permission)
+
+Expiry of password after a given period
+Never repeat previous passwords
+
+Maintaince Mode 
+
+Show the password complexity policy on the reset-password screen - Done

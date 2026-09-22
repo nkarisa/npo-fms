@@ -21,8 +21,26 @@ use CodeIgniter\Database\BaseConnection;
  * What is written here is the smallest set that lets the ledger be posted to at
  * all: a journal needs an entity, an open period inside a fiscal year, and a
  * preparer; approving one needs a second person and an approval rule. The first
- * user therefore holds every settings permission and users.manage, and can invite
- * that second person.
+ * user can invite that second person.
+ *
+ * One entity — the head office — is always created; the accounts consolidate into
+ * it and every other entity hangs off it. More can be opened at the same time
+ * (`entities` in the answers), each on the head office's calendar.
+ *
+ * The first user holds two roles at every entity created: FIRST_ROLE, then
+ * BaselineSeeder::ADMIN_ROLE. The Administrator role brings every permission there
+ * is; holding a role at every entity brings the consolidated view, which
+ * EntityScope offers only to someone who reaches all of them. Entities opened later
+ * are theirs too (SettingsRepository gives a new entity to whoever reaches all the
+ * others). Finance Manager is held first because approval rules match on a role's
+ * name, and Lookups::roleOf reads the first role held: as Administrator alone the
+ * first user could approve nothing until Settings → Approvals named that role. It
+ * does not make them an approver of their own work. Which role
+ * signs a document off is `approval_rules`, written from
+ * BaselineSeeder::APPROVAL_RULES, which names the Finance Manager and the
+ * Executive Director; and in any case JournalRepository::approve refuses the
+ * person who prepared the entry. The second person nextSteps() asks for is not
+ * optional.
  *
  * The first user's password comes from the answers file (userPassword) for an
  * unattended install, or is chosen in the browser from a one-time link the install
@@ -37,11 +55,27 @@ final class Installer
     /** Where a financial year end falls, and the month its year opens in. */
     public const YEAR_STARTS = ['31 December' => 1, '30 June' => 7, '30 September' => 10];
 
-    /** The role the first user holds: the only one that can change settings. */
-    public const FIRST_ROLE = 'Finance Manager';
+    /**
+     * The kinds of entity that can be added alongside the head office, which is
+     * always the first one. Kept here rather than read from SettingsRepository so
+     * the installer does not need a settings row to exist before it writes one.
+     */
+    public const BRANCH_TYPES = ['Branch', 'Related trust'];
+
+    /**
+     * Answers that are not a single value, and so are not in questions(): the
+     * entities to open besides the head office.
+     */
+    public const EXTRAS = ['entities'];
 
     /** Owns records nobody signed for — an imported chart, a carried balance. It can never sign in. */
     public const SYSTEM_EMAIL = 'data-migration@system.invalid';
+
+    /**
+     * The role the first user approves as. They hold BaselineSeeder::ADMIN_ROLE too,
+     * for every permission.
+     */
+    public const FIRST_ROLE = 'Finance Manager';
 
     private BaseConnection $db;
 
@@ -70,7 +104,7 @@ final class Installer
             'yearEnd'        => ['Financial year end', 'One of ' . implode(', ', array_keys(self::YEAR_STARTS)), '31 December'],
             'codeLength'     => ['Account code length', 'One of ' . implode(', ', \App\Repositories\SettingsRepository::CODE_LENGTHS), '4 digits'],
             'firstYear'      => ['First financial year to keep', 'The year the ledger starts; its months are created open', (string) date('Y')],
-            'userName'       => ['Your full name', 'The first user, who holds the Finance Manager role', null],
+            'userName'       => ['Your full name', 'The first user, who holds every permission at every entity', null],
             'userEmail'      => ['Your email address', 'What you sign in with', null],
             'userPassword'   => ['Your password', 'Answers file only. Left blank, the install prints a one-time link to choose it in the browser', ''],
         ];
@@ -95,8 +129,8 @@ final class Installer
      * Writes the organisation, its head office, the financial year and its months,
      * and the first user, in one transaction.
      *
-     * @param array<string, string> $answers keyed as questions()
-     * @return array{entity: string, year: string, periods: int, user: string, role: string, link: string|null}
+     * @param array<string, string> $answers keyed as questions(), and optionally the EXTRAS
+     * @return array{entity: string, entities: list<string>, year: string, periods: int, user: string, role: string, link: string|null}
      */
     public function install(array $answers): array
     {
@@ -105,6 +139,10 @@ final class Installer
         }
 
         $in = $this->validated($answers);
+        $branches = $this->validatedEntities($answers['entities'] ?? [], $in);
+        // Named before anything is written, so a missing role is a refusal rather
+        // than a rollback half way through. The order matters: see the class comment.
+        $roleIds = [$this->roleId(self::FIRST_ROLE), $this->roleId(BaselineSeeder::ADMIN_ROLE)];
         $now = Clock::timestamp();
 
         $this->db->transException(true)->transStart();
@@ -120,12 +158,16 @@ final class Installer
             $this->settings($entityId, $in, $now);
             $this->approvals($entityId, $now);
             $periods = $this->year($entityId, $in, $now);
-            $userId = $this->firstUser($in, $entityId, $now);
+            // After the head office's calendar exists: a branch keeps its books on it,
+            // and nothing can be posted to an entity that has no periods.
+            $entityIds = array_merge([$entityId], $this->branches($branches, $entityId, $now));
+            $userId = $this->firstUser($in, $entityIds, $roleIds, $now);
 
             $this->insert('audit_events', [
                 'entity_id' => $entityId, 'occurred_at' => $now, 'actor_user_id' => $userId, 'action' => 'installed',
                 'object_type' => 'entity', 'object_id' => $entityId, 'object_ref' => $in['entityCode'],
                 'summary' => mb_substr($in['registeredName'] . ' installed by ' . $in['userName'] . ' — head office ' . $in['entityCode']
+                    . ($branches === [] ? '' : ' and ' . count($branches) . ' more ' . (count($branches) === 1 ? 'entity' : 'entities'))
                     . ', financial year ' . $in['yearCode'] . ' opened with ' . count($periods) . ' months', 0, 255),
             ]);
 
@@ -143,13 +185,34 @@ final class Installer
 
         return [
             'entity' => $in['entityCode'] . ' · ' . $in['entityName'],
+            'entities' => array_merge(
+                [$in['entityCode'] . ' · ' . $in['entityName'] . ' · head office'],
+                array_map(static fn ($b) => $b['code'] . ' · ' . $b['name'] . ' · ' . mb_strtolower($b['type']), $branches)
+            ),
             'year'   => $in['yearCode'] . ' · ' . $in['yearStarts'] . ' to ' . $in['yearEnds'],
             'periods' => count($periods),
             'user'   => $in['userName'] . ' <' . $in['userEmail'] . '>',
-            'role'   => self::FIRST_ROLE,
+            'role'   => self::FIRST_ROLE . ' and ' . BaselineSeeder::ADMIN_ROLE
+                . (count($entityIds) > 1 ? ' at all ' . count($entityIds) . ' entities' : ' at the head office'),
             // Where the first user chooses a password, when the answers did not give one.
             'link'   => $link,
         ];
+    }
+
+    /**
+     * Checks the answers and writes nothing, throwing on the first that will not do.
+     *
+     * The browser installer asks a few answers at a time and checks them as they are
+     * given, so a mistake is caught on the step it was made on rather than at the
+     * end. It is the same checking install() does, so the two cannot drift.
+     *
+     * @param array<string, mixed> $answers keyed as questions(), and optionally the EXTRAS
+     */
+    public function check(array $answers): void
+    {
+        $values = array_filter(array_diff_key($answers, array_flip(self::EXTRAS)), 'is_scalar');
+        $in = $this->validated(array_map('strval', $values));
+        $this->validatedEntities($answers['entities'] ?? [], $in);
     }
 
     /** What is still to be done once the instance exists, in the order it is done. */
@@ -190,7 +253,7 @@ final class Installer
         }
 
         $in['currency'] = mb_strtoupper($in['currency']);
-        if ($this->count('currencies', ['code' => $in['currency']]) === 0) {
+        if ($this->holds('currencies') && $this->count('currencies', ['code' => $in['currency']]) === 0) {
             throw new RuleViolation($in['currency'] . ' is not a currency this instance holds. Add it in Settings → Currencies after installing, or use one of the currencies seeded with the baseline.');
         }
 
@@ -201,7 +264,7 @@ final class Installer
             throw new RuleViolation('Give the first user\'s full name, so the ledger can show who prepared and who approved each entry.');
         }
         if ($in['userPassword'] !== '') {
-            (new AuthRepository($this->db))->assertStrong($in['userPassword'], ['email' => $in['userEmail']]);
+            (new AuthRepository($this->db))->assertStrong($in['userPassword'], ['email' => $in['userEmail'], 'name' => $in['userName']]);
         }
 
         if (preg_match('/^\d{4}$/', $in['firstYear']) !== 1) {
@@ -224,6 +287,86 @@ final class Installer
         if (!in_array($value, $allowed, true)) {
             throw new RuleViolation($label . ' is one of ' . implode(', ', $allowed) . ', not "' . $value . '".');
         }
+    }
+
+    /**
+     * The entities to open besides the head office, checked by the same rules that
+     * apply when one is added later in Settings → Organisation
+     * (SettingsRepository::planNewEntity): a code of its own, an active currency, a
+     * name nobody else has, and never a second head office.
+     *
+     * An instance can be installed with none of these. The head office alone is a
+     * whole organisation, and one is always created.
+     *
+     * @param mixed $rows
+     * @param array<string, string> $in the head office, already checked
+     * @return list<array{code: string, name: string, type: string, currency: string}>
+     */
+    private function validatedEntities(mixed $rows, array $in): array
+    {
+        if ($rows === [] || $rows === null || $rows === '') {
+            return [];
+        }
+        if (!is_array($rows)) {
+            throw new RuleViolation('The entities to open are given as a list, one for each.');
+        }
+
+        $codes = [mb_strtoupper($in['entityCode']) => true];
+        $names = [mb_strtolower($in['entityName']) => true];
+        $out   = [];
+
+        // install() refuses an instance that already has an entity, so in the ordinary
+        // way there is nothing here. Read anyway, so this stands on its own and a
+        // clash is a sentence rather than a unique-key error rolled back.
+        if ($this->holds('entities')) {
+            foreach ($this->db->table('entities')->select('code, name')->get()->getResultArray() as $held) {
+                $codes[mb_strtoupper($held['code'])] = true;
+                $names[mb_strtolower($held['name'])] = true;
+            }
+        }
+
+        foreach (array_values($rows) as $i => $row) {
+            if (!is_array($row)) {
+                throw new RuleViolation('Entity ' . ($i + 2) . ' is given as a code, a name, a kind and a currency.');
+            }
+
+            $code     = mb_strtoupper(trim((string) ($row['code'] ?? '')));
+            $name     = trim((string) ($row['name'] ?? ''));
+            $type     = trim((string) ($row['type'] ?? self::BRANCH_TYPES[0]));
+            $currency = mb_strtoupper(trim((string) ($row['currency'] ?? $in['currency'])));
+            $where    = $name !== '' ? $name : 'entity ' . ($i + 2);
+
+            if ($name === '') {
+                throw new RuleViolation('Name ' . $where . ' as it should read on a consolidated statement, or remove it.');
+            }
+            if (mb_strlen($name) > 120) {
+                throw new RuleViolation('The name of ' . $where . ' is longer than 120 characters.');
+            }
+            if (preg_match('/^[A-Z0-9][A-Z0-9-]{1,19}$/', $code) !== 1) {
+                throw new RuleViolation($code === ''
+                    ? 'Give ' . $where . ' a short code — it is what user access and imported files refer to it by.'
+                    : $code . ' is not an entity code. Use 2 to 20 letters, digits and hyphens, such as ' . $in['entityCode'] . '-2.');
+            }
+            if (isset($codes[$code])) {
+                throw new RuleViolation($code . ' is the code of more than one entity. Each one has its own, and it is fixed once saved.');
+            }
+            if (isset($names[mb_strtolower($name)])) {
+                throw new RuleViolation($name . ' is the name of more than one entity.');
+            }
+            if (!in_array($type, self::BRANCH_TYPES, true)) {
+                throw new RuleViolation('There is already a head office, so ' . $where . ' is one of '
+                    . implode(' or ', self::BRANCH_TYPES) . '. A second head office would leave the consolidation with two tops.');
+            }
+            if ($this->holds('currencies') && $this->count('currencies', ['code' => $currency]) === 0) {
+                throw new RuleViolation($currency . ' is not a currency this instance holds, so ' . $where . ' cannot keep its books in it.');
+            }
+
+            $codes[$code] = true;
+            $names[mb_strtolower($name)] = true;
+            $out[] = ['code' => $code, 'name' => $name, 'type' => $type, 'currency' => $currency];
+        }
+
+        return $out;
     }
 
     // ------------------------------------------------------------------
@@ -296,8 +439,41 @@ final class Installer
         return $periods;
     }
 
-    /** The first person, and the system user that owns what nobody signed for. */
-    private function firstUser(array $in, int $entityId, string $now): int
+    /**
+     * The entities opened alongside the head office, each on the organisation's
+     * calendar as EntityCalendar puts it there.
+     *
+     * @param list<array{code: string, name: string, type: string, currency: string}> $branches
+     * @return list<int> the ids, in the order given
+     */
+    private function branches(array $branches, int $headOfficeId, string $now): array
+    {
+        $ids = [];
+        foreach ($branches as $branch) {
+            $id = $this->insert('entities', [
+                'parent_id' => $headOfficeId, 'code' => $branch['code'], 'name' => $branch['name'], 'type' => $branch['type'],
+                'functional_currency' => $branch['currency'], 'status' => 'live', 'created_at' => $now,
+            ]);
+            // Its months, in the state the head office holds them. Without periods
+            // nothing can be posted to it at all (the ledger's triggers check it).
+            EntityCalendar::fill($this->db, $id);
+            $ids[] = $id;
+        }
+
+        return $ids;
+    }
+
+    /**
+     * The first person, and the system user that owns what nobody signed for.
+     *
+     * The role is held once per entity, so the first user can also reach the
+     * consolidated view — which EntityScope offers only to someone holding a role at
+     * all of them.
+     *
+     * @param list<int> $entityIds the entities the roles are held at
+     * @param list<int> $roleIds   the roles, in the order they are held
+     */
+    private function firstUser(array $in, array $entityIds, array $roleIds, string $now): int
     {
         [$first, $last] = explode(' ', trim($in['userName']), 2) + [1 => ''];
         $localeId = $this->db->table('locales')->select('id')->where('code', BaselineSeeder::LOCALE['code'])->get()->getRowArray()['id'] ?? null;
@@ -310,9 +486,13 @@ final class Installer
             'password_hash' => $in['userPassword'] === '' ? null : password_hash($in['userPassword'], PASSWORD_DEFAULT),
             'password_changed_at' => $in['userPassword'] === '' ? null : $now,
         ]);
-        $this->insert('user_entity_roles', [
-            'user_id' => $userId, 'entity_id' => $entityId, 'role_id' => $this->roleId(self::FIRST_ROLE), 'created_at' => $now,
-        ]);
+        foreach ($entityIds as $entityId) {
+            foreach ($roleIds as $roleId) {
+                $this->insert('user_entity_roles', [
+                    'user_id' => $userId, 'entity_id' => $entityId, 'role_id' => $roleId, 'created_at' => $now,
+                ]);
+            }
+        }
 
         $this->insert('users', [
             'email' => self::SYSTEM_EMAIL, 'name' => 'Data migration (system)', 'short_name' => 'System',
@@ -351,5 +531,24 @@ final class Installer
         $builder = $this->db->table($table);
 
         return ($where === [] ? $builder : $builder->where($where))->countAllResults();
+    }
+
+    /**
+     * Whether the schema has this table yet.
+     *
+     * check() is called by the browser installer as each step is answered, which is
+     * before the schema has been built, so an answer that can only be checked
+     * against a table — a currency, a code another entity already has — cannot be
+     * checked then. install() runs after the migrations and the reference data, and
+     * refusal() has already established that both are there, so by the time anything
+     * is written every one of these checks does run.
+     */
+    private function holds(string $table): bool
+    {
+        try {
+            return in_array(strtolower($this->db->prefixTable($table)), array_map('strtolower', $this->db->listTables()), true);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }

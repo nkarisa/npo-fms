@@ -1,5 +1,6 @@
 <?php
 
+use App\Database\Seeds\BaselineSeeder;
 use App\Database\Seeds\DatabaseSeeder;
 use App\Repositories\Repository;
 use CodeIgniter\Test\CIUnitTestCase;
@@ -47,7 +48,8 @@ final class RolesTest extends CIUnitTestCase
             $this->api('post', 'api/roles', ['name' => $name, 'description' => 'Role ' . $i, 'permissions' => ['ledger.view']]);
         }
         $r = $this->api('get', 'api/roles');
-        $this->assertCount(13, $r['roles']);
+        // The roles every instance starts with, and the five just defined.
+        $this->assertCount(count(BaselineSeeder::ROLES) + 5, $r['roles']);
 
         $created = $this->role($r, 'Payroll Clerk');
         $this->assertSame(['ledger.view'], $created['permissions']);

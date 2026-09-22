@@ -75,8 +75,10 @@
               <form class="bu" id="pw-form" style="padding:0;" novalidate>
                 <input type="email" autocomplete="username" value="${esc(me.email)}" hidden readonly>
                 <label class="bu-field"><span>Current password</span><input name="current" type="password" autocomplete="current-password"></label>
-                <label class="bu-field"><span>New password <em>at least ${data.minLength} characters</em></span><input name="password" type="password" autocomplete="new-password"></label>
+                <label class="bu-field"><span>New password</span><input name="password" type="password" autocomplete="new-password"></label>
+                ${UI.passwordRules(data.passwordRules)}
                 <label class="bu-field"><span>Type it again</span><input name="again" type="password" autocomplete="new-password"></label>
+                ${data.passwordExpires ? `<p class="auth-note">Your password expires on ${esc(data.passwordExpires.date)} — ${data.passwordExpires.days === 0 ? 'today' : data.passwordExpires.days === 1 ? 'tomorrow' : 'in ' + data.passwordExpires.days + ' days'}. After that you choose a new one when you sign in.</p>` : ''}
                 <div class="bu-actions"><button type="submit" class="btn btn-primary">Change password</button></div>
               </form>
             </div>
@@ -91,7 +93,9 @@
         </div>
       </div>`;
 
-    app.querySelector('#pw-form').addEventListener('submit', changePassword);
+    const pwForm = app.querySelector('#pw-form');
+    pwForm.addEventListener('submit', changePassword);
+    pwForm.password.addEventListener('input', () => UI.tickPasswordRules(pwForm.querySelector('.pw-rules'), data.passwordRules, pwForm.password.value, me));
     app.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => ({ setup, codes: newCodes, remove })[b.dataset.act]()));
   }
 
@@ -100,10 +104,13 @@
     const f = e.target;
     if (f.password.value !== f.again.value) { UI.toast('The two new passwords are not the same.'); return; }
     try {
-      const res = await UI.postJSON('/api/account/password', { current: f.current.value, password: f.password.value });
+      const chosen = f.password.value;
+      const res = await UI.postJSON('/api/account/password', { current: f.current.value, password: chosen });
       data = res;
       render();
       UI.toast(res.message);
+      // So the browser fills the new password at the next sign-in, not the one it replaced.
+      await UI.rememberPassword(data.me.email, chosen, data.me.name);
     } catch (err) {
       UI.toast(err.message);
     }

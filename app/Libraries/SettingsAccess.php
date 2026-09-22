@@ -60,7 +60,7 @@ final class SettingsAccess
         'segments' => 'Segments', 'currencies' => 'Currencies', 'taxes' => 'Taxes', 'days' => 'Terms and reminders',
         'approvals' => 'Approvals', 'approvalsFollow' => 'Approvals', 'procurement' => 'Approvals',
         'payroll' => 'Payroll', 'payAccounts' => 'Payroll',
-        'appearance' => 'Appearance', 'language' => 'Language and translation', 'users' => 'Users',
+        'appearance' => 'Appearance', 'language' => 'Language and translation', 'users' => 'Users', 'passwordPolicy' => 'Users',
     ];
 
     /** @param list<string> $permissions held at the entity being worked in */

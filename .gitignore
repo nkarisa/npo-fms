@@ -63,6 +63,12 @@ Vagrantfile
 /writable/debugbar/*
 !/writable/debugbar/index.html
 
+# Whether this particular instance has been installed, and the key that lets the
+# installer be used before it has been. Both belong to the one deployment: the lock
+# would tell another instance it is installed when it is not, and the key is a secret.
+/writable/installed.lock
+/writable/install.token
+
 php_errors.log
 
 #-------------------------

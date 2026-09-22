@@ -183,7 +183,30 @@ See [Resetting](#resetting-a-database).
 ## Path B — A new instance
 
 A new instance belongs to one organisation, in its own database. It is stood up
-with two commands and then finished inside the application.
+in a browser, or with two commands, and then finished inside the application.
+
+### Installing in a browser
+
+Serve the application with no database in `.env` and open any page: an instance
+with no organisation answers everything with the installer at `/install`. From
+any machine but the server itself it first asks for the **setup key**, which it
+writes to `writable/install.token` on the server.
+
+| Step | What it asks |
+|---|---|
+| The server | MySQL or SQLite; for MySQL the host, port, user and password. The installer signs in and lists what that user can reach |
+| The database | Pick one from the list. Each is labelled *Empty*, *Part installed*, *Other tables* or *In use*; one already holding an organisation cannot be picked. **Create a new database** is offered when the user holds `CREATE` on `*.*` (MySQL, created as `utf8mb4`) or `writable/` is writable (SQLite). The installer never drops or empties a database |
+| What to put in it | **A new organisation** (the reference data below, then your answers), or **a copy of the demonstration organisation** (Path A's data, whose passwords are published; on a production server this needs a confirming tick) |
+| The organisation, its entities, the first user | The same answers as `php spark install` below. The head office is always created; more entities can be opened with it |
+| Check and install | Writes `.env`, builds the schema, seeds, then writes the organisation in one transaction |
+
+The chosen database is proved before anything is written: its character set,
+whether it already holds an organisation, and that the user can create tables,
+views and triggers. Once installed, the installer writes `writable/installed.lock`
+and `/install` no longer exists. Delete the lock to offer it again, for an
+instance whose database has been dropped.
+
+The steps below do the same from the command line.
 
 ### Step 1 — Seed the reference data
 
@@ -252,7 +275,9 @@ was.
 - The reporting settings, posting controls and appearance, all at their defaults
 - The approval policy (thresholds and who approves above them)
 - The first financial year and its twelve months, all open
-- You, as **Finance Manager**, the role that can change settings and manage users
+- You, holding **Finance Manager** and **Administrator** at every entity it
+  opens: every permission, the consolidated view, and every entity opened later.
+  Approval rules name roles, and you approve as the Finance Manager
 - A system user that owns records nobody signed for; it can never sign in
 - An entry in the audit log recording the installation
 

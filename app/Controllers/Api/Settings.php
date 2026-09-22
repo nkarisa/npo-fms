@@ -52,7 +52,7 @@ class Settings extends BaseApiController
         'procurement' => ['Approvals'], 'sodRules' => ['Approvals'],
         'payAccounts' => ['Payroll'], 'payAccountOptions' => ['Payroll'], 'benefits' => ['Payroll'], 'grades' => ['Payroll'],
         'appearance' => ['Appearance'], 'themes' => ['Appearance'],
-        'users' => ['Users'], 'entityOptions' => ['Users'], 'roles' => ['Users', 'Roles'],
+        'users' => ['Users'], 'entityOptions' => ['Users'], 'passwordPolicy' => ['Users'], 'roles' => ['Users', 'Roles'],
         'roleDetail' => ['Roles'], 'permissionCatalogue' => ['Roles'],
         'audit' => ['Audit log'],
     ];
@@ -68,7 +68,7 @@ class Settings extends BaseApiController
 
     /**
      * Saves the draft. Body: any of organisation, entities, ledger, toggles, assetClasses, segments,
-     * currencies, approvals, procurement, taxes, days, postingAccounts, payroll, appearance, users, language — only what differs
+     * currencies, approvals, procurement, taxes, days, postingAccounts, payroll, appearance, users, passwordPolicy, language — only what differs
      * from what is held is changed, and only in the sections this user can change
      * (SettingsAccess). The logo is not in the draft; it has its own endpoints below.
      */
@@ -261,6 +261,7 @@ class Settings extends BaseApiController
             'permissionCatalogue' => fn () => (new RoleRepository())->catalogue(),
             'users'        => fn () => $settings->users(),
             'entityOptions' => fn () => $settings->entityOptions(),
+            'passwordPolicy' => fn () => $settings->passwordPolicy(),
             'appearance'   => fn () => $this->appearance($settings),
             'themes'       => fn () => Theme::THEMES,
             'entityTypes'  => fn () => SettingsRepository::ENTITY_TYPES,

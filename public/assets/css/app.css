@@ -1960,6 +1960,25 @@ select.st-cell { cursor: pointer; }
 .mfa-code-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .mfa-saved { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
 
+/* ---- Password policy checklist under a new password: signing in and My account (UI.passwordRules) ---- */
+.pw-rules { list-style: none; margin: -2px 0 2px; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.pw-rules li { display: flex; gap: 7px; align-items: baseline; }
+.pw-rules li::before { content: '○'; width: 12px; flex: none; text-align: center; color: var(--faint); }
+.pw-rules li.ok { color: var(--calm-ink); }
+.pw-rules li.ok::before { content: '✓'; color: var(--calm-ink); }
+.pw-rules li.no::before { content: '✕'; color: var(--urgent); }
+
+/* ---- Settings → Users: the password policy matrix ---- */
+.pp-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.pp-kind { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: #FFF; }
+.pp-kind.on { border-color: var(--calm-line); background: var(--calm-wash); }
+.pp-kind-name { font-size: 12px; font-weight: 600; color: var(--ink); }
+.pp-kind-eg { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--muted); }
+.pp-kind label { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.pp-kind input { width: 58px; }
+.pp-summary { font-size: 11.5px; color: #3A4641; background: #FAF9F6; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; line-height: 1.55; }
+@media (max-width: 760px) { .pp-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* ---- My account (pages/account.js) ---- */
 .acct { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .acct .card-body { display: flex; flex-direction: column; gap: 12px; }
@@ -2416,3 +2435,97 @@ select.ss-open { outline: 2px solid var(--accent-line); outline-offset: 1px; }
 .cf-note { font-size: 11px; color: #8B948F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cf-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; padding: 9px 14px; border-top: 1px solid #E4E2DB; background: #FAF9F6; font-size: 11px; color: #7A857F; }
 .cf-foot-rule { margin-inline-start: auto; }
+
+/* ---- The installer (install.js) ----
+   Built on the sign-in card: same shell, same fields, wider, because a step here
+   asks for a table of entities rather than an email and a password. */
+.ins-wrap { max-width: 660px; }
+.ins-card { gap: 16px; }
+
+/* The steps, and which one we are on. */
+.ins-steps { list-style: none; margin: 0 0 2px; padding: 0 0 14px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.ins-step { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); }
+.ins-step-n { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; border: 1px solid var(--border); background: var(--card); font-size: 10px; font-weight: 600; color: var(--faint); }
+.ins-step.now { color: var(--ink); font-weight: 600; }
+.ins-step.now .ins-step-n { border-color: var(--accent); background: var(--accent); color: #FFF; }
+.ins-step.done { color: var(--calm-ink); }
+.ins-step.done .ins-step-n { border-color: var(--calm-line); background: var(--calm-tint); color: var(--calm-ink); }
+
+/* Panels: what the server found, and what it will do about it. */
+.ins-panel { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; background: #FAF9F6; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #3A4641; }
+.ins-panel.good { border-color: var(--calm-line); background: var(--calm-wash); }
+.ins-panel.warn { border-color: #EADCC4; background: #FCF8F1; }
+.ins-panel.bad { border-color: #EBD3CC; background: #FBEFEC; }
+.ins-panel-head { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); }
+.ins-panel p { margin: 0; }
+
+.ins-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ins-checks li { display: flex; gap: 8px; font-size: 12.5px; line-height: 1.5; color: #3A4641; }
+.ins-checks li strong { font-weight: 600; color: var(--ink); }
+.ins-check-mark { flex: none; width: 15px; text-align: center; font-weight: 700; font-size: 12px; }
+.ins-checks li.ok .ins-check-mark { color: var(--calm); }
+.ins-checks li.warn .ins-check-mark { color: var(--warn); }
+.ins-checks li.bad .ins-check-mark { color: var(--urgent); }
+
+.ins-fold { font-size: 12.5px; color: #3A4641; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; background: var(--card); }
+.ins-fold summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+.ins-fold[open] summary { margin-bottom: 8px; }
+.ins-fold p { margin: 0 0 8px; }
+.ins-sql { margin: 0; padding: 11px 12px; background: #FAF9F6; border: 1px solid var(--border); border-radius: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; line-height: 1.6; color: #28352F; overflow-x: auto; white-space: pre; }
+
+/* Fields side by side, and the ones that only some drivers want. */
+.ins-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.ins-row > .auth-field { flex: 1 1 160px; min-width: 0; }
+.ins-row > .auth-field.ins-narrow { flex: 0 0 104px; }
+.ins-hidden { display: none; }
+.auth-field > span em { font-style: normal; text-transform: none; letter-spacing: 0; font-size: 10px; color: var(--faint); margin-inline-start: 4px; }
+.auth-field select { border: 1px solid #DDDAD2; border-radius: 6px; padding: 9px 11px; font-size: 14px; font-family: inherit; color: var(--ink); background: #FFF; }
+.auth-field select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+.ins-hint { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+.ins-dim { color: var(--faint); font-size: 11.5px; }
+.ins-card code { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; background: #F2F1ED; border-radius: 4px; padding: 1px 5px; }
+
+/* An entity being opened. The head office is the one that cannot be removed. */
+.ins-entity { border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--card); }
+.ins-entity + .ins-entity { margin-top: 10px; }
+.ins-entity.head { border-color: var(--accent-line); background: var(--accent-haze); }
+.ins-entity-head { display: flex; align-items: center; gap: 9px; }
+.ins-remove { margin-inline-start: auto; background: none; border: 0; padding: 0; font: inherit; font-size: 11.5px; color: var(--urgent); cursor: pointer; }
+.ins-remove:hover { text-decoration: underline; }
+.ins-add { align-self: flex-start; background: none; border: 1px dashed #D3D0C8; border-radius: 6px; padding: 7px 12px; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }
+.ins-add:hover { border-color: var(--accent); background: var(--accent-haze); }
+
+.ins-tick { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; background: var(--card); font-size: 13px; }
+.ins-tick input { margin: 2px 0 0; flex: none; }
+.ins-tick > span { display: flex; flex-direction: column; gap: 3px; }
+/* The databases to choose from, one row each; one already in use is shown but cannot be picked. */
+.ins-dbs { display: flex; flex-direction: column; gap: 6px; }
+.ins-db-list { display: flex; flex-direction: column; gap: 6px; max-height: 24rem; overflow-y: auto; padding: 1px; }
+.ins-db { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--card); cursor: pointer; }
+.ins-db:hover:not(.off) { border-color: var(--accent); background: var(--accent-haze); }
+.ins-db:has(input[name=pick]:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.ins-db.off { opacity: .55; cursor: not-allowed; }
+.ins-db > input { margin: 3px 0 0; flex: none; }
+.ins-db-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.ins-db-name { font-size: 13px; font-weight: 600; color: var(--ink); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
+.ins-db-new { margin-top: 4px; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--ink); max-width: 100%; }
+
+/* Reading the answers back, and on the done screen what was written. */
+.ins-readback { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.ins-read { display: flex; gap: 12px; padding: 8px 13px; font-size: 12.5px; }
+.ins-read + .ins-read { border-top: 1px solid #F0EEE9; }
+.ins-read > span:first-child { flex: 0 0 116px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); padding-top: 2px; }
+.ins-read > span:last-child { color: var(--ink); min-width: 0; overflow-wrap: anywhere; }
+
+/* The four writing calls, each as it goes. */
+.ins-run { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.ins-run li { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--faint); }
+.ins-run li.doing, .ins-run li.ok, .ins-run li.bad { color: var(--ink); }
+.ins-run-mark { flex: none; width: 15px; text-align: center; font-weight: 700; }
+.ins-run li.ok .ins-run-mark { color: var(--calm); }
+.ins-run li.bad .ins-run-mark { color: var(--urgent); }
+.ins-run li.doing .ins-run-mark { color: var(--accent); }
+
+.ins-next { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; line-height: 1.55; color: #3A4641; }
+.ins-link { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--accent); overflow-wrap: anywhere; }
+.ins-signin { display: block; text-align: center; text-decoration: none; }

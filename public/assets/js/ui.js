@@ -928,5 +928,59 @@ const UI = (() => {
     return `<span class="bar-track" style="display:block;"><span class="bar-fill" style="width:${width}%;background:${colour};"></span></span>`;
   }
 
-  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill, docList, docPicker, docPanel };
+  /**
+   * The password policy (Settings → Users) as a checklist under a new-password field.
+   * `rules` is what the API serves as passwordRules; the server checks them all
+   * again, and alone decides `common`.
+   */
+  function passwordRules(rules) {
+    return `<ul class="pw-rules" aria-live="polite">${(rules || []).map((r) => `<li data-rule="${esc(r.key)}">${esc(r.text)}</li>`).join('')}</ul>`;
+  }
+
+  /** Ticks off the checklist from passwordRules() as `value` is typed. `who` is {email, name}. */
+  function tickPasswordRules(list, rules, value, who) {
+    if (!list) return;
+    const chars = [...value];
+    const count = (re) => (value.match(re) || []).length;
+    const letters = count(/\p{L}/gu);
+    const digits = count(/\p{Nd}/gu);
+    const kinds = { upper: count(/\p{Lu}/gu), lower: count(/\p{Ll}/gu), digit: digits, symbol: chars.length - letters - digits };
+    const lower = value.toLowerCase();
+    const local = String(who?.email || '').split('@')[0].toLowerCase();
+    const parts = `${local} ${String(who?.name || '').toLowerCase()}`.split(/[^\p{L}\p{N}]+/u).filter((p) => p.length >= 4);
+    const met = {
+      length: (r) => chars.length >= r.min,
+      upper: (r) => kinds.upper >= r.min,
+      lower: (r) => kinds.lower >= r.min,
+      digit: (r) => kinds.digit >= r.min,
+      symbol: (r) => kinds.symbol >= r.min,
+      kinds: (r) => Object.values(kinds).filter((n) => n > 0).length >= r.min,
+      distinct: (r) => new Set(chars).size >= r.min,
+      personal: () => !(local.length >= 3 && lower.includes(local)) && !parts.some((p) => lower.includes(p)),
+    };
+    (rules || []).forEach((r) => {
+      const li = list.querySelector(`[data-rule="${r.key}"]`);
+      if (!li) return;
+      const ok = value === '' || !met[r.key] ? null : met[r.key](r);
+      li.classList.toggle('ok', ok === true);
+      li.classList.toggle('no', ok === false);
+    });
+  }
+
+  /**
+   * Hands a newly chosen password to the browser's password manager, where it can
+   * take it (Chrome, Edge), so the next sign-in fills the new password instead of
+   * the one it replaced. A page that saves by fetch never navigates, and without
+   * this the browser keeps offering the old one.
+   */
+  async function rememberPassword(email, password, name) {
+    if (!email || !password || typeof window.PasswordCredential !== 'function' || !navigator.credentials?.store) return;
+    try {
+      await navigator.credentials.store(new window.PasswordCredential({ id: email, password, name: name || email }));
+    } catch (_) {
+      // The browser declined or has no password manager; the person types it next time.
+    }
+  }
+
+  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill, docList, docPicker, docPanel, passwordRules, tickPasswordRules, rememberPassword };
 })();

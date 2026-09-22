@@ -81,7 +81,7 @@ DATA=blank .claude/skills/run-fms/serve.sh up       # a brand-new instance (Coas
 | Address | http://localhost:8095 | http://localhost:8096 |
 | Built from | `migrate` → `db:seed DatabaseSeeder` | `migrate` → `db:seed BaselineSeeder` → `install` |
 | Database | `writable/run-skill/demo.sqlite` | `writable/run-skill/blank.sqlite` |
-| Acting as | Wanjiru Kamau, Finance Manager, by default | Amina Salim, Finance Manager — the only user |
+| Acting as | Wanjiru Kamau, Finance Manager, by default | Amina Salim, Finance Manager and Administrator — the only user |
 
 The first `up` builds the database, which takes about a second. After that the
 database is kept, so **whatever you do in it is still there next time**. Open

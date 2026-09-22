@@ -2,6 +2,7 @@
 
 use App\Database\Seeds\DatabaseSeeder;
 use App\Database\Seeds\OrganisationSeeder;
+use App\Libraries\PasswordPolicy;
 use App\Libraries\SignIn;
 use App\Libraries\Totp;
 use App\Repositories\Repository;
@@ -247,6 +248,25 @@ final class AuthTest extends CIUnitTestCase
         $this->assertSame('done', $this->send('post', 'api/auth/login', ['email' => self::ACCOUNTANT, 'password' => 'a brand new pass phrase'])['stage']);
     }
 
+    public function testAResetOrInvitationLinkListsThePasswordPolicy(): void
+    {
+        $this->holdPolicy(['minLength' => 14, 'digit' => 1, 'history' => 3]);
+        $this->send('post', 'api/auth/forgot', ['email' => self::ACCOUNTANT]);
+        preg_match('#reset-password\?token=([A-Za-z0-9_-]+)#', $this->lastEmail()['body'], $m);
+
+        $reset = $this->send('get', 'api/auth/reset?token=' . $m[1]);
+        $this->assertSame(14, $reset['minLength']);
+        $this->assertSame(['length', 'digit', 'distinct', 'personal', 'common', 'history'], array_column($reset['passwordRules'], 'key'));
+        $this->assertSame('At least 14 characters', $reset['passwordRules'][0]['text']);
+
+        // Someone invited has no earlier passwords, so the history rule is left off.
+        $this->session = SignIn::values($this->userId(self::FM));
+        $this->send('post', 'api/settings/invite', ['name' => 'Amina Hassan', 'email' => 'a.hassan@elog.or.ke', 'roles' => ['Accountant'], 'entities' => 'all']);
+        preg_match('#accept-invite\?token=([A-Za-z0-9_-]+)#', $this->lastEmail()['body'], $m);
+        $this->session = [];
+        $this->assertNotContains('history', array_column($this->send('get', 'api/auth/invite?token=' . $m[1])['passwordRules'], 'key'));
+    }
+
     public function testAfterAResetTheAuthenticatorAppStillGivesTheSecondStep(): void
     {
         $secret = $this->enrolTotp(self::FM)['secret'];
@@ -328,7 +348,77 @@ final class AuthTest extends CIUnitTestCase
         $this->assertSame('Password changed.', $this->send('post', 'api/account/password', ['current' => OrganisationSeeder::DEMO_PASSWORD, 'password' => 'a long new password'])['message']);
     }
 
+    public function testTheLastFewPasswordsCannotBeUsedAgain(): void
+    {
+        config(Auth::class)->mfaRequired = 'optional';
+        $this->holdPolicy(['history' => 3]);
+        $this->send('post', 'api/auth/login', ['email' => self::ACCOUNTANT, 'password' => OrganisationSeeder::DEMO_PASSWORD]);
+        $change = fn (string $from, string $to, int $status = 200) => $this->send('post', 'api/account/password', ['current' => $from, 'password' => $to], $status);
+
+        $change(OrganisationSeeder::DEMO_PASSWORD, 'first new pass phrase');
+        $this->assertStringContainsString('not among your last 3', $change('first new pass phrase', OrganisationSeeder::DEMO_PASSWORD, 422)['error']);
+        $change('first new pass phrase', 'second new pass phrase');
+        $change('second new pass phrase', 'third new pass phrase');
+        $this->assertStringContainsString('used that password before', $change('third new pass phrase', 'first new pass phrase', 422)['error']);
+        // Three changes on, the first password has left the last three.
+        $change('third new pass phrase', OrganisationSeeder::DEMO_PASSWORD);
+
+        // A reset link is held to the same rule.
+        $this->send('post', 'api/auth/logout');
+        $this->send('post', 'api/auth/forgot', ['email' => self::ACCOUNTANT]);
+        preg_match('#reset-password\?token=([A-Za-z0-9_-]+)#', $this->lastEmail()['body'], $m);
+        $this->assertStringContainsString('used that password before', $this->send('post', 'api/auth/reset', ['token' => $m[1], 'password' => 'third new pass phrase'], 422)['error']);
+    }
+
+    public function testAnExpiredPasswordIsReplacedAtSignInBeforeAnythingOpens(): void
+    {
+        config(Auth::class)->mfaRequired = 'optional';
+        $this->holdPolicy(['maxAgeDays' => 90]);
+        $age = fn (int $days) => db_connect()->table('users')->where('email', self::ACCOUNTANT)->update(['password_changed_at' => date('Y-m-d H:i:s', time() - $days * 86400)]);
+
+        $age(80);
+        $this->assertSame('done', $this->send('post', 'api/auth/login', ['email' => self::ACCOUNTANT, 'password' => OrganisationSeeder::DEMO_PASSWORD])['stage']);
+        $this->assertSame(10, $this->send('get', 'api/account')['passwordExpires']['days']);
+        $this->send('post', 'api/auth/logout');
+
+        $age(91);
+        $in = $this->send('post', 'api/auth/login', ['email' => self::ACCOUNTANT, 'password' => OrganisationSeeder::DEMO_PASSWORD]);
+        $this->assertSame('renew', $in['stage']);
+        $this->assertSame(self::ACCOUNTANT, $in['user']['account']);
+        // Part-way is not signed in.
+        $this->get('api/journals')->assertStatus(401);
+
+        $this->assertStringContainsString('different from the one that expired', $this->send('post', 'api/auth/renew', ['password' => OrganisationSeeder::DEMO_PASSWORD], 422)['error']);
+        $this->assertStringContainsString('at least 12', $this->send('post', 'api/auth/renew', ['password' => 'too short'], 422)['error']);
+        $this->assertSame('done', $this->send('post', 'api/auth/renew', ['password' => 'a fresh pass phrase'])['stage']);
+        $this->get('api/journals')->assertStatus(200);
+        $this->assertSame(90, $this->send('get', 'api/account')['passwordExpires']['days']);
+
+        // With a second step, the new password is asked for only after it.
+        $this->send('post', 'api/auth/logout');
+        config(Auth::class)->mfaRequired = 'all';
+        $secret = $this->enrolTotp(self::FM)['secret'];
+        db_connect()->table('users')->where('email', self::FM)->update(['password_changed_at' => date('Y-m-d H:i:s', time() - 91 * 86400)]);
+        $this->send('post', 'api/auth/logout');
+        $this->assertSame('mfa', $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => OrganisationSeeder::DEMO_PASSWORD])['stage']);
+        $this->send('post', 'api/auth/renew', ['password' => 'a fresh pass phrase'], 409);
+        // The code used to enrol cannot be used again, so the app's next one.
+        $this->assertSame('renew', $this->send('post', 'api/auth/verify', ['code' => Totp::code($secret, Totp::step() + 1)])['stage']);
+        $this->assertSame('done', $this->send('post', 'api/auth/renew', ['password' => 'another fresh pass phrase'])['stage']);
+    }
+
     // ------------------------------------------------------------------
+
+    /** Holds a password policy on the head office, over the standard. */
+    private function holdPolicy(array $rules): void
+    {
+        $db = db_connect();
+        $head = (int) $db->table('entities')->where('parent_id', null)->orderBy('id')->get()->getRowArray()['id'];
+        $db->table('settings')->insert([
+            'entity_id' => $head, 'key' => PasswordPolicy::KEY, 'kind' => 'security', 'label' => 'Password policy',
+            'value' => json_encode($rules + PasswordPolicy::standard()), 'created_at' => date('Y-m-d H:i:s'),
+        ]);
+    }
 
     /** A request, carrying the session on from the last one. Returns the decoded body. */
     private function send(string $method, string $url, array $body = [], int $status = 200): array

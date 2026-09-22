@@ -86,6 +86,7 @@
         custom: { ...d.appearance.custom },
       }),
       language: () => ({ formatsLocked: d.language.formatsLocked }),
+      passwordPolicy: () => ({ ...d.passwordPolicy.policy }),
     };
     const shown = new Set(d.sections.map(s => s.key));
     return structuredClone(Object.fromEntries(Object.entries(parts)
@@ -844,8 +845,74 @@
         </div></div>
         ${warn(warning)}
         ${noMfa ? `<div class="st-note">${noMfa === 1 ? '1 active user has' : noMfa + ' active users have'} no second sign-in step yet. Where the instance requires one, they are asked to set it up at their next sign-in.</div>` : ''}
+        ${rule}
+        ${passwordPolicy()}
       </div>`;
     wireQuery(main, 'user');
+  }
+
+  /**
+   * The password policy: a matrix of what a new password has to hold. Saved with
+   * the rest of the draft; it applies to the next password each person chooses.
+   */
+  function passwordPolicy() {
+    const pp = data.passwordPolicy;
+    const p = draft.passwordPolicy;
+    const [lenLow, lenHigh] = pp.ranges.minLength;
+    const [kindLow, kindHigh] = pp.ranges.kind;
+    const standard = (key) => (p[key] !== pp.standard[key] ? ` · standard ${esc(pp.standard[key])}` : '');
+    const cols = 'grid-template-columns:minmax(220px,1.3fr) 130px;';
+    const row = (key, label, note, range) => `
+      <div class="st-tr" style="${cols}min-height:52px;">
+        <div class="st-stack"><span>${esc(label)}</span><span class="st-sub">${esc(note)}${standard(key)}</span></div>
+        <div><input class="st-cell mono end" data-bind="passwordPolicy.${key}" data-num value="${esc(p[key])}" inputmode="numeric" aria-label="${esc(label)}" min="${range[0]}" max="${range[1]}" data-manage-users></div>
+      </div>`;
+    const check = (key, label, note) => `
+      <div class="st-tr" style="${cols}min-height:52px;">
+        <div class="st-stack"><span>${esc(label)}</span><span class="st-sub">${esc(note)}</span></div>
+        <div><label class="st-inline"><input type="checkbox" data-bind="passwordPolicy.${key}" ${p[key] ? 'checked' : ''} data-manage-users>${p[key] ? 'Refused' : 'Allowed'}</label></div>
+      </div>`;
+
+    return `
+      ${head('Password policy', 'What a new password has to be — when someone accepts an invitation, resets theirs, changes it from My account or replaces one that has expired. The rules apply to the next password each person chooses; expiry counts from the day each password was set.')}
+      <div class="st-table"><div style="min-width:460px;">
+        <div class="st-tr st-th" style="${cols}"><div>Rule</div><div class="end">At least</div></div>
+        ${row('minLength', 'Length', `Characters in all, ${lenLow} to ${lenHigh}. Length does more than anything else to make a password hard to guess.`, pp.ranges.minLength)}
+        ${row('distinct', 'Different characters', 'So that a long run of one key does not pass for a password.', pp.ranges.distinct)}
+        ${row('kinds', 'Kinds of character mixed', 'Of the four below, how many must appear at all — e.g. 3 for any three of the four.', pp.ranges.kinds)}
+      </div></div>
+      <div class="st-note">Each kind of character, and how many of it a password must hold. 0 leaves it free; ${kindLow} to ${kindHigh}.</div>
+      <div class="pp-kinds">${pp.kinds.map(k => `
+        <div class="pp-kind ${p[k.key] > 0 ? 'on' : ''}">
+          <span class="pp-kind-name">${esc(k.name)}</span>
+          <span class="pp-kind-eg">${esc(k.examples)}</span>
+          <label>At least <input class="st-cell mono end" data-bind="passwordPolicy.${esc(k.key)}" data-num value="${esc(p[k.key])}" inputmode="numeric" aria-label="${esc(k.name)}, at least" data-manage-users></label>
+        </div>`).join('')}
+      </div>
+      <div class="st-table"><div style="min-width:460px;">
+        <div class="st-tr st-th" style="${cols}"><div>Reuse and expiry</div><div class="end">Number</div></div>
+        ${row('history', 'Earlier passwords that cannot be used again', `The one held now counts as the first. 0 allows any; up to ${pp.ranges.history[1]}.`, pp.ranges.history)}
+        ${row('maxAgeDays', 'Days a password lasts', `After this the person chooses a new one at their next sign-in. 0 for never; otherwise ${pp.ranges.maxAgeDays[0]} to ${pp.ranges.maxAgeDays[1]}. Passwords with no date set are counted from the day this is saved.`, pp.ranges.maxAgeDays)}
+      </div></div>
+      <div class="st-table"><div style="min-width:460px;">
+        ${check('personal', 'The person\'s own name or email address', 'Any part of either of four letters or more.')}
+        ${check('common', 'Passwords anyone would try first', 'password, 12345678, qwerty… — also with digits or symbols added on the end.')}
+      </div></div>
+      <div class="pp-summary"><strong>A new password needs:</strong> ${esc(policyWords(p, pp.kinds))}.</div>`;
+  }
+
+  /** The policy in a sentence, from the draft, so it reads right before it is saved. */
+  function policyWords(p, kinds) {
+    const words = [`at least ${p.minLength} characters`];
+    kinds.forEach(k => { if (p[k.key] > 0) words.push(`${p[k.key]} or more ${k.name.toLowerCase()}`); });
+    const named = kinds.filter(k => p[k.key] > 0).length;
+    if (p.kinds > Math.max(1, named)) words.push(`at least ${p.kinds} of the four kinds of character`);
+    if (p.distinct > 1) words.push(`${p.distinct} different characters`);
+    if (p.personal) words.push('not the person\'s name or email');
+    if (p.common) words.push('not a password anyone would try first');
+    if (p.history > 0) words.push(p.history === 1 ? 'not the current password' : `not one of the last ${p.history}`);
+    words.push(p.maxAgeDays > 0 ? `changed every ${p.maxAgeDays} days` : 'never expires');
+    return words.join(' · ');
   }
 
   function roles(main) {

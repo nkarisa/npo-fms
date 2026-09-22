@@ -3,6 +3,7 @@
 use App\Database\Seeds\DatabaseSeeder;
 use App\Libraries\Brand;
 use App\Libraries\Navigation;
+use App\Libraries\PasswordPolicy;
 use App\Libraries\Theme;
 use App\Repositories\ApprovalPolicy;
 use App\Repositories\Lookups;
@@ -58,7 +59,9 @@ final class SettingsTest extends CIUnitTestCase
         $this->assertSame(['house_allowance', 'transport_allowance'], array_column($s['benefits'], 'key'));
         $this->assertSame(['G1', 'G2', 'G3', 'G4', 'G5', 'G6', 'G7'], array_column($s['grades'], 'grade'));
         $this->assertEquals(['house_allowance' => 30, 'transport_allowance' => 21000], $s['grades'][3]['ben']);
-        $this->assertSame(['Finance Manager', 'Executive Director'], $s['approverRoles']);
+        // Whoever holds journal.approve may be named an approver: the Administrator
+        // holds every permission, so it is offered alongside the two working roles.
+        $this->assertSame(['Administrator', 'Finance Manager', 'Executive Director'], $s['approverRoles']);
         $this->assertSame('Payment run threshold raised from 1,500,000 to 2,000,000', $s['audit'][0]['what']);
         $this->assertTrue($s['language']['formatsLocked']);
         $this->assertSame('evergreen', $s['appearance']['theme']);
@@ -212,6 +215,61 @@ final class SettingsTest extends CIUnitTestCase
 
         $this->actAs('s.njeri@elog.or.ke');
         $save(['claimTermsDays' => '60'])->assertStatus(403);
+    }
+
+    public function testThePasswordPolicyIsAMatrixSetInSettingsAndAskedOfEveryNewPassword(): void
+    {
+        $served = $this->api('api/settings')['passwordPolicy'];
+        $this->assertSame($served['standard'], $served['policy']);
+        $this->assertSame(['upper', 'lower', 'digit', 'symbol'], array_column($served['kinds'], 'key'));
+        // The standard asks for length, not a mix: a passphrase of a few words passes.
+        PasswordPolicy::check(PasswordPolicy::current(), 'a long new password', ['email' => 'j.achieng@elog.or.ke', 'name' => 'Joyce Achieng']);
+
+        $save = fn (array $policy) => $this->withBodyFormat('json')->post('api/settings', ['passwordPolicy' => $policy + $served['policy']]);
+        $refused = static function ($response): string {
+            $response->assertStatus(422);
+
+            return json_decode($response->getJSON(), true)['error'];
+        };
+        $this->assertStringContainsString('whole number from 8 to 64', $refused($save(['minLength' => '6'])));
+        $this->assertStringContainsString('cannot have 16 different ones', $refused($save(['minLength' => 12, 'distinct' => 16])));
+        $this->assertStringContainsString('minimum of symbols or spaces', $refused($save(['symbol' => 11])));
+
+        $saved = $this->json($save(['minLength' => 14, 'upper' => 1, 'digit' => 2, 'kinds' => 3]));
+        $this->assertSame(['Password policy changed to: At least 14 characters · At least 1 capital letter (A–Z) · At least 2 digits (0–9) · '
+            . 'At least 3 of: capital letters, small letters, digits, symbols or spaces · At least 5 different characters · '
+            . 'Not your name or email address · Not a password anyone would try first · Never expires'], array_column($saved['changes'], 'what'));
+        $this->assertStringContainsString('whole number from 30 to 365', $refused($save(['maxAgeDays' => '7'])));
+        $this->assertStringContainsString('from 0 to 24', $refused($save(['history' => '30'])));
+        $this->assertSame(14, $saved['passwordPolicy']['policy']['minLength']);
+        // Saving it again as it is changes nothing.
+        $this->assertSame([], $this->json($save($saved['passwordPolicy']['policy']))['changes']);
+
+        $policy = PasswordPolicy::current();
+        $who = ['email' => 'j.achieng@elog.or.ke', 'name' => 'Joyce Achieng'];
+        $refusal = static function (string $password) use ($policy, $who): string {
+            try {
+                PasswordPolicy::check($policy, $password, $who);
+            } catch (RuleViolation $e) {
+                return $e->getMessage();
+            }
+
+            return '';
+        };
+        $this->assertStringContainsString('at least 14 characters', $refusal('Short 12 pass'));
+        $this->assertStringContainsString('1 capital letter', $refusal('a long new password 42'));
+        $this->assertStringContainsString('2 digits', $refusal('A long new password 4'));
+        $this->assertStringContainsString('your name', $refusal('Achieng likes 2026 tea'));
+        $this->assertStringContainsString('first anyone would try', $refusal('Password12345678!'));
+        $this->assertSame('', $refusal('Blue kettle on 42 hills'));
+
+        // My account lists the rules for the form, and holds a change to them.
+        $account = $this->api('api/account');
+        $this->assertSame(14, $account['minLength']);
+        $this->assertContains('At least 2 digits (0–9)', array_column($account['passwordRules'], 'text'));
+
+        $this->actAs('s.njeri@elog.or.ke');
+        $save(['minLength' => 20])->assertStatus(403);
     }
 
     public function testTheThemeIsHeldForTheOrganisationAndPaintedByTheShell(): void

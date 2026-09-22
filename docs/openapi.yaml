@@ -205,8 +205,18 @@ components:
         `signedOut`, `mfa` (password accepted, second factor due), `enrol` (password
         accepted, a second factor must be set up first) or `done`.
       properties:
-        stage: { type: string, enum: [signedOut, mfa, enrol, done] }
-        minLength: { type: integer, description: Minimum password length. }
+        stage: { type: string, enum: [signedOut, mfa, enrol, renew, done], description: '`renew`: both steps given, but the password has expired and a new one is needed first.' }
+        minLength: { type: integer, description: Minimum password length under the password policy. }
+        passwordPolicy: { type: object, description: 'The password policy in force (Settings → Users): minLength, distinct, kinds, upper, lower, digit, symbol, personal, common, history, maxAgeDays.' }
+        passwordRules:
+          type: array
+          description: The rules a new password has to meet, for the form to list and tick off. `min` is absent for rules only the server checks.
+          items:
+            type: object
+            properties:
+              key: { type: string, enum: [length, upper, lower, digit, symbol, kinds, distinct, personal, common, history] }
+              text: { type: string }
+              min: { type: integer }
         message: { type: string }
         error: { type: string }
         pending: { type: string, nullable: true, enum: [totp, email], description: The method being set up, at `enrol`. }
@@ -5053,6 +5063,25 @@ paths:
         '409': { $ref: '#/components/responses/SignInState' }
         '422': { $ref: '#/components/responses/SignInState' }
 
+  /auth/renew:
+    post:
+      tags: [Sign in]
+      summary: Replace an expired password
+      description: At the `renew` stage. The new password is held to the password policy, including its history, and must differ from the one that expired. Completes the sign-in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/SignInState' }
+        '409': { $ref: '#/components/responses/SignInState' }
+        '422': { $ref: '#/components/responses/SignInState' }
+
   /auth/logout:
     post:
       tags: [Sign in]
@@ -5093,7 +5122,7 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Whose link it is.
+          description: Whose link it is, and the password policy the new password has to meet (for an invitation, without the history rule).
           content:
             application/json:
               schema:
@@ -5105,6 +5134,16 @@ paths:
                       name: { type: string }
                       email: { type: string }
                       purpose: { type: string }
+                  minLength: { type: integer }
+                  passwordPolicy: { type: object }
+                  passwordRules:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        text: { type: string }
+                        min: { type: integer }
         '422': { $ref: '#/components/responses/Unprocessable' }
     post:
       tags: [Sign in]

@@ -100,7 +100,7 @@ final class InstallTest extends CIUnitTestCase
 
         $this->assertStringContainsString('CCT-HQ', $done['entity']);
         $this->assertSame(12, $done['periods']);
-        $this->assertSame('Finance Manager', $done['role']);
+        $this->assertSame('Finance Manager and Administrator at the head office', $done['role']);
 
         $this->seeInDatabase('entities', ['code' => 'CCT-HQ', 'type' => 'Head office', 'parent_id' => null,
             'registered_name' => 'Coast Community Trust', 'short_name' => 'CCT', 'functional_currency' => 'KES']);
@@ -113,8 +113,9 @@ final class InstallTest extends CIUnitTestCase
         // The first user can change settings; the system user can never sign in.
         $this->seeInDatabase('users', ['email' => 'a.salim@cct.or.ke', 'short_name' => 'A. Salim', 'initials' => 'AS', 'status' => 'active']);
         $this->seeInDatabase('users', ['email' => Installer::SYSTEM_EMAIL, 'status' => 'suspended']);
-        $this->assertEmpty(array_diff(['settings.organisation', 'settings.ledger', 'settings.approvals', 'settings.integrations', 'users.manage'],
-            (new UserRepository())->actor('a.salim@cct.or.ke')['permissions']));
+        // Every permission there is, through the Administrator role; and the approval
+        // rules still find a Finance Manager, because that role is held first.
+        $this->assertEqualsCanonicalizing(array_keys(BaselineSeeder::PERMISSIONS), (new UserRepository())->actor('a.salim@cct.or.ke')['permissions']);
         $this->assertSame('Finance Manager', (new Lookups())->roleOf((int) (new Lookups())->userId('a.salim@cct.or.ke')));
 
         // The installation is on the record.
@@ -658,7 +659,9 @@ final class InstallTest extends CIUnitTestCase
         $urls = [];
         foreach (file(ROOTPATH . 'app/Config/Routes.php') as $line) {
             // Not the sign-in link lookups: without the token from an email they refuse, as they should.
-            if (preg_match("/\\\$routes->get\('([^'(]+)',/", $line, $m) === 1 && !str_contains($m[1], '(') && !str_starts_with($m[1], 'auth/')) {
+            // Nor the installer, which is not there at all once the instance is installed.
+            if (preg_match("/\\\$routes->get\('([^'(]+)',/", $line, $m) === 1 && !str_contains($m[1], '(') && !str_starts_with($m[1], 'auth/')
+                && $m[1] !== 'install') {
                 $urls[] = str_starts_with($line, '    ') ? 'api/' . $m[1] : $m[1];
             }
         }

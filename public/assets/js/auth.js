@@ -64,6 +64,7 @@
     if (stage === 'done') { location.replace(next); return; }
     if (stage === 'mfa') return challenge(message);
     if (stage === 'enrol') return chooseMethod(message);
+    if (stage === 'renew') return renewForm(message);
     return signInForm(message);
   }
 
@@ -223,37 +224,80 @@
       ${MFA.recoveryPanel(codes)}
       <button type="button" class="btn btn-primary auth-submit" id="continue" disabled>Continue</button>`);
     MFA.wireRecovery(root, codes, (saved) => { root.querySelector('#continue').disabled = !saved; });
-    root.querySelector('#continue').addEventListener('click', () => location.replace(next));
+    // An expired password is replaced next; otherwise, into the application.
+    root.querySelector('#continue').addEventListener('click', () => route());
+  }
+
+  // ---- An expired password ----
+
+  function renewForm(message) {
+    const u = state.user || {};
+    const email = u.account || '';
+    paint(`
+      <h1 class="auth-title">Choose a new password</h1>
+      <p class="auth-note">${esc(message || 'Your password has expired. Choose a new one to carry on.')} Passwords here last ${esc(state.passwordPolicy?.maxAgeDays || '')} days.</p>
+      <form class="auth-form" id="f-renew" novalidate>
+        <input type="email" autocomplete="username" value="${esc(email)}" hidden readonly>
+        <label class="auth-field"><span>New password</span><input name="password" type="password" autocomplete="new-password" required></label>
+        ${UI.passwordRules(state.passwordRules)}
+        <label class="auth-field"><span>Type it again</span><input name="again" type="password" autocomplete="new-password" required></label>
+        <div class="auth-msg-slot"></div>
+        <button type="submit" class="btn btn-primary auth-submit">Save and carry on</button>
+      </form>
+      <div class="auth-links"><button type="button" class="auth-link" id="out">Sign out</button></div>`);
+    const form = root.querySelector('#f-renew');
+    form.password.addEventListener('input', () => UI.tickPasswordRules(form.querySelector('.pw-rules'), state.passwordRules, form.password.value, { email, name: u.name }));
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (form.password.value !== form.again.value) { showError(new Error('The two passwords are not the same.')); return; }
+      busy(form, async () => {
+        const chosen = form.password.value;
+        await api('POST', '/api/auth/renew', { password: chosen });
+        // So the browser fills the new password at the next sign-in, not the one it replaced.
+        await UI.rememberPassword(email, chosen, u.name);
+        route();
+      });
+    });
+    root.querySelector('#out').addEventListener('click', async () => {
+      try { await api('POST', '/api/auth/logout'); } catch (err) { state = { stage: 'signedOut' }; }
+      route();
+    });
   }
 
   // ---- Invitation and reset links ----
 
   async function linkForm() {
     const purpose = mode === 'invite' ? 'invite' : 'reset';
-    let link;
+    let res;
     try {
-      link = (await api('GET', `/api/auth/${purpose}?token=${encodeURIComponent(token)}`)).link;
+      res = await api('GET', `/api/auth/${purpose}?token=${encodeURIComponent(token)}`);
     } catch (err) {
       paint(`<h1 class="auth-title">${purpose === 'invite' ? 'Invitation' : 'Reset link'}</h1>${note(err.message, 'error')}<a class="auth-link" href="/login">Go to sign in</a>`);
       return;
     }
-    const min = state?.minLength || 12;
+    // No sign-in has started yet, so the policy comes with the link rather than in `state`.
+    const { link, passwordRules: rules } = res;
+    const min = res.minLength || 12;
     paint(`
       <h1 class="auth-title">${purpose === 'invite' ? `Welcome, ${esc(link.name.split(' ')[0])}` : 'Choose a new password'}</h1>
-      <p class="auth-note">${purpose === 'invite' ? 'Choose a password for ' : 'For '}<strong>${esc(link.email)}</strong>. At least ${min} characters — a few unrelated words make one that is long and easy to remember.</p>
+      <p class="auth-note">${purpose === 'invite' ? 'Choose a password for ' : 'For '}<strong>${esc(link.email)}</strong>. A few unrelated words make a password that is long and easy to remember.</p>
       <form class="auth-form" id="f-link" novalidate>
         <input type="email" autocomplete="username" value="${esc(link.email)}" hidden readonly>
         <label class="auth-field"><span>New password</span><input name="password" type="password" autocomplete="new-password" required minlength="${min}"></label>
+        ${UI.passwordRules(rules)}
         <label class="auth-field"><span>Type it again</span><input name="again" type="password" autocomplete="new-password" required></label>
         <div class="auth-msg-slot"></div>
         <button type="submit" class="btn btn-primary auth-submit">${purpose === 'invite' ? 'Set up my account' : 'Save the new password'}</button>
       </form>`);
     const form = root.querySelector('#f-link');
+    form.password.addEventListener('input', () => UI.tickPasswordRules(form.querySelector('.pw-rules'), rules, form.password.value, link));
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       if (form.password.value !== form.again.value) { showError(new Error('The two passwords are not the same.')); return; }
       busy(form, async () => {
         const res = await api('POST', `/api/auth/${purpose}`, { token, password: form.password.value });
+        // So the browser fills the new password at the next sign-in, not the one it replaced.
+        await UI.rememberPassword(link.email, form.password.value, link.name);
         // The link is used up; keep it out of the address bar and history.
         history.replaceState(null, '', '/login');
         route(res.message);

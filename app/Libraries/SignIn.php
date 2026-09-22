@@ -11,7 +11,9 @@ use Config\Auth;
  * factor to give) or `enrol` (a second factor to set up first); the second factor
  * moves it to `done`. Only a `done` session reaches the application — the others
  * reach the sign-in endpoints and nothing else. A user with no second factor who
- * is not required to have one goes straight to `done`.
+ * is not required to have one goes straight to `done`. Whoever would reach `done`
+ * with a password older than the policy allows (App\Libraries\PasswordPolicy)
+ * stops at `renew` instead, and chooses a new one first.
  *
  * The session id is regenerated at every step, so an id seen before sign-in is
  * worthless after it, and the session ends after Config\Auth::$idleMinutes without
@@ -30,7 +32,10 @@ final class SignIn
 
     public const MFA   = 'mfa';
     public const ENROL = 'enrol';
+    public const RENEW = 'renew';
     public const DONE  = 'done';
+    /** How the sign-in was completed, held while an expired password is replaced, for the audit log. */
+    public const HOW = 'auth_how';
 
     /** The session values for a signed-in user, e.g. to start a test signed in. */
     public static function values(int $userId, string $stage = self::DONE): array
@@ -57,7 +62,7 @@ final class SignIn
     public static function end(): void
     {
         $session = session();
-        $session->remove([self::USER, self::STAGE, self::SEEN, self::TRIES, self::PENDING_SECRET, self::PENDING_METHOD]);
+        $session->remove([self::USER, self::STAGE, self::SEEN, self::TRIES, self::PENDING_SECRET, self::PENDING_METHOD, self::HOW]);
         $session->regenerate(true);
     }
 

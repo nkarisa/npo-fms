@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Libraries\AuthMail;
 use App\Libraries\Clock;
+use App\Libraries\PasswordPolicy;
 use App\Libraries\Secret;
 use App\Libraries\SignIn;
 use App\Libraries\Totp;
@@ -52,13 +53,15 @@ final class AuthRepository extends Repository
 
     /**
      * Checks an email and password. Returns the user and the stage the sign-in
-     * moves to: `mfa`, `enrol` or `done`.
+     * moves to: `mfa`, `enrol` or `done`. (An expired password is asked about only
+     * once the second step is given too — Api\Auth::finish().)
      *
      * @return array{user: array, stage: string}
      */
     public function attempt(string $email, string $password, string $from = ''): array
     {
-        $refused = 'That email and password do not match an account.';
+        // A browser that filled the password in may still hold the one it replaced.
+        $refused = 'That email and password do not match an account. If your browser filled the password in, it may be an old one — type it instead.';
         $user = $this->row('SELECT * FROM {users} WHERE LOWER(email) = ?', [mb_strtolower(trim($email))]);
 
         if ($user === null || $user['password_hash'] === null || $user['password_hash'] === '') {
@@ -516,30 +519,90 @@ final class AuthRepository extends Repository
         };
     }
 
+    /**
+     * Sets a password under the policy: its matrix, and not one of the person's last
+     * few. The one it replaces joins their history, trimmed to what the policy can
+     * ever ask about.
+     */
     private function setPassword(array $user, string $password): void
     {
         $this->assertStrong($password, $user);
-        $this->db->table('users')->where('id', (int) $user['id'])->update([
-            'password_hash' => password_hash($password, PASSWORD_DEFAULT), 'password_changed_at' => date('Y-m-d H:i:s'),
+        $this->assertNotReused($user, $password);
+        $id = (int) $user['id'];
+        $now = date('Y-m-d H:i:s');
+
+        $this->db->table('users')->where('id', $id)->update([
+            'password_hash' => password_hash($password, PASSWORD_DEFAULT), 'password_changed_at' => $now,
             'failed_sign_ins' => 0, 'locked_until' => null, 'updated_at' => Clock::timestamp(),
         ]);
+        if ((string) $user['password_hash'] !== '') {
+            $this->insert('password_history', ['user_id' => $id, 'password_hash' => $user['password_hash'], 'created_at' => $now]);
+            $stale = array_column($this->rows('SELECT id FROM {password_history} WHERE user_id = ? ORDER BY id DESC', [$id]), 'id');
+            $stale = array_slice($stale, PasswordPolicy::HISTORY_KEPT);
+            if ($stale !== []) {
+                $this->db->table('password_history')->whereIn('id', $stale)->delete();
+            }
+        }
     }
 
-    /** The password rules, in words the person can act on. */
+    /**
+     * Refuses one of the last `history` passwords: the one held now counts as the
+     * first, then the ones it replaced, newest first.
+     */
+    private function assertNotReused(array $user, string $password): void
+    {
+        $count = PasswordPolicy::current($this->db)['history'];
+        if ($count <= 0) {
+            return;
+        }
+        $hashes = array_filter([(string) $user['password_hash']]);
+        if ($count > count($hashes)) {
+            $earlier = $this->rows('SELECT password_hash FROM {password_history} WHERE user_id = ? ORDER BY id DESC LIMIT ' . (int) ($count - count($hashes)), [(int) $user['id']]);
+            $hashes = [...$hashes, ...array_column($earlier, 'password_hash')];
+        }
+        foreach ($hashes as $hash) {
+            if (password_verify($password, $hash)) {
+                throw new RuleViolation($count === 1
+                    ? 'Choose a password different from the one you have.'
+                    : 'You have used that password before. Choose one that is not among your last ' . $count . '.');
+            }
+        }
+    }
+
+    /** Whether the user's password is older than the policy allows, so they must choose a new one to go on. */
+    public function passwordExpired(int $userId): bool
+    {
+        $at = PasswordPolicy::expiresAt(PasswordPolicy::current($this->db), $this->user($userId)['password_changed_at']);
+
+        return $at !== null && $at <= time();
+    }
+
+    /** When the user's password expires, as a Unix time, or null when it does not. */
+    public function passwordExpiresAt(int $userId): ?int
+    {
+        return PasswordPolicy::expiresAt(PasswordPolicy::current($this->db), $this->user($userId)['password_changed_at']);
+    }
+
+    /**
+     * Replaces an expired password at sign-in. The person has already given the old
+     * one (and their second step), so only the new one is asked for.
+     */
+    public function renewExpired(int $userId, string $password, string $from = ''): void
+    {
+        $user = $this->user($userId);
+        if (password_verify($password, (string) $user['password_hash'])) {
+            throw new RuleViolation('Choose a password different from the one that expired.');
+        }
+        $this->transaction(function () use ($user, $password, $userId, $from) {
+            $this->setPassword($user, $password);
+            $this->log($userId, 'auth.password', 'Chose a new password when the old one expired', $userId, $from);
+        });
+    }
+
+    /** The password policy of Settings → Users (App\Libraries\PasswordPolicy), in words the person can act on. */
     public function assertStrong(string $password, array $user): void
     {
-        $min = $this->config->minPasswordLength;
-        $lower = mb_strtolower($password);
-        $local = mb_strtolower(explode('@', (string) $user['email'])[0]);
-
-        match (true) {
-            mb_strlen($password) < $min      => throw new RuleViolation('Use at least ' . $min . ' characters. A few unrelated words make a long password that is easy to remember.'),
-            strlen($password) > 200          => throw new RuleViolation('That password is longer than 200 characters.'),
-            count(array_unique(mb_str_split($password))) < 5 => throw new RuleViolation('That password repeats too few characters to be hard to guess.'),
-            strlen($local) >= 3 && str_contains($lower, $local) => throw new RuleViolation('Leave your email address out of your password.'),
-            in_array($lower, ['password1234', '123456789012', 'qwertyuiopas', 'passwordpassword', 'changemechangeme'], true) => throw new RuleViolation('That password is one of the first anyone would try.'),
-            default                          => null,
-        };
+        PasswordPolicy::check(PasswordPolicy::current($this->db), $password, $user);
     }
 
     private function user(int $userId): array

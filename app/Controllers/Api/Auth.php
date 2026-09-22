@@ -16,6 +16,7 @@ use App\Repositories\UserRepository;
  *   signedOut → POST login {email, password}
  *   mfa       → POST verify {code}         (an authenticator code, an emailed code, or a recovery code)
  *   enrol     → POST enrol/start {method}, then POST enrol/confirm {code}
+ *   renew     → POST renew {password}      (the password has expired under the policy)
  *   done      → the application
  *
  * Invitations and password resets arrive as a link carrying a token; setting the
@@ -134,6 +135,25 @@ class Auth extends BaseApiController
         return $this->json(['recoveryCodes' => $codes, 'message' => 'Your second sign-in step is set up.'] + $this->state());
     }
 
+    /** Body: {password}. A new password in place of an expired one, at the `renew` stage; then signed in. */
+    public function renew()
+    {
+        if (SignIn::stage() !== SignIn::RENEW) {
+            return $this->outOfStep();
+        }
+        $userId = (int) SignIn::userId();
+
+        try {
+            (new AuthRepository())->renewExpired($userId, (string) ($this->body()['password'] ?? ''), $this->from());
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+        $how = (string) (session(SignIn::HOW) ?? 'password');
+        session()->remove(SignIn::HOW);
+
+        return $this->finish($userId, $how);
+    }
+
     public function logout()
     {
         $userId = SignIn::userId();
@@ -157,15 +177,24 @@ class Auth extends BaseApiController
         return $this->json(['message' => 'If that address has an account, a link to reset the password is on its way. It works for ' . $this->hours(config(\Config\Auth::class)->resetHours) . '.']);
     }
 
-    /** GET ?token= — who an invitation or reset link is for, so the screen can greet them. */
+    /**
+     * GET ?token= — who an invitation or reset link is for, so the screen can greet
+     * them, and the password policy, so it can list what the new password has to be.
+     */
     public function link(string $purpose)
     {
         try {
-            return $this->json(['link' => (new AuthRepository())->linkHolder((string) $this->request->getGet('token'), $purpose),
-                'minLength' => config(\Config\Auth::class)->minPasswordLength]);
+            $link = (new AuthRepository())->linkHolder((string) $this->request->getGet('token'), $purpose);
         } catch (RuleViolation $e) {
             return $this->refused($e);
         }
+        $rules = Account::passwordRules();
+        // Someone invited has no earlier passwords for the history rule to be about.
+        if ($purpose === 'invite') {
+            $rules['passwordRules'] = array_values(array_filter($rules['passwordRules'], static fn ($r) => $r['key'] !== 'history'));
+        }
+
+        return $this->json(['link' => $link] + $rules);
     }
 
     /** Body: {token, password}. Sets the password from an invitation or reset link and signs in as far as the second factor. */
@@ -263,6 +292,13 @@ class Auth extends BaseApiController
 
     private function finish(int $userId, string $how)
     {
+        // Past the password and the second step, but the password has expired: a new one first.
+        if ((new AuthRepository())->passwordExpired($userId)) {
+            SignIn::advance(SignIn::RENEW);
+            session()->set(SignIn::HOW, $how);
+
+            return $this->json(['message' => 'Your password has expired. Choose a new one to carry on.'] + $this->state());
+        }
         SignIn::advance(SignIn::DONE);
         (new AuthRepository())->signedIn($userId, $this->from(), $how);
         UserRepository::forget();
@@ -276,12 +312,15 @@ class Auth extends BaseApiController
         $stage = SignIn::stage();
         $userId = SignIn::userId();
         $auth = new AuthRepository();
-        $config = config(\Config\Auth::class);
 
-        $out = ['stage' => $stage ?? 'signedOut', 'minLength' => $config->minPasswordLength];
+        $out = ['stage' => $stage ?? 'signedOut'] + Account::passwordRules();
         if ($userId !== null && $stage !== SignIn::DONE) {
             $out['user'] = $auth->factorState($userId);
             $out['pending'] = session(SignIn::PENDING_METHOD);
+        }
+        // Past both steps: the address in full, for the browser to file the new password under.
+        if ($stage === SignIn::RENEW) {
+            $out['user']['account'] = $this->userRow($userId)['email'];
         }
         if ($stage === SignIn::DONE) {
             $me = (new UserRepository())->actorById($userId);

@@ -116,7 +116,7 @@ Demo (`:8095`): `w.kamau@elog.or.ke` Finance Manager (default, limit KES 5M, but
 journals over **KES 500,000** need the ED), `m.otieno@elog.or.ke` Senior Accountant,
 `d.kiptoo@elog.or.ke` Executive Director, `j.achieng@elog.or.ke` Accountant,
 `audit@pkfea.com` Auditor. Full list in `docs/setup.md`. Blank (`:8096`): only
-`a.salim@cct.or.ke` (Finance Manager), from `install.json`.
+`a.salim@cct.or.ke` (Finance Manager and Administrator), from `install.json`.
 
 ### API and DB directly
 

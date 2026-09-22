@@ -87,6 +87,10 @@ class Install extends BaseCommand
             'First user' => $done['user'] . ' · ' . $done['role']] as $label => $value) {
             CLI::write('  ' . str_pad($label, 16) . $value);
         }
+        // Only worth listing when there is more than the head office just named.
+        foreach (count($done['entities']) > 1 ? array_slice($done['entities'], 1) : [] as $i => $entity) {
+            CLI::write('  ' . str_pad($i === 0 ? 'Also opened' : '', 16) . $entity);
+        }
 
         if ($done['link'] !== null) {
             CLI::newLine();
@@ -177,12 +181,15 @@ class Install extends BaseCommand
             throw new RuleViolation($path . ' is not a JSON object of answers.');
         }
 
-        $unknown = array_diff(array_keys($answers), array_keys(Installer::questions()));
+        $unknown = array_diff(array_keys($answers), array_keys(Installer::questions()), Installer::EXTRAS);
         if ($unknown !== []) {
             throw new RuleViolation($path . ' holds answers this installer does not ask for: ' . implode(', ', $unknown) . '.');
         }
 
-        return array_map('strval', $answers);
+        // The extras are a list and a flag, not text: everything else is a string.
+        $extras = array_intersect_key($answers, array_flip(Installer::EXTRAS));
+
+        return array_map('strval', array_diff_key($answers, $extras)) + $extras;
     }
 
     /** @return array<string, string> */
