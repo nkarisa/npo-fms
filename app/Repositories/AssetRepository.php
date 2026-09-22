@@ -21,7 +21,8 @@ use App\Libraries\Prototype;
  *   where title reverts to the donor), and reaches the ledger only when a second
  *   person approves it: the cost and the depreciation to date come off the
  *   register, proceeds are banked, and the difference is a gain (4250) or a loss
- *   (5360). Until then the asset stays on the register and keeps depreciating.
+ *   (5360), all on the asset's own fund, programme and grant. Until then the
+ *   asset stays on the register and keeps depreciating.
  */
 final class AssetRepository extends Repository
 {
@@ -153,6 +154,32 @@ final class AssetRepository extends Repository
 
             return $run;
         });
+    }
+
+    /**
+     * This asset's share of each posted depreciation run, oldest first. 1390 and
+     * 5350 are posted by programme, not by asset, so the run's entries are the
+     * only place one asset's charge can be read from.
+     *
+     * @return list<array{period: string, on: string, fiscalYearId: int, journal: ?string, amount: float}>
+     */
+    public function charges(array $a): array
+    {
+        return array_map(static fn ($r) => [
+            'period' => $r['name'], 'on' => $r['ends_on'], 'fiscalYearId' => (int) $r['fiscal_year_id'],
+            'journal' => $r['journal_ref'], 'amount' => self::num($r['amount']),
+        ], $this->rows(
+            "SELECT p.name, p.ends_on, p.fiscal_year_id, j.reference AS journal_ref, e.amount
+             FROM {depreciation_entries} e JOIN {depreciation_runs} r ON r.id = e.depreciation_run_id
+             JOIN {periods} p ON p.id = r.period_id LEFT JOIN {journals} j ON j.id = r.journal_id
+             WHERE e.asset_id = ? AND r.status = 'posted' ORDER BY p.starts_on",
+            [$a['id']]
+        ));
+    }
+
+    public function fiscalYearCode(int $id): string
+    {
+        return (string) $this->value('SELECT code FROM {fiscal_years} WHERE id = ?', [$id]);
     }
 
     /** Straight line: cost less residual over the useful life, a month. */
@@ -425,10 +452,12 @@ final class AssetRepository extends Repository
         $accum = (float) $a['accum'];
         $proceeds = (float) $d['proceeds'];
         $result = round($proceeds - ($a['cost'] - $accum), 2);
-        $capital = (int) $this->value("SELECT id FROM {funds} WHERE ledger_group = 'capital' ORDER BY code LIMIT 1");
-        $shared = $this->lookups->programmeId('Shared services');
+        // Every line on the asset's own fund, programme and grant — where its cost
+        // was debited and its depreciation credited — so the release clears them
+        // there, and proceeds from a donor-funded asset stay in the donor's fund.
+        $programme = $a['programmeId'] ?? $this->lookups->programmeId('Shared services');
         $line = static fn (string $code, string $desc, float $dr, float $cr) => [
-            'code' => $code, 'fund_id' => $capital, 'programme_id' => $shared, 'grant_id' => null, 'desc' => $desc, 'dr' => $dr, 'cr' => $cr,
+            'code' => $code, 'fund_id' => $a['fundId'], 'programme_id' => $programme, 'grant_id' => $a['grantId'], 'desc' => $desc, 'dr' => $dr, 'cr' => $cr,
         ];
         $who = $this->lookups->shortName($actorId);
 

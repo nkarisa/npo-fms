@@ -67,6 +67,7 @@ class Assets extends BaseApiController
             'schedule' => array_map(static fn ($y) => [
                 'year' => $y['year'], 'opening' => $fmt($y['opening']), 'charge' => $fmt($y['charge']), 'closing' => $fmt($y['closing']), 'current' => $y['current'],
             ], $repo->schedule($a, $posted ? $disposal : null)),
+            'ledger' => $this->ledger($repo, $a, $period, $posted ? $disposal : null),
             'trail' => $a['trail'],
             'documents' => (new AttachmentRepository())->for('asset', (int) $a['id']),
             'canAttach' => $actor['canPrepare'],
@@ -445,6 +446,68 @@ class Assets extends BaseApiController
     private static function amount(mixed $value): float
     {
         return (float) preg_replace('/[^0-9.\-]/', '', (string) $value);
+    }
+
+    /**
+     * The asset's share of accumulated depreciation and depreciation expense,
+     * read from the runs it was charged in, so the drawer answers without
+     * opening two ledgers that are posted by programme, not by asset.
+     *
+     * Accumulated depreciation is a balance: what came onto the register already
+     * written down, plus every monthly charge, less what a disposal released.
+     * Expense closes each year, so it is summarised for the financial year the
+     * books are in, with life to date alongside.
+     */
+    private function ledger(AssetRepository $repo, array $a, ?array $period, ?array $disposal): array
+    {
+        $fmt = static fn ($n) => Prototype::fmt($n);
+        $accumCode = PostingAccounts::of('accumulated');
+        $expenseCode = PostingAccounts::of('depreciation');
+        $charges = $repo->charges($a);
+        $broughtForward = round($a['accum'] - array_sum(array_column($charges, 'amount')), 2);
+
+        $rows = [];
+        $balance = 0.0;
+        if ($broughtForward > 0) {
+            $balance = $broughtForward;
+            $rows[] = ['kind' => 'bf', 'when' => '', 'what' => 'Brought forward',
+                'journal' => '', 'expense' => '', 'accum' => $fmt($broughtForward), 'balance' => $fmt($balance)];
+        }
+        foreach ($charges as $c) {
+            $balance += $c['amount'];
+            $rows[] = ['kind' => 'run', 'when' => self::dmy($c['on']), 'what' => 'Depreciation ' . $c['period'],
+                'journal' => $c['journal'] ?? '', 'expense' => $fmt($c['amount']), 'accum' => $fmt($c['amount']), 'balance' => $fmt($balance)];
+        }
+        $released = $disposal !== null;
+        if ($released) {
+            $rows[] = ['kind' => 'disposal', 'when' => self::dmy($disposal['disposed_on']), 'what' => 'Released on disposal',
+                'journal' => $disposal['journal_ref'], 'expense' => '', 'accum' => '(' . $fmt($balance) . ')', 'balance' => $fmt(0)];
+            $balance = 0.0;
+        }
+
+        $yearId = $period === null ? null : (int) $period['fiscal_year_id'];
+        $year = array_values(array_filter($charges, static fn ($c) => $c['fiscalYearId'] === $yearId));
+        $yearCharge = array_sum(array_column($year, 'amount'));
+        $lifeCharge = array_sum(array_column($charges, 'amount'));
+        $yearName = $yearId === null ? 'This year' : $repo->fiscalYearCode($yearId);
+
+        return [
+            'accumulated' => [
+                'account' => $accumCode . ' · ' . $this->accountName($accumCode),
+                'value' => $fmt($balance),
+                'note' => $released ? 'Released to nil when the disposal posted'
+                    : ($charges === [] ? 'All brought forward — written down before monthly runs were recorded'
+                        : count($charges) . ' monthly ' . (count($charges) === 1 ? 'charge' : 'charges') . ($broughtForward > 0 ? ' on ' . $fmt($broughtForward) . ' brought forward' : '')),
+            ],
+            'expense' => [
+                'account' => $expenseCode . ' · ' . $this->accountName($expenseCode),
+                'value' => $fmt($yearCharge),
+                'note' => $charges === [] ? $yearName . ' · no monthly run has charged it'
+                    : $yearName . ' · ' . count($year) . ' ' . (count($year) === 1 ? 'month' : 'months') . ' · ' . $fmt($lifeCharge) . ' life to date',
+            ],
+            'rows' => $rows,
+            'hint' => 'This asset’s share of each posting. Both accounts are posted by programme, so the ledger shows it pooled with other assets.',
+        ];
     }
 
     private function accountName(string $code): string

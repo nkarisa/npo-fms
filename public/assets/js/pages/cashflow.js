@@ -1,73 +1,114 @@
+/**
+ * Cashflow forecast (v5).
+ *
+ * Thirteen weeks ahead, one row a week. The unrestricted column is the one that
+ * answers whether core costs can be met: restricted cash cannot lawfully cover
+ * them, so a negative there is the real signal even when closing cash looks
+ * healthy. Scenarios and the discretionary hold re-run the projection on the API.
+ */
 (async function () {
   const app = document.getElementById('app');
-  let state = { scenario: 'Base case', hold: false };
+  const esc = UI.esc;
+  const BASE = { scenario: 'Base case', hold: false };
+  const state = { ...BASE };
+  let data = null;
 
-  async function load() {
-    const p = new URLSearchParams({ scenario: state.scenario, hold: String(state.hold) });
-    return UI.fetchJSON('/api/cashflow?' + p.toString());
+  const query = () => new URLSearchParams({ scenario: state.scenario, hold: String(state.hold) }).toString();
+
+  async function refresh() {
+    data = await UI.fetchJSON('/api/cashflow?' + query());
+    render();
   }
 
-  function render(data) {
+  function render() {
     app.innerHTML = '';
     UI.pageHead(app, {
       kicker: 'Insight',
       title: 'Cashflow forecast',
-      blurb: 'Thirteen weeks ahead. The unrestricted line is the one that answers whether core costs can be met.',
+      blurb: data.blurb || 'Thirteen weeks ahead. The unrestricted line is the one that answers whether core costs can be met.',
+      actions: data.rows.length
+        ? '<button type="button" class="btn" data-act="reset">Reset</button>'
+          + '<button type="button" class="btn btn-primary" data-act="export">Export for Board</button>'
+        : '',
     });
-    app.appendChild(UI.statGrid(data.stats));
+    app.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => ({
+      reset: () => { Object.assign(state, BASE); refresh(); }, export: exportForBoard,
+    })[b.dataset.act]()));
 
-    if (data.warning) {
-      const warn = document.createElement('div');
-      warn.className = 'card';
-      warn.style.cssText = 'background:#FBEAE5;border-color:#F0D9D1;';
-      warn.innerHTML = `<div style="padding:12px 16px;color:#A6412F;font-size:12px;line-height:1.55;">${UI.esc(data.warning)}</div>`;
-      app.appendChild(warn);
+    if (!data.rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'card empty-state';
+      empty.textContent = data.empty;
+      app.appendChild(empty);
+      return;
     }
 
-    const card = document.createElement('div');
-    card.className = 'card';
-
-    const toolbar = document.createElement('div');
-    toolbar.className = 'toolbar';
-    const scenario = document.createElement('select');
-    scenario.innerHTML = data.scenarioOptions.map(s => `<option ${s === state.scenario ? 'selected' : ''}>${UI.esc(s)}</option>`).join('');
-    scenario.addEventListener('change', (e) => { state.scenario = e.target.value; refresh(); });
-
-    // The one lever finance actually controls, so it is a toggle not a scenario.
-    const hold = document.createElement('label');
-    hold.style.cssText = 'display:flex;align-items:center;gap:7px;font-size:12px;color:#5C665F;cursor:pointer;';
-    hold.innerHTML = `<input type="checkbox" ${state.hold ? 'checked' : ''}> ${UI.esc(data.holdLabel)}`;
-    hold.querySelector('input').addEventListener('change', (e) => { state.hold = e.target.checked; refresh(); });
-
-    toolbar.append(scenario, hold);
-    card.appendChild(toolbar);
-
-    card.appendChild(UI.table([
-      { label: 'Week commencing', key: 'wc' },
-      { label: 'Expected', render: (r) => `${UI.esc(r.note || '—')}${r.grantWeek ? ' ' + UI.badge('Grant receipt', 'plain') : ''}` },
-      { label: 'Opening', num: true, key: 'opening' },
-      { label: 'In', num: true, key: 'inflow' },
-      { label: 'Out', num: true, key: 'outflow' },
-      { label: 'Net', num: true, render: (r) => `<span style="color:${r.positive ? 'var(--calm-ink)' : '#A6412F'};">${UI.esc(r.net)}</span>` },
-      { label: 'Closing', num: true, key: 'closing' },
-      {
-        label: 'Of which unrestricted',
-        num: true,
-        // Restricted cash cannot lawfully cover core costs, so a negative here
-        // is the real signal even when closing cash looks healthy.
-        render: (r) => `<span style="${r.tight ? 'color:#A6412F;font-weight:600;' : ''}">${UI.esc(r.unrestricted)}</span>`,
-      },
-    ], data.rows));
-
-    const footer = document.createElement('div');
-    footer.className = 'card-footer';
-    footer.textContent = data.hint;
-    card.appendChild(footer);
-    app.appendChild(card);
+    app.appendChild(UI.statGrid(data.stats));
+    app.appendChild(controls());
+    if (data.warning) {
+      const warn = document.createElement('div');
+      warn.className = 'cf-warn';
+      warn.innerHTML = `<span class="cf-warn-mark">!</span><div>${esc(data.warning)}</div>`;
+      app.appendChild(warn);
+    }
+    app.appendChild(table());
   }
 
-  async function refresh() {
-    render(await load());
+  /** The scenario switch, and the one lever finance actually controls — a toggle, not a scenario. */
+  function controls() {
+    const div = document.createElement('div');
+    div.className = 'cf-controls';
+    div.innerHTML = `
+      <div class="coa-seg">${data.scenarioOptions.map(s => `<button type="button" class="coa-seg-btn ${s === data.scenario ? 'on' : ''}" data-scenario="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+      <label class="cf-hold"><input type="checkbox" ${data.hold ? 'checked' : ''}> ${esc(data.holdLabel)}</label>`;
+    div.querySelectorAll('[data-scenario]').forEach((b) => b.addEventListener('click', () => {
+      state.scenario = b.dataset.scenario;
+      refresh();
+    }));
+    div.querySelector('.cf-hold input').addEventListener('change', (e) => { state.hold = e.target.checked; refresh(); });
+    return div;
+  }
+
+  function table() {
+    const card = document.createElement('div');
+    card.className = 'coa-card';
+    card.innerHTML = `
+      <div class="cf-scroll"><div class="cf-inner">
+        <div class="cf-cols cf-head">
+          <div>Week</div><div class="end">Receipts</div><div class="end">Payments</div><div class="end">Net</div>
+          <div>Shape and driver</div><div class="end">Closing cash</div><div class="end">Of which unrestricted</div>
+        </div>
+        ${data.rows.map(week).join('')}
+      </div></div>
+      <div class="cf-foot"><span>${esc(data.hint)}</span><span class="cf-foot-rule">${esc(data.legend)}</span></div>`;
+    return card;
+  }
+
+  function week(w) {
+    return `
+      <div class="cf-cols cf-week">
+        <div class="cf-mono">${esc(w.wc)}</div>
+        <div class="end cf-mono in">${esc(w.inflow)}</div>
+        <div class="end cf-mono out">${esc(w.outflow)}</div>
+        <div class="end cf-mono ${w.positive ? 'up' : 'down'}">${esc(w.net)}</div>
+        <div class="cf-shape">
+          <div class="cf-bars"><i class="in" style="width:${w.inflowPct}%"></i><i class="out" style="width:${w.outflowPct}%"></i></div>
+          <span class="cf-note" title="${esc(w.note)}">${esc(w.note)}</span>
+        </div>
+        <div class="end cf-mono strong">${esc(w.closing)}</div>
+        <div class="end cf-mono ${w.tight ? 'tight' : 'ok'}">${esc(w.unrestricted)}</div>
+      </div>`;
+  }
+
+  async function exportForBoard() {
+    try {
+      const res = await fetch('/api/cashflow/export?' + query());
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'The forecast could not be exported.');
+      UI.download(await res.blob(), `${UI.brand()} cashflow forecast.csv`, res.headers.get('Content-Disposition'));
+      UI.toast(data.weeks + '-week forecast exported for the Board finance committee.');
+    } catch (err) {
+      UI.toast(err.message);
+    }
   }
 
   refresh();

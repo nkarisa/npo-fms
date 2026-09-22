@@ -25,12 +25,17 @@ use RuntimeException;
  * rather than one opening figure: 38% of the balance brought forward and the rest
  * as 10–15 postings through the months, each against a contra account (its
  * buildLedger). The same history is seeded here, dated January to July (the closed
- * months, so the open month's bank reconciliations and close are untouched). Every
- * posting keeps the coding of the account's opening line, and the opening journal
- * carries the opposite of each contra line in that coding, so no balance by
- * account, fund, programme or grant changes. These postings are the detail of
- * the closed months (`source_type` "archive"): the general ledger lists them, the
- * journal register does not.
+ * months, so the open month's bank reconciliations and close are untouched), except
+ * that income and expenditure bring nothing forward — a year opens them at nil —
+ * so all of theirs is history. Every posting keeps the coding of the account's
+ * opening line, so no balance by account, fund, programme or grant changes. These
+ * postings are the detail of the closed months (`source_type` "archive"): the
+ * general ledger lists them, the journal register does not.
+ *
+ * The opening journal is then made the balance sheet the year opened with, and
+ * what it would otherwise have carried is posted through the months as settlements
+ * between balance sheet accounts; see rebaseOpening. The reports compare the year
+ * with FY2025, which closes on this journal (ComparativesSeeder).
  *
  * The August cash book the bank reconciliation works from (BR_ACCOUNTS) is posted
  * too: the payment vouchers, receipts, transfers and M-Pesa batches on each bank
@@ -77,6 +82,23 @@ class LedgerSeeder extends Seeder
     private const APPROVER = 'W. Kamau';
 
     private const RECEIVABLE = '1210';
+
+    /**
+     * The opening balance sheet (see rebaseOpening): fixed assets are mostly held
+     * from earlier years, the KES current account holds this share of its year-end
+     * balance plus whatever makes net assets equal the funds brought forward, and
+     * every other asset and liability opens at one common share of its year-end
+     * balance.
+     */
+    private const FIXED_ASSET_GROUP = '13';
+
+    private const FIXED_ASSETS_HELD = 0.9;
+
+    private const DEPRECIATION_HELD = 0.85;
+
+    private const OPENING_BANK = '1110';
+
+    private const OPENING_BANK_SHARE = 0.35;
 
     /**
      * The account the other side of a cash book voucher goes to, by voucher series
@@ -149,13 +171,19 @@ class LedgerSeeder extends Seeder
 
         $opening = array_merge($opening, $restrictedBalance);
         $this->assertFundsStayFunded($opening, $postedLines);
+        [$opening, $settlements] = $this->rebaseOpening(
+            $opening,
+            [...array_map(static fn ($item) => [$item['date'], $item['history']['lines'] ?? $item['claim']['lines'] ?? ($lines[$item['ref']] ?? [])], array_filter($sequence, static fn ($item) => isset($item['history']) || isset($item['claim']) || in_array($item['journal']['status'], self::POSTED, true))),
+                ...array_map(static fn ($v) => [$v['journal_date'], $v['lines']], $cashBook)],
+            array_merge($taken, array_column(array_column($history, 'header'), 'reference'), array_column(array_column($claimJournals, 'header'), 'reference')),
+        );
 
         $openingId = $this->createJournal([
             'reference' => 'OB-26-0001', 'journal_date' => self::OPENING_DATE, 'type' => 'adjustment',
             // The year's opening balances: the chart reads its brought-forward figures from this journal.
             'source_type' => 'fiscal_year', 'source_id' => $ctx->require('fiscal_years', 'FY' . SeedContext::YEAR),
             'memo' => 'Loaded from the prototype chart of accounts (SEED)',
-            'narration' => 'Balances brought forward — FY2026 year to date, less journals loaded separately',
+            'narration' => 'Balances brought forward at 1 January 2026 — the statement of financial position at 31 December 2025',
             'prepared_by' => $ctx->systemUserId(),
         ], $opening, 'posted', ['posted_at' => self::OPENING_DATE . ' 00:00:00']);
         $ctx->writeTrail('journal', $openingId, 'OB-26-0001', [['when' => '01 Jan 2026', 'what' => 'Opening balances loaded by data migration']], $entity);
@@ -175,6 +203,10 @@ class LedgerSeeder extends Seeder
             $j = $item['journal'];
             $ids[$j['ref']] = $id = $this->createJournal($this->header($j, $ids), $lines[$j['ref']], $this->status($j), $this->approval($j));
             $ctx->writeTrail('journal', $id, $j['ref'], $j['trail'], $entity);
+        }
+
+        foreach ($settlements as $s) {
+            $this->createJournal($s['header'], $s['lines'], 'posted', $s['approval']);
         }
 
         $approver = $ctx->userId(self::APPROVER);
@@ -519,9 +551,12 @@ class LedgerSeeder extends Seeder
             }
 
             $r = self::rng($line['code'] . $account['name']);
-            $broughtForward = round($net * self::BROUGHT_FORWARD / 1000) * 1000;
+            // Income and expenditure start the year at nil: all of it is the year's postings.
+            $broughtForward = $this->isIncomeOrExpense($line['code']) ? 0.0 : round($net * self::BROUGHT_FORWARD / 1000) * 1000;
             $movement = $net - $broughtForward;
-            $kept[] = $this->signedLine($line, $debitNormal ? $broughtForward : -$broughtForward);
+            if ($broughtForward != 0) {
+                $kept[] = $this->signedLine($line, $debitNormal ? $broughtForward : -$broughtForward);
+            }
 
             $n = 10 + (int) floor($r() * 6);
             $weights = [];
@@ -705,6 +740,230 @@ class LedgerSeeder extends Seeder
         }
 
         return $ordered;
+    }
+
+    /**
+     * Makes the opening journal the balance sheet the year opened with.
+     *
+     * Drawing the history out of the balances leaves the opening journal carrying the
+     * opposite of every contra line — a USD bank account tens of millions overdrawn,
+     * trade payables in debit — which is not a balance sheet anyone closed a year on,
+     * and the reports print it as last year's closing position. So the opening journal
+     * is replaced by one that is: funds brought forward as they were, fixed assets
+     * mostly held from earlier years, every other asset and liability a common share
+     * of its year-end balance, and the KES current account taking what makes net
+     * assets equal the funds.
+     *
+     * What the old opening journal carried beyond that is the year's movement on the
+     * balance sheet — donor disbursements banked, suppliers paid, advances issued —
+     * and is posted as such, January to July, between balance sheet accounts only, so
+     * no fund, income or expenditure figure moves, and every account keeps its
+     * balance in each coding. It is timed so each account runs in a straight line
+     * from its opening balance to its July close, whatever lumps the other postings
+     * make; the KES current account takes up the difference each month. So a
+     * statement of financial position at any month end reads as one.
+     *
+     * @param list<array{0: string, 1: list<array>}> $inYear every other posted journal: its date and lines
+     * @param list<string> $takenRefs
+     * @return array{0: list<array>, 1: list<array{header: array, lines: list<array>, approval: array}>}
+     */
+    private function rebaseOpening(array $opening, array $inYear, array $takenRefs): array
+    {
+        $months = self::HISTORY_MONTHS;
+        $isBalanceSheet = fn (string $code) => in_array($this->chart[$code]['type'], ['Asset', 'Liability'], true);
+        $signed = static fn (array $l) => $l['debit'] - $l['credit'];
+
+        // Year-end balance, and each month's movement from everything but the opening journal, by account.
+        $final = $base = [];
+        foreach ($opening as $l) {
+            $final[$l['code']] = ($final[$l['code']] ?? 0) + $signed($l);
+        }
+        foreach ($inYear as [$date, $journalLines]) {
+            $month = (int) substr($date, 5, 2);
+            foreach ($journalLines as $l) {
+                $final[$l['code']] = ($final[$l['code']] ?? 0) + $signed($l);
+                $base[$l['code']][$month] = ($base[$l['code']][$month] ?? 0) + $signed($l);
+            }
+        }
+
+        $equity = array_values(array_filter($opening, fn ($l) => !$isBalanceSheet($l['code'])));
+        if (array_filter($equity, fn ($l) => $this->chart[$l['code']]['type'] !== 'Equity') !== []) {
+            throw new RuntimeException('The opening journal still carries income or expenditure.');
+        }
+        $funds = -array_sum(array_map($signed, $equity));
+
+        $target = [];
+        $others = 0.0;
+        foreach ($final as $code => $balance) {
+            $code = (string) $code;
+            if (!$isBalanceSheet($code) || $code === self::OPENING_BANK || round($balance) == 0) {
+                continue;
+            }
+            if (str_starts_with($code, self::FIXED_ASSET_GROUP)) {
+                $target[$code] = round($balance * ($balance < 0 ? self::DEPRECIATION_HELD : self::FIXED_ASSETS_HELD) / 1000) * 1000;
+            } else {
+                $others += $balance;
+            }
+        }
+        $share = ($funds - $final[self::OPENING_BANK] * self::OPENING_BANK_SHARE - array_sum($target)) / $others;
+        if ($share <= 0.05 || $share >= 0.95) {
+            throw new RuntimeException('The funds brought forward cannot be matched by a plausible opening balance sheet.');
+        }
+        foreach ($final as $code => $balance) {
+            $code = (string) $code;
+            if ($isBalanceSheet($code) && $code !== self::OPENING_BANK && !isset($target[$code]) && round($balance) != 0) {
+                $target[$code] = round($balance * $share / 1000) * 1000;
+            }
+        }
+        $target[self::OPENING_BANK] = round($funds - array_sum($target), 2);
+
+        $rebased = $equity;
+        foreach ($target as $code => $amount) {
+            $code = (string) $code;
+            if ($amount != 0) {
+                $rebased[] = $this->signedLine(['code' => $code, 'fund_id' => $this->chartFund($code), 'programme' => $this->chart[$code]['program'], 'description' => $this->chart[$code]['name']], $amount);
+            }
+        }
+
+        // What the old opening journal carried beyond the new one is the year's movement, coding by coding.
+        $key = static fn (array $l) => $l['code'] . '|' . $l['fund_id'] . '|' . $l['programme'] . '|' . (array_key_exists('grant_id', $l) ? (string) $l['grant_id'] : '-');
+        $codings = [];
+        foreach ([[$opening, 1], [$rebased, -1]] as [$journalLines, $sign]) {
+            foreach ($journalLines as $l) {
+                $k = $key($l);
+                $codings[$k] ??= ['line' => $l, 'total' => 0.0];
+                $codings[$k]['total'] += $sign * $signed($l);
+            }
+        }
+        $codings = array_filter($codings, static fn ($c) => round($c['total'], 2) != 0);
+        $byCode = [];
+        foreach ($codings as $k => $c) {
+            $byCode[$c['line']['code']][$k] = round($c['total'], 2);
+        }
+
+        // Each month's share of an account's movement keeps it on the straight line.
+        $amounts = [];   // month => coding key => signed amount
+        foreach ($byCode as $code => $parts) {
+            $code = (string) $code;
+            if ($code === self::OPENING_BANK) {
+                continue;
+            }
+            $total = array_sum($parts);
+            $open = $target[$code] ?? 0.0;
+            $closeJuly = $final[$code] - array_sum(array_filter($base[$code] ?? [], static fn ($m) => $m > $months, ARRAY_FILTER_USE_KEY));
+            $run = $open;
+            $needed = [];
+            $previous = 0.0;
+            for ($m = 1; $m <= $months; $m++) {
+                $run += $base[$code][$m] ?? 0;
+                $gap = $open + ($closeJuly - $open) * $m / $months - $run;
+                $needed[$m] = $gap - $previous;
+                $previous = $gap;
+            }
+            foreach ($parts as $k => $partTotal) {
+                $placed = 0.0;
+                for ($m = 1; $m <= $months; $m++) {
+                    $amount = $m === $months ? round($partTotal - $placed, 2)
+                        : round((abs($total) >= 1 ? $needed[$m] * $partTotal / $total : $partTotal / $months) / 100) * 100;
+                    $placed += $amount;
+                    $amounts[$m][$k] = ($amounts[$m][$k] ?? 0) + $amount;
+                }
+            }
+        }
+        // The KES current account takes up the rest of each month, and its own total by the end.
+        $bank = $byCode[self::OPENING_BANK] ?? [];
+        $bankTotal = array_sum($bank);
+        $bankPlaced = array_fill_keys(array_keys($bank), 0.0);
+        for ($m = 1; $m <= $months; $m++) {
+            $rest = -array_sum($amounts[$m] ?? []);
+            if ($bank === []) {
+                if (round($rest, 2) != 0) {
+                    throw new RuntimeException('The balance sheet settlements do not balance.');
+                }
+                continue;
+            }
+            $spread = 0.0;
+            $last = array_key_last($bank);
+            foreach ($bank as $k => $partTotal) {
+                $amount = $k === $last ? round($rest - $spread, 2)
+                    : ($m === $months ? round($partTotal - $bankPlaced[$k], 2) : round(($bankTotal == 0 ? 0 : $rest * $partTotal / $bankTotal) / 100) * 100);
+                $spread += $amount;
+                $bankPlaced[$k] += $amount;
+                $amounts[$m][$k] = ($amounts[$m][$k] ?? 0) + $amount;
+            }
+        }
+
+        $ctx = $this->ctx;
+        $taken = array_flip($takenRefs);
+        $approver = $ctx->userId(self::APPROVER);
+        $isBank = static fn (array $l) => str_starts_with($l['code'], '11');
+        $journals = [];
+        for ($m = 1; $m <= $months; $m++) {
+            $debits = $credits = [];
+            foreach ($amounts[$m] ?? [] as $k => $amount) {
+                $amount = round($amount, 2);
+                if ($amount > 0) {
+                    $debits[] = ['line' => $codings[$k]['line'], 'left' => $amount];
+                } elseif ($amount < 0) {
+                    $credits[] = ['line' => $codings[$k]['line'], 'left' => -$amount];
+                }
+            }
+
+            // Each debit is settled against credits, bank against the rest wherever it can be.
+            usort($debits, static fn ($a, $b) => $b['left'] <=> $a['left']);
+            foreach ($debits as $d) {
+                $order = array_keys($credits);
+                usort($order, static fn ($a, $b) => [$isBank($credits[$a]['line']) === $isBank($d['line']), -$credits[$a]['left']]
+                    <=> [$isBank($credits[$b]['line']) === $isBank($d['line']), -$credits[$b]['left']]);
+                foreach ($order as $c) {
+                    if (round($d['left'], 2) <= 0) {
+                        break;
+                    }
+                    $amount = round(min($d['left'], $credits[$c]['left']), 2);
+                    if ($amount <= 0) {
+                        continue;
+                    }
+                    $d['left'] = round($d['left'] - $amount, 2);
+                    $credits[$c]['left'] = round($credits[$c]['left'] - $amount, 2);
+
+                    $dr = $d['line'];
+                    $cr = $credits[$c]['line'];
+                    $r = self::rng('settle' . $m . $key($dr) . $key($cr));
+                    [$series, $narration] = match (true) {
+                        $isBank($dr) && $isBank($cr)                      => ['JV', 'Transfer between bank accounts'],
+                        $isBank($dr) && $cr['code'] === self::RECEIVABLE    => ['RC', 'Donor disbursement received'],
+                        $isBank($dr)                                      => ['RC', $this->chart[$cr['code']]['name'] . ' — settled into ' . $this->chart[$dr['code']]['name']],
+                        $isBank($cr) && str_starts_with($dr['code'], '2') => ['PV', 'Payment — ' . $this->chart[$dr['code']]['name']],
+                        $isBank($cr)                                      => ['PV', $this->chart[$dr['code']]['name'] . ' — paid from ' . $this->chart[$cr['code']]['name']],
+                        default                                           => ['JV', 'Reclassification — ' . $this->chart[$cr['code']]['name'] . ' to ' . $this->chart[$dr['code']]['name']],
+                    };
+                    $number = 140;
+                    do {
+                        $ref = sprintf('%s-%02d-%04d', $series, SeedContext::YEAR % 100, $number++);
+                    } while (isset($taken[$ref]));
+                    $taken[$ref] = true;
+                    $date = sprintf('%d-%02d-%02d', SeedContext::YEAR, $m, 5 + (int) floor($r() * 20));
+                    $journals[] = [
+                        'header' => [
+                            'reference' => $ref, 'journal_date' => $date, 'type' => 'standard',
+                            'document_type_id' => $ctx->lookup('document_types', $series),
+                            'source_type' => 'archive', 'source_id' => $ctx->periodId($date),
+                            'narration' => $narration, 'prepared_by' => $ctx->userOrSystem(self::PREPARERS[(int) floor($r() * count(self::PREPARERS))]),
+                        ],
+                        'lines' => [
+                            ['description' => $this->chart[$dr['code']]['name'], 'debit' => $amount, 'credit' => 0.0] + $dr,
+                            ['description' => $this->chart[$cr['code']]['name'], 'debit' => 0.0, 'credit' => $amount] + $cr,
+                        ],
+                        'approval' => ['approved_by' => $approver, 'approved_at' => $date . ' 17:00:00', 'posted_at' => $date . ' 17:00:00'],
+                    ];
+                }
+            }
+            if (array_filter($credits, static fn ($c) => round($c['left'], 2) > 0) !== []) {
+                throw new RuntimeException("The balance sheet settlements for month {$m} do not balance.");
+            }
+        }
+
+        return [$rebased, $journals];
     }
 
     /** The history must not take a restricted fund below zero at any point, or the database would refuse it. */

@@ -60,7 +60,31 @@ final class GeneralLedgerTest extends CIUnitTestCase
 
         $this->assertEquals(38260000, $balance);
         $this->assertGreaterThan(10, count(array_filter($postings, static fn ($e) => $e['archived'])));
-        $this->assertCount(1, array_filter($postings, static fn ($e) => $e['opening']));
+        // Expenditure opens the year at nil; a balance sheet account is brought forward once.
+        $this->assertCount(0, array_filter($postings, static fn ($e) => $e['opening']));
+        $this->assertCount(1, array_filter((new JournalRepository())->postings('1110'), static fn ($e) => $e['opening']));
+    }
+
+    public function testTheOpeningJournalIsABalanceSheet(): void
+    {
+        $db = db_connect();
+        $t = static fn (string $table) => $db->prefixTable($table);
+        $lines = $db->query(
+            "SELECT a.code, a.type, SUM(l.debit - l.credit) AS net FROM {$t('journal_lines')} l JOIN {$t('journals')} j ON j.id = l.journal_id
+             JOIN {$t('accounts')} a ON a.id = l.account_id WHERE j.reference = 'OB-26-0001' GROUP BY a.code, a.type"
+        )->getResultArray();
+        $net = array_column($lines, 'net', 'code');
+
+        $this->assertSame([], array_filter($lines, static fn ($l) => in_array($l['type'], ['income', 'expense'], true)));
+        // Every account opens on its own side: no bank overdrawn, no payable in debit.
+        foreach ($lines as $l) {
+            $contra = $l['code'] === '1390';
+            $this->assertTrue(match ($l['type']) {
+                'asset' => $contra ? $l['net'] < 0 : $l['net'] > 0,
+                default => $l['net'] < 0,
+            }, "{$l['code']} opens on the wrong side: {$l['net']}");
+        }
+        $this->assertEquals(0, round(array_sum($net), 2));
     }
 
     public function testOpeningPlusMovementIsTheClosingBalance(): void

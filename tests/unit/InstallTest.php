@@ -457,7 +457,7 @@ final class InstallTest extends CIUnitTestCase
         $this->assertSame([], $broken, 'Reads that fail on a freshly installed instance');
 
         // The ones that do refuse are the screens with nothing behind them yet.
-        $this->assertSame(['api/gl', 'api/gl/export', 'api/bank-rec', 'api/budgets/line', 'api/budgets/export', 'api/donor-reports/export', 'api/settings/logo'], array_keys($refused));
+        $this->assertSame(['api/gl', 'api/gl/export', 'api/bank-rec', 'api/cashflow/export', 'api/budgets/line', 'api/budgets/export', 'api/donor-reports/export', 'api/settings/logo'], array_keys($refused));
         $this->assertStringContainsString('Import the chart of accounts first', $refused['api/gl']);
     }
 

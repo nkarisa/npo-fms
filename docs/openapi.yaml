@@ -2814,6 +2814,33 @@ paths:
                 additionalProperties: true
                 properties:
                   locale: { $ref: '#/components/schemas/Locale' }
+                  ledger:
+                    type: object
+                    description: >-
+                      The asset's own share of accumulated depreciation (1390) and depreciation
+                      expense (5350), read from the depreciation runs it was charged in.
+                    properties:
+                      accumulated:
+                        type: object
+                        description: The 1390 balance for this asset — brought forward, plus monthly charges, less any disposal release.
+                        properties: { account: { type: string }, value: { type: string }, note: { type: string } }
+                      expense:
+                        type: object
+                        description: The 5350 charge in the current financial year; the note carries months charged and life to date.
+                        properties: { account: { type: string }, value: { type: string }, note: { type: string } }
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind: { type: string, enum: [bf, run, disposal] }
+                            when: { type: string, description: 'Posting date, e.g. "31 Aug 2026"; empty for brought forward.' }
+                            what: { type: string }
+                            journal: { type: string, description: 'Journal reference; empty when none.' }
+                            expense: { type: string, description: '5350 debit; empty when none.' }
+                            accum: { type: string, description: '1390 movement; a release shows in parentheses.' }
+                            balance: { type: string, description: 'Running 1390 balance for the asset.' }
+                      hint: { type: string }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /assets/depreciation-run:
@@ -4358,47 +4385,158 @@ paths:
                 type: object
                 additionalProperties: true
                 properties:
-                  rows: { type: array, items: { type: object, additionalProperties: true } }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        wc: { type: string, description: 'Week commencing, e.g. "31 Aug".' }
+                        note: { type: string, description: What drives the week. }
+                        inflow: { type: string }
+                        outflow: { type: string }
+                        net: { type: string }
+                        positive: { type: boolean }
+                        closing: { type: string }
+                        unrestricted: { type: string, description: Closing cash less restricted balances. }
+                        tight: { type: boolean, description: Unrestricted cash is negative. }
+                        grantWeek: { type: boolean }
+                        inflowPct: { type: integer, description: Receipts as a share of the largest movement in the horizon. }
+                        outflowPct: { type: integer }
                   scenario: { type: string }
                   scenarioOptions: { type: array, items: { type: string } }
                   hold: { type: boolean }
+                  holdLabel: { type: string }
+                  weeks: { type: integer }
+                  blurb: { type: string }
                   stats: { type: array, items: { $ref: '#/components/schemas/StatCard' } }
-                  warning: { type: string }
+                  warning: { type: string, description: Empty unless unrestricted cash goes negative. }
                   hint: { type: string }
+                  legend: { type: string }
+                  empty: { type: string, description: Present when no forecast has been prepared. }
                   locale: { $ref: '#/components/schemas/Locale' }
+
+  /cashflow/export:
+    get:
+      tags: [Cashflow]
+      summary: The forecast as CSV, for the Board finance committee
+      description: The projection the page shows for the same scenario and hold, with unformatted figures.
+      parameters:
+        - name: scenario
+          in: query
+          schema: { type: string, enum: [Base case, Donor delay, By-election surge], default: Base case }
+        - name: hold
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: CSV — a title line, the opening and restricted balances, then one row a week.
+          content:
+            text/csv:
+              schema: { type: string }
+        '404':
+          description: No cashflow forecast has been prepared.
 
   # ------------------------------------------------------------------- Reports
   /reports:
     get:
       tags: [Reports]
-      summary: A core financial statement
+      summary: A financial statement for a period, with its comparative
+      description: |
+        Read from posted journals (ReportRepository). A statement of position and the
+        trial balance are as at the period's last day; activities and cash flows are
+        what moved within it. A financial year with nothing posted is read from
+        legacy_balances (the year before the ledger started), so `source` is `ledger`,
+        `legacy` or null when nothing is held. The comparative falls back to
+        `Prior year` when `Approved budget` is asked of anything but activities.
       parameters:
         - name: report
           in: query
           schema:
             type: string
-            enum:
-              - Statement of financial position
-              - Trial balance
-              - Statement of activities
-              - Statement of cash flows
+            enum: [Statement of financial position, Statement of activities, Statement of cash flows, Trial balance]
             default: Statement of financial position
+        - name: period
+          in: query
+          description: A label from `periods` — e.g. "Aug 2026 YTD", "Q2 2026", "Jul 2026", "FY2025 (final)". Defaults to the year to date.
+          schema: { type: string }
+        - name: compare
+          in: query
+          schema: { type: string, enum: [Prior year, Approved budget, None], default: Prior year }
+        - name: split
+          in: query
+          description: Activities only — unrestricted, restricted and total columns. "0" turns it off.
+          schema: { type: string, enum: ['0', '1'], default: '1' }
       responses:
         '200':
-          description: The selected statement (a trial balance, or grouped sections with totals).
+          description: The statement, or `empty` when there are no periods yet.
           content:
             application/json:
               schema:
                 type: object
-                additionalProperties: true
                 properties:
+                  report: { type: string }
+                  tabs: { type: array, items: { type: object, properties: { key: { type: string }, label: { type: string } } } }
                   title: { type: string }
-                  sections: { type: array, items: { type: object, additionalProperties: true } }
-                  rows: { type: array, items: { type: object, additionalProperties: true } }
-                  totals: { type: object, additionalProperties: true }
-                  balanced: { type: boolean }
+                  blurb: { type: string }
+                  heading: { type: string, description: 'Organisation — statement' }
+                  sub: { type: string, description: The date, the comparative and the currency. }
+                  periods: { type: array, items: { type: string } }
+                  period: { type: string }
+                  compares: { type: array, items: { type: string } }
+                  compare: { type: string }
+                  showSplit: { type: boolean }
+                  split: { type: boolean }
+                  columns: { type: array, items: { type: string } }
+                  labelColumn: { type: string }
+                  sections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        heading: { type: string, nullable: true }
+                        rows:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              label: { type: string }
+                              code: { type: string, nullable: true }
+                              kind: { type: string, enum: [line, sub, total] }
+                              drill: { type: string, nullable: true, description: The account a line opens in the general ledger. }
+                              cells:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    v: { type: number, nullable: true, description: 'As the statement presents it; null is blank.' }
+                                    bold: { type: boolean }
+                                    semi: { type: boolean }
+                                    accent: { type: boolean }
+                                    muted: { type: boolean, description: The comparative column. }
                   notes: { type: array, items: { type: string } }
+                  balanced: { type: boolean, description: 'The statement''s own check: debits equal credits, net assets equal funds, cash closes on the cash accounts.' }
+                  source: { type: string, nullable: true, enum: [ledger, legacy, null] }
+                  closed: { type: boolean }
+                  drillPeriod: { type: string, nullable: true, description: The general ledger's name for the same months. }
+                  hint: { type: string }
+                  footer: { type: string }
+                  basis: { type: string }
+                  empty: { type: string }
                   locale: { $ref: '#/components/schemas/Locale' }
+
+  /reports/export:
+    get:
+      tags: [Reports]
+      summary: The statement on screen as CSV
+      description: Takes the same parameters as /reports. Every figure unformatted; the notes follow the statement.
+      responses:
+        '200':
+          description: CSV (UTF-8 with BOM).
+          content:
+            text/csv:
+              schema: { type: string }
+        '404':
+          description: There are no periods to report on.
 
   # ------------------------------------------------------------------ Settings
   /settings:

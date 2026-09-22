@@ -93,6 +93,17 @@ final class AssetRegisterTest extends CIUnitTestCase
         $this->assertEquals(3500000, (new AssetRepository())->find('VEH-001')['accum']);
         $this->assertEquals(0, (new AssetRepository())->find('IT-008')['accum'] - 680000);
 
+        // The drawer reads the asset's own share of 1390 and 5350 from the run.
+        $ledger = $this->api('api/assets/VEH-001')['ledger'];
+        $this->assertSame(['3,500,000', '1 monthly charge on 3,360,000 brought forward'], [$ledger['accumulated']['value'], $ledger['accumulated']['note']]);
+        $this->assertSame(['140,000', 'FY2026 · 1 month · 140,000 life to date'], [$ledger['expense']['value'], $ledger['expense']['note']]);
+        $this->assertSame(['bf', 'run'], array_column($ledger['rows'], 'kind'));
+        $this->assertSame(['31 Aug 2026', 'Depreciation Aug 2026', '140,000', '3,500,000'],
+            [$ledger['rows'][1]['when'], $ledger['rows'][1]['what'], $ledger['rows'][1]['expense'], $ledger['rows'][1]['balance']]);
+        $this->assertMatchesRegularExpression('/^JV-26-\d{4}$/', $ledger['rows'][1]['journal']);
+        // Fully written down: nothing charged, so nothing from a run.
+        $this->assertSame('All brought forward — written down before monthly runs were recorded', $this->api('api/assets/IT-008')['ledger']['accumulated']['note']);
+
         $again = $this->withBodyFormat('json')->post('api/assets/depreciation-run', []);
         $again->assertStatus(422);
         $this->assertStringContainsString('already been posted', json_decode($again->getJSON(), true)['error']);
@@ -140,6 +151,23 @@ final class AssetRegisterTest extends CIUnitTestCase
         $this->assertEqualsWithDelta($before['1110'] + 5500000, $lookups->balance('1110'), 0.001);
         $this->assertEqualsWithDelta($before['4250'] + 460000, $lookups->balance('4250'), 0.001);
         $this->assertStringContainsString('Disposal approved by W. Kamau', implode(' ', array_column($this->api('api/assets/VEH-001')['trail'], 'what')));
+
+        // Every line is on the asset's own fund, programme and grant, so the
+        // release clears the depreciation the runs credited there.
+        $asset = db_connect()->table('assets')->where('tag', 'VEH-001')->get()->getRowArray();
+        $coding = db_connect()->table('journal_lines l')->select('l.fund_id, l.programme_id, l.grant_id')
+            ->join('journals j', 'j.id = l.journal_id')->where('j.reference', strtok($body['message'], ' '))->get()->getResultArray();
+        $this->assertCount(4, $coding);
+        foreach ($coding as $c) {
+            $this->assertEquals([$asset['fund_id'], $asset['programme_id'], $asset['grant_id']], [$c['fund_id'], $c['programme_id'], $c['grant_id']]);
+        }
+
+        // The disposal releases the asset's accumulated depreciation to nil.
+        $ledger = $this->api('api/assets/VEH-001')['ledger'];
+        $this->assertSame('—', $ledger['accumulated']['value']);
+        $release = end($ledger['rows']);
+        $this->assertSame(['disposal', '28 Aug 2026', '(3,360,000)', '—'], [$release['kind'], $release['when'], $release['accum'], $release['balance']]);
+        $this->assertSame(strtok($body['message'], ' '), $release['journal']);
     }
 
     public function testTheProposerCannotApproveAndAProposalCanBeWithdrawn(): void

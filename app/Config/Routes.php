@@ -206,6 +206,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('programmes/(:segment)/deactivate', 'Api\Programmes::deactivate/$1');
     $routes->post('programmes/(:segment)/reactivate', 'Api\Programmes::reactivate/$1');
     $routes->get('cashflow', 'Api\Cashflow::index');
+    $routes->get('cashflow/export', 'Api\Cashflow::export');
     $routes->get('funds', 'Api\Funds::index');
     $routes->post('funds', 'Api\Funds::create');
     $routes->get('funds/statement', 'Api\Funds::statement');
@@ -245,6 +246,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('donor-reports/note', 'Api\DonorReports::note');
     $routes->get('donor-reports/(:any)', 'Api\DonorReports::show/$1');
     $routes->get('reports', 'Api\Reports::index');
+    $routes->get('reports/export', 'Api\Reports::export');
     $routes->get('settings', 'Api\Settings::index');
     $routes->post('settings', 'Api\Settings::save');
     $routes->post('settings/invite', 'Api\Settings::invite');

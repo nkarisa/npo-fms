@@ -48,6 +48,8 @@ class DatabaseSeeder extends Seeder
         NotificationAndSettingsAuditSeeder::class,
         RecordedWriteOffSeeder::class,
         PeriodCloseSeeder::class,
+        // Last year as the legacy system kept it, closing on the balances the ledger brought forward.
+        ComparativesSeeder::class,
     ];
 
     public function run(): void

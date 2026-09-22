@@ -173,8 +173,8 @@ is planned.
 | Funds and grants | Grants and awards | Coming soon |
 | Funds and grants | [Budgets](#budgets) | ✅ |
 | Funds and grants | [Donor reports](#donor-reports) | ✅ |
-| Insight | Cashflow forecast | Coming soon |
-| Insight | Reports | Coming soon |
+| Insight | [Cashflow forecast](#cashflow-forecast) | ✅ |
+| Insight | [Reports](#reports) | ✅ |
 | Insight | Settings | Coming soon ([Users and roles](#users-and-roles) ✅) |
 
 > For a page-by-page overview of the entire interface, see
@@ -926,6 +926,106 @@ cannot be sent for review or submitted.
 | Answer a funder | **Record funder query** → write the response → **Respond to query** |
 | Close it off | **File acceptance letter** |
 | Change a funder's language | **Report language** → choose the language on the funder's row |
+
+---
+
+## Cashflow forecast
+
+**Insight → Cashflow forecast.** Will there be cash to pay staff in three months?
+Thirteen weeks ahead, one row a week, built from donor claims in receivables,
+approved bills, payroll and statutory dates. Restricted balances are shown
+separately, because they cannot be used for core costs.
+
+### 1. Reading the page
+
+- The **headline figures** give the cash on hand (and the accounts it is held in),
+  how much of it is restricted, how many weeks the unrestricted cash covers at the
+  current weekly spend, the lowest point unrestricted cash reaches, and the closing
+  position at the end of the thirteen weeks.
+- Each **week** shows receipts (green), payments (amber), the net movement, and the
+  closing cash. The two bars show the week's size at a glance, with what drives it
+  beneath (a donor claim expected, payroll, field advances).
+- **Of which unrestricted** is closing cash less restricted balances. This is the
+  column to watch: it can go negative while closing cash still looks healthy. It
+  turns red when it does, and a warning above the table names the week.
+
+### 2. Trying a scenario
+
+- **Donor delay** holds back most of each grant receipt due in the first six weeks
+  and brings it in six weeks later, the way a tranche usually slips.
+- **By-election surge** raises payments by a third across the campaign weeks.
+- **Hold discretionary spend from week 5** cuts payments by 15% from the fifth
+  week. You can combine it with any scenario to see whether it closes the gap.
+- **Reset** returns to the base case without the hold.
+
+### 3. Quick reference
+
+| Task | How |
+|---|---|
+| See whether core costs can be met | Read **Of which unrestricted**; red means they cannot |
+| Test a late donor payment | Choose **Donor delay** |
+| See what holding spend would do | Tick **Hold discretionary spend from week 5** |
+| Send the forecast to the Board | **Export for Board** (CSV of what is on screen) |
+
+---
+
+## Reports
+
+**Insight → Reports.** The financial statements — financial position, activities,
+cash flows and the trial balance — for any period, against the same months a year
+earlier or the approved budget. Every figure is read from the posted ledger, so
+the statements always agree with each other and with the general ledger.
+
+### 1. Choosing a statement
+
+- The **tabs** switch between *Financial position*, *Activities*, *Cash flows* and
+  *Trial balance*.
+- **Period** offers the year to date, each completed quarter, each month of the
+  year, and earlier years the books hold (for example *FY2025 (final)*). The
+  statement of financial position and the trial balance read the books as at the
+  period's last day; activities and cash flows read what moved within it.
+- **Comparative** adds a column: the **Prior year** (the same months a year
+  earlier), the **Approved budget** (activities only — phased to the same months),
+  or **None**.
+- On *Activities*, **Split by restriction class** shows unrestricted and
+  restricted funds side by side, so donor money is never mixed with core.
+
+### 2. Reading a statement
+
+- The line beneath the statement's name says the date it is drawn at, the
+  comparative, and the currency.
+- The note at the right of the filters is the statement's own check: *Ledger in
+  balance* for the trial balance, *Statement balances* for the statement of
+  financial position. Anything else is shown in red and explained in the notes.
+- **Click any line** to open that account in the general ledger for the same
+  months.
+- The **notes** explain the figures that matter — the surplus, restricted funds,
+  support costs against funders' indirect-cost ceilings, what the cash includes.
+- The strip at the foot says the basis: prepared under IFRS, the functional
+  currency, and whether the months are closed or still open (figures in an open
+  month can still change).
+
+### 3. The year before the ledger started
+
+The first year on the ledger still needs comparatives. The year before it was
+kept in the previous system; its figures are carried across when the ledger
+starts, and appear as *Prior year* and as their own period (*FY2025 (final)*).
+They close exactly on the balances the ledger brought forward. A statement drawn
+from them says so, and its lines do not open postings — there are none here.
+When nothing is held for a comparative period, the column is blank and a note
+says so.
+
+### 4. Quick reference
+
+| Task | How |
+|---|---|
+| Month-end statements | Choose the month under **Period** |
+| Compare with last year | **Comparative** → Prior year |
+| Compare with the budget | *Activities* → **Comparative** → Approved budget |
+| Show restricted and unrestricted apart | *Activities* → **Split by restriction class** |
+| See what makes up a figure | Click the line — the general ledger opens on it |
+| Print or save as PDF | **Print** (choose *Save as PDF* as the destination) |
+| Take the figures to a spreadsheet | **Export** (CSV, every figure unformatted, notes beneath) |
 
 ---
 

@@ -340,8 +340,6 @@
           ${a.facts.map(f => `<div class="as-fact"><span>${esc(f.label)}</span><span>${esc(f.value)}</span></div>`).join('')}
           <div class="as-drill">
             <a class="btn" href="/gl?account=${esc(a.costAcct)}">Cost account ${esc(a.costAcct)}</a>
-            <a class="btn" href="/gl?account=1390">Accumulated depreciation 1390</a>
-            <a class="btn" href="/gl?account=5350">Depreciation expense 5350</a>
             ${a.canDispose ? '<button type="button" class="btn btn-primary" style="margin-inline-start:auto;" data-as-dispose>Propose disposal</button>' : ''}
             ${a.disposalNote ? `<span style="margin-inline-start:auto;font-size:11px;color:#8A5B2E;">${esc(a.disposalNote)}</span>` : ''}
           </div>
@@ -360,6 +358,7 @@
               <div class="as-mono" style="text-align:end;font-size:11.5px;font-weight:600;color:#16211E;">${esc(y.closing)}</div>
             </div>`).join('')}
         </div>
+        ${ledgerCard(a.ledger)}
         <div class="as-card">
           <div class="as-section-head"><b>Documents</b></div>
           <div data-asd-docs style="padding:12px 14px;"></div>
@@ -369,12 +368,52 @@
           ${a.trail.length ? a.trail.map(t => `<div class="as-trail"><span>${esc(t.when)}</span><span>${esc(t.what)}</span></div>`).join('')
             : '<div class="as-trail"><span></span><span style="color:#8B948F;">Nothing recorded yet.</span></div>'}
         </div>`;
+      const more = el.querySelector('[data-asd-earlier]');
+      if (more) more.addEventListener('click', () => { a.ledger.expanded = true; renderDrawer(); });
       UI.docPanel(el.querySelector('[data-asd-docs]'), {
         kind: 'asset', ref: a.tag, docs: a.documents, canAdd: a.canAttach, recommended: true,
         empty: 'Nothing attached. Recommended: the purchase invoice or deed of gift, and title documents for vehicles and land.',
         label: 'Attach a document',
         onAdded: (documents) => { a.documents = documents; },
       });
+    }
+
+    /**
+     * This asset's share of 1390 and 5350, read from the depreciation runs it was
+     * charged in. The latest charges show; earlier months fold into one line.
+     */
+    function ledgerCard(l) {
+      const SHOWN = 6;
+      const runs = l.rows.filter(r => r.kind === 'run');
+      const folded = l.expanded || runs.length <= SHOWN + 1 ? [] : runs.slice(0, runs.length - SHOWN);
+      const line = (r) => `
+        <div class="as-ledger as-ledger-row ${r.kind}">
+          <div class="as-mono">${esc(r.when)}</div>
+          <div>${esc(r.what)}${r.journal ? ` <a class="as-mono" href="/journals/${encodeURIComponent(r.journal)}">${esc(r.journal)}</a>` : ''}</div>
+          <div class="as-mono end">${esc(r.expense) || '—'}</div>
+          <div class="as-mono end">${esc(r.accum)}</div>
+          <div class="as-mono end strong">${esc(r.balance)}</div>
+        </div>`;
+      const rows = l.rows.filter(r => !folded.includes(r));
+      const at = rows.findIndex(r => r.kind === 'run');
+      const fold = folded.length ? `
+        <button type="button" class="as-ledger as-ledger-row as-ledger-fold" data-asd-earlier>
+          <div></div><div>${folded.length} earlier monthly charges, ${esc(folded[0].when)} to ${esc(folded[folded.length - 1].when)} — show</div>
+          <div></div><div></div><div class="as-mono end strong">${esc(folded[folded.length - 1].balance)}</div>
+        </button>` : '';
+      return `
+        <div class="as-card">
+          <div class="as-section-head"><b>Depreciation in the ledger</b></div>
+          <div class="as-ledger-stats">
+            ${[l.accumulated, l.expense].map(s => `
+              <div><span>${esc(s.account)}</span><b class="as-mono">${esc(s.value)}</b><em>${esc(s.note)}</em></div>`).join('')}
+          </div>
+          <div class="as-ledger coa-head" style="position:static;">
+            <div>Date</div><div>Entry</div><div class="end">5350 Dr</div><div class="end">1390</div><div class="end">1390 balance</div>
+          </div>
+          ${rows.map((r, i) => (i === at ? fold : '') + line(r)).join('')}
+          <div class="as-ledger-hint">${esc(l.hint)}</div>
+        </div>`;
     }
 
     function close() {

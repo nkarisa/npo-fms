@@ -35,7 +35,7 @@ final class EntityScope
     public const TABLES = [
         'advances', 'asset_additions', 'assets', 'bank_accounts', 'bills', 'budget_versions',
         'cashflow_forecasts', 'conversion_batches', 'depreciation_runs', 'donor_reports', 'fiscal_years',
-        'fund_transfers', 'goods_received_notes', 'grants', 'invoices', 'journals', 'locations', 'notifications',
+        'fund_transfers', 'goods_received_notes', 'grants', 'invoices', 'journals', 'legacy_balances', 'locations', 'notifications',
         'payment_runs', 'payments', 'payroll_runs', 'periods', 'purchase_orders', 'receipts', 'receivable_allowances',
         'recurring_templates', 'requisitions', 'staff', 'verification_rounds', 'wht_remittances', 'v_budget_availability',
         // A history entry written without an entity (signing in, user access) belongs to no entity's books.

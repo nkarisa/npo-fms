@@ -35,7 +35,7 @@ final class PeriodCloseRepository extends Repository
         'segments'  => ['Open segments', '/settings'],
         'donor'     => ['Open donor reports', '/donor-reports'],
         'budget'    => ['Open budgets', '/budgets'],
-        'tb'        => ['Open trial balance', '/reports'],
+        'tb'        => ['Open trial balance', '/reports?report=Trial+balance'],
     ];
 
     private Lookups $lookups;
@@ -493,11 +493,13 @@ final class PeriodCloseRepository extends Repository
         $tb = $closed || Ledger::trialBalanceBalanced();
         $funds = array_sum(array_map([Ledger::class, 'fundClose'], (new FundRepository())->all()));
 
+        // Each statement opens on the period being closed.
+        $statement = static fn (string $report) => '/reports?' . http_build_query(['report' => $report, 'period' => $period['name']]);
         $docs = [
             ['Trial balance', $closed ? 'Every active account at the close date, debits against credits' : 'Every active account, debits against credits',
-                $totals['postedValue'] == 0 ? '' : Prototype::fmt($totals['postedValue']), $tb, '/reports'],
-            ['Statement of financial position', 'Assets, liabilities and funds carried forward', '', $tb, '/reports'],
-            ['Statement of income and expenditure', 'Income and spend for the period, against budget', '', true, '/reports'],
+                $totals['postedValue'] == 0 ? '' : Prototype::fmt($totals['postedValue']), $tb, $statement('Trial balance')],
+            ['Statement of financial position', 'Assets, liabilities and funds carried forward', '', $tb, $statement('Statement of financial position')],
+            ['Statement of income and expenditure', 'Income and spend for the period, against budget', '', true, $statement('Statement of activities') . '&compare=Approved+budget'],
             ['Fund movement schedule', 'Opening, income, spend and closing balance for each fund', Prototype::fmt($funds), true, '/funds'],
             ['Bank and M-Pesa reconciliations', $agreed === count($cash) ? 'All ' . count($cash) . ' accounts agreed to statement' : (count($cash) - $agreed) . ' of ' . count($cash) . ' accounts not yet agreed',
                 $agreed . ' of ' . count($cash), $agreed === count($cash), '/bank-rec'],

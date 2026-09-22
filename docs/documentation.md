@@ -395,10 +395,30 @@ reconciliation when there is no difference; **Reopen** a signed-off period.
 
 **What you can do:** filter/search; **run monthly depreciation**; **capitalise**
 purchases; **add** donated or found assets; approve or withdraw pending additions
-and disposals; open an asset **drawer** (facts, ledger drill-downs, a depreciation
-schedule and history) and **Propose disposal** (method, date, proceeds, board
+and disposals; open an asset **drawer** (facts, a drill-down to its cost account, a depreciation
+schedule, the asset's own share of 1390 and 5350 — see below — and history) and **Propose disposal** (method, date, proceeds, board
 minute, donor consent where title reverts, with a live gain/loss and the journal
 that will post on approval).
+
+**Disposal posting.** On approval by a second person one journal posts: Dr bank
+(proceeds), Dr 1390 (the asset's accumulated depreciation — brought forward plus
+its posted monthly charges, as the register holds it), Cr the class cost account
+(cost), and the difference to 4250 (gain) or 5360 (loss). Every line carries the
+asset's own fund, programme and grant — where its cost was debited and its
+depreciation credited — so the release clears them there and proceeds from a
+donor-funded asset stay in the donor's fund.
+
+**Depreciation in the ledger (drawer).** 1390 and 5350 are posted by programme,
+so the ledger pools every asset. The drawer reads one asset's share from the
+depreciation runs it was charged in (`depreciation_entries`):
+- **1390 · Accumulated depreciation** — its balance: the amount brought forward
+  when the asset came onto the register (`opening_accumulated_depreciation`), plus
+  every posted monthly charge, less what a posted disposal released (to nil).
+- **5350 · Depreciation** — the charge in the financial year the books are in,
+  with the months charged and the life-to-date total from monthly runs.
+- A small ledger: brought forward, one row per run (period, journal, 5350 Dr,
+  1390 Cr, running 1390 balance) and the release on disposal. Only the latest six
+  monthly charges show; earlier ones fold into one row that expands on click.
 
 ### Asset verification
 
@@ -682,26 +702,59 @@ compliance record, queries and documents list as CSV.
 **Purpose:** a thirteen-week cash forecast that highlights whether unrestricted
 cash can cover core costs.
 
-**On screen:** header (*Cashflow forecast*), stat cards, an optional warning
-banner, a **scenario** dropdown and a **hold** toggle, then a table — Week
-commencing, Expected (with a *Grant receipt* badge on grant weeks), Opening, In,
-Out, Net (green/red), Closing, Of which unrestricted (red and bold when tight).
+**On screen:** header (*Cashflow forecast*) with a blurb naming the week the
+forecast starts, and **Reset** and **Export for Board**; five stat cards (cash on
+hand and the accounts it is held in, of which restricted, unrestricted cover in
+weeks, lowest unrestricted point, closing position at the end of the horizon); a
+segmented control for the scenario (*Base case*, *Donor delay*, *By-election
+surge*) and a **Hold discretionary spend from week 5** checkbox; a red warning when
+unrestricted cash goes negative; then one row a week — Week, Receipts (green),
+Payments (amber), Net, Shape and driver (a receipts bar and a payments bar scaled
+to the largest week, with what drives the week beneath), Closing cash, Of which
+unrestricted (red and bold when negative). The footer states the horizon, the
+opening balance and the scenario, and the bar legend.
 
-**What you can do:** switch scenario and toggle the spending-hold lever; both
-recompute the forecast. The table is read-only.
+**What you can do:** switch scenario and toggle the discretionary hold; both re-run
+the projection on the API (`GET /api/cashflow`). **Reset** returns to the base case
+without the hold. **Export for Board** downloads the projection on screen as CSV
+(`GET /api/cashflow/export`, same parameters). The table is read-only.
+
+**Data:** the latest `cashflow_forecasts` row of each entity in scope and its
+`cashflow_forecast_weeks`; in the consolidated view the entities' forecasts are
+added together week by week. The accounts named under *Cash on hand* are the
+active bank and mobile-money accounts in scope.
 
 ### Reports
 
-**Purpose:** view the core financial statements drawn from the chart of accounts,
-year to date.
+**Purpose:** the financial statements for any period, against a comparative:
+statement of financial position, statement of activities, statement of cash flows
+(indirect method) and the trial balance.
 
-**On screen:** a single card with tabs for the four statements — *Statement of
-financial position*, *Statement of activities*, *Statement of cash flows* and
-*Trial balance*. The trial balance shows Code, Account, Debit, Credit with a
-totals row; the other three show grouped sections with headings, two-column tables
-and section totals, followed by notes.
+**On screen:** the statement's title and blurb with **Print** and **Export**; a
+segmented control for the four statements; **Period** (year to date, completed
+quarters, months of the working year, earlier years held) and **Comparative**
+(*Prior year*, *Approved budget* on activities only, *None*); on activities,
+**Split by restriction class** (unrestricted, restricted, total). At the right, the
+statement's check (*Ledger in balance*, *Statement balances*). The statement card
+has the organisation and statement name, the date and comparative, a sticky column
+header, sections with account lines, subtotals and totals, and numbered notes; the
+foot strip names the statement and period, and the basis (IFRS, functional
+currency, and whether the period is closed).
 
-**What you can do:** switch between the four statement tabs. Read-only.
+**What you can do:** switch statement, period and comparative (all kept in the
+address, so a view can be linked); click an account line to open its postings in
+the general ledger for the same months; print the statement; export it as CSV.
+
+**Where the figures come from:** posted journals only. A statement of position
+reads balances as at the period's last day, with the year's surplus derived from
+income less expenditure (3900 is never posted); activities read income and
+expenditure within the period, split by the restriction class of each line's
+fund; cash flows read every movement in the period except the balances brought
+forward, and close on the cash and bank accounts. Statement membership is read
+from the chart. A financial year with nothing posted on the ledger is read from
+`legacy_balances` — the year before the ledger started, as the previous system
+kept it — so the first year carries comparatives; that year closes on the
+balances brought forward into the ledger's first year (OB-26-0001 in the demo).
 
 ### Settings
 
