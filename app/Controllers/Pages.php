@@ -2,6 +2,9 @@
 
 namespace App\Controllers;
 
+use App\Libraries\SettingsAccess;
+use App\Libraries\SignIn;
+
 /**
  * Renders the ELOG shell for each functional area. Each view fetches its own
  * data from the /api/* endpoints (see App\Controllers\Api) which serve the
@@ -45,21 +48,71 @@ class Pages extends BaseController
         return $this->render('pages/journals', 'journals', 'journals', 'Journals', 'Accounting');
     }
 
+    /** A journal opens in the editor over the register, as rows in the register do. */
     public function journalDetail($ref)
     {
-        return view('pages/journal_detail', [
-            'page'        => 'journal-detail',
-            'jsPage'      => 'journal_detail',
-            'title'       => 'Journal entry',
+        return view('pages/journals', [
+            'page'        => 'journals',
+            'jsPage'      => 'journals',
+            'title'       => 'Journals',
             'crumbGroup'  => 'Accounting',
-            'crumbPage'   => 'Journal entry',
-            'ref'         => $ref,
+            'crumbPage'   => 'Journals',
+            'openRef'     => $ref,
         ]);
     }
 
     public function payables()
     {
         return $this->render('pages/payables', 'payables', 'payables', 'Payables', 'Accounting');
+    }
+
+    /** A bill opens in its drawer over the bill list, as rows in the list do. */
+    public function billDetail($no)
+    {
+        return view('pages/payables', [
+            'page'       => 'payables',
+            'jsPage'     => 'payables',
+            'title'      => 'Payables',
+            'crumbGroup' => 'Accounting',
+            'crumbPage'  => 'Payables',
+            'openNo'     => $no,
+        ]);
+    }
+
+    public function receivables()
+    {
+        return $this->render('pages/receivables', 'receivables', 'receivables', 'Receivables', 'Accounting');
+    }
+
+    /** An invoice opens in its drawer over the invoice list, as rows in the list do. */
+    public function invoiceDetail($no)
+    {
+        return view('pages/receivables', [
+            'page'       => 'receivables',
+            'jsPage'     => 'receivables',
+            'title'      => 'Receivables',
+            'crumbGroup' => 'Accounting',
+            'crumbPage'  => 'Receivables',
+            'openNo'     => $no,
+        ]);
+    }
+
+    public function procurement()
+    {
+        return $this->render('pages/procurement', 'procure', 'procurement', 'Procurement', 'Accounting');
+    }
+
+    /** A requisition opens in its drawer over the list, as rows in the list do. */
+    public function requisitionDetail($no)
+    {
+        return view('pages/procurement', [
+            'page'       => 'procure',
+            'jsPage'     => 'procurement',
+            'title'      => 'Procurement',
+            'crumbGroup' => 'Accounting',
+            'crumbPage'  => 'Procurement',
+            'openNo'     => $no,
+        ]);
     }
 
     public function bankRec()
@@ -72,9 +125,24 @@ class Pages extends BaseController
         return $this->render('pages/assets', 'assets', 'assets', 'Asset register', 'Accounting');
     }
 
+    public function assetVerification()
+    {
+        return $this->render('pages/asset_verification', 'verify', 'asset_verification', 'Asset verification', 'Accounting');
+    }
+
     public function payroll()
     {
         return $this->render('pages/payroll', 'payroll', 'payroll', 'Payroll', 'Accounting');
+    }
+
+    public function advances()
+    {
+        return $this->render('pages/advances', 'advances', 'advances', 'Staff advances', 'Accounting');
+    }
+
+    public function programmes()
+    {
+        return $this->render('pages/programmes', 'programmes', 'programmes', 'Programmes', 'Accounting');
     }
 
     public function funds()
@@ -97,6 +165,11 @@ class Pages extends BaseController
         return $this->render('pages/donor_reports', 'donor', 'donor_reports', 'Donor reports', 'Funds and grants');
     }
 
+    public function cashflow()
+    {
+        return $this->render('pages/cashflow', 'cashflow', 'cashflow', 'Cashflow forecast', 'Insight');
+    }
+
     public function reports()
     {
         return $this->render('pages/reports', 'reports', 'reports', 'Reports', 'Insight');
@@ -104,6 +177,50 @@ class Pages extends BaseController
 
     public function settings()
     {
+        // Served all the same, so the page can say why there is nothing to show.
+        if (!SettingsAccess::current()->any()) {
+            $this->response->setStatusCode(403);
+        }
+
         return $this->render('pages/settings', 'settings', 'settings', 'Settings', 'Insight');
+    }
+
+    public function userManual()
+    {
+        return $this->render('pages/user_manual', 'manual', 'user_manual', 'User manual', 'Insight');
+    }
+
+    /** My account: password, second sign-in step, roles held. */
+    public function account()
+    {
+        return $this->render('pages/account', 'account', 'account', 'My account', 'Account');
+    }
+
+    // ---- Signing in: outside the shell, and open without a session ----
+
+    public function login()
+    {
+        // Already signed in: go where the sign-in would have taken them.
+        if (SignIn::signedIn() && !SignIn::expired()) {
+            return $this->response->setStatusCode(302)->setHeader('Location', self::next((string) $this->request->getGet('next')));
+        }
+
+        return view('auth', ['mode' => 'login', 'title' => 'Sign in', 'next' => self::next((string) $this->request->getGet('next'))]);
+    }
+
+    public function acceptInvite()
+    {
+        return view('auth', ['mode' => 'invite', 'title' => 'Set up your account', 'next' => '/']);
+    }
+
+    public function resetPassword()
+    {
+        return view('auth', ['mode' => 'reset', 'title' => 'Reset your password', 'next' => '/']);
+    }
+
+    /** Where to go after signing in — only ever a path on this site, never another host. */
+    private static function next(string $next): string
+    {
+        return preg_match('#^/(?![/\\\\])[^\s]*$#', $next) === 1 ? $next : '/';
     }
 }

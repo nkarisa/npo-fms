@@ -2,47 +2,77 @@
 
 namespace App\Controllers\Api;
 
-use App\Libraries\Prototype;
+use App\Repositories\PeriodCloseRepository;
+use App\Repositories\PeriodRepository;
+use App\Repositories\RuleViolation;
 
+/** The period close checklist, closing and reopening a month, and the close pack. */
 class PeriodClose extends BaseApiController
 {
+    /** ?period=2026-08 (defaults to the earliest open period) &year=2026 (defaults to the period's year). */
     public function index()
     {
-        $period  = $this->request->getGet('period') ?: 'Aug 2026';
-        $months  = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026'];
-        $closed  = ['Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026'];
+        $repo   = new PeriodCloseRepository();
+        $period = $this->periodOr404($repo, $this->request->getGet('period') ?: (new PeriodRepository())->currentName());
+        if (!is_array($period)) {
+            return $period;
+        }
+        $year = (int) ($this->request->getGet('year') ?: substr($period['starts_on'], 0, 4));
 
-        $journals = Prototype::load('JOURNALS');
-        $inPeriod = array_values(array_filter($journals, fn ($j) => $j['period'] === $period));
-        $posted   = array_values(array_filter($inPeriod, fn ($j) => $j['status'] === 'Posted'));
-        $open     = array_values(array_filter($inPeriod, fn ($j) => in_array($j['status'], ['Draft', 'Pending approval'], true)));
+        return $this->json($repo->overview($period, $year, $this->actor()));
+    }
 
-        $bills    = Prototype::load('BILLS');
-        $awaiting = count(array_filter($bills, fn ($b) => $b['status'] === 'Awaiting approval'));
-        $overdue  = count(array_filter($bills, fn ($b) => $b['dueIn'] < 0 && !in_array($b['status'], ['Paid', 'Rejected'], true)));
+    public function pack($code)
+    {
+        $repo   = new PeriodCloseRepository();
+        $period = $this->periodOr404($repo, (string) $code);
 
-        $tasks = [
-            ['label' => 'Every journal in the period is approved and posted', 'ok' => count($open) === 0, 'note' => count($open) ? count($open) . ' journals still open' : 'No drafts and nothing awaiting approval'],
-            ['label' => 'Supplier bills for the period are captured and approved', 'ok' => ($awaiting + $overdue) === 0, 'note' => $awaiting . ' awaiting sign-off, ' . $overdue . ' past due'],
-            ['label' => 'Bank accounts reconciled to statement', 'ok' => false, 'note' => 'Reconciliation pending sign-off'],
-            ['label' => 'Payroll posted and statutory deductions accrued', 'ok' => true, 'note' => 'Posted for the period'],
-            ['label' => 'Depreciation charged for the month', 'ok' => true, 'note' => 'Posted to 5350'],
-            ['label' => 'Donor reports reconcile to the ledger', 'ok' => true, 'note' => 'All reports tie to postings'],
-            ['label' => 'Trial balance in balance', 'ok' => true, 'note' => 'Debits equal credits'],
-        ];
-        $settled = count(array_filter($tasks, fn ($t) => $t['ok']));
+        return is_array($period) ? $this->json($repo->pack($period)) : $period;
+    }
 
-        return $this->json([
-            'period'  => $period,
-            'periods' => array_map(fn ($m) => ['label' => $m, 'state' => in_array($m, $closed, true) ? 'closed' : 'open'], $months),
-            'tasks'   => $tasks,
-            'pct'     => (int) round($settled / max(1, count($tasks)) * 100),
-            'totals' => [
-                ['label' => 'Journals posted', 'value' => (string) count($posted)],
-                ['label' => 'Journals still open', 'value' => (string) count($open)],
-                ['label' => 'Total debits', 'value' => Prototype::fmt(array_sum(array_map(fn ($j) => array_sum(array_map(fn ($l) => $l['dr'] ?? 0, $j['lines'])), $posted)))],
-                ['label' => 'Total credits', 'value' => Prototype::fmt(array_sum(array_map(fn ($j) => array_sum(array_map(fn ($l) => $l['cr'] ?? 0, $j['lines'])), $posted)))],
-            ],
-        ]);
+    /** Body: {"step": "review", "done": true} */
+    public function confirm($code)
+    {
+        $body = $this->request->getJSON(true) ?? [];
+
+        return $this->write((string) $code, fn ($repo, $period) => $repo->confirm($period, (string) ($body['step'] ?? ''), (bool) ($body['done'] ?? false), $this->actor(), $this->actorId()));
+    }
+
+    public function close($code)
+    {
+        return $this->write((string) $code, fn ($repo, $period) => $repo->close($period, $this->actor(), $this->actorId()), fn ($p) => $p['name'] . ' closed. Posting into it is now blocked and the balances are carried forward.');
+    }
+
+    /** Body: {"reason": "…"} (optional) */
+    public function reopen($code)
+    {
+        $body = $this->request->getJSON(true) ?? [];
+
+        return $this->write((string) $code, fn ($repo, $period) => $repo->reopen($period, $this->actor(), $this->actorId(), trim((string) ($body['reason'] ?? ''))),
+            fn ($p) => $p['name'] . ' reopened. The Executive Director authorisation has been withdrawn and the close must be retaken.');
+    }
+
+    private function write(string $code, callable $action, ?callable $message = null)
+    {
+        $repo   = new PeriodCloseRepository();
+        $period = $this->periodOr404($repo, $code);
+        if (!is_array($period)) {
+            return $period;
+        }
+
+        try {
+            $action($repo, $period);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        $period = $repo->period($code);
+
+        return $this->json(['message' => $message === null ? '' : $message($period)] + $repo->overview($period, (int) substr($period['starts_on'], 0, 4), $this->actor()));
+    }
+
+    private function periodOr404(PeriodCloseRepository $repo, string $key)
+    {
+        return $repo->period($key) ?? $this->response->setStatusCode(404)->setJSON(['error' => $key . ' is not an accounting period.']);
     }
 }

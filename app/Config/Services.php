@@ -19,6 +19,24 @@ use CodeIgniter\Config\BaseService;
  */
 class Services extends BaseService
 {
+    /**
+     * Where supporting documents are kept (Config\Documents::$disk): the server's
+     * disk, or an S3 bucket with Object Lock.
+     */
+    public static function documents(bool $getShared = true): \App\Libraries\Storage\DocumentStore
+    {
+        if ($getShared) {
+            return static::getSharedInstance('documents');
+        }
+        $config = config(Documents::class);
+
+        return match ($config->disk) {
+            'local' => new \App\Libraries\Storage\LocalStore(),
+            's3'    => \App\Libraries\Storage\S3Store::fromConfig($config),
+            default => throw new \RuntimeException('documents.disk must be local or s3, not ' . $config->disk . '.'),
+        };
+    }
+
     /*
      * public static function example($getShared = true)
      * {

@@ -13,3 +13,16 @@
  *
  * @see: https://codeigniter.com/user_guide/extending/common.html
  */
+
+if (!function_exists('asset_url')) {
+    /**
+     * A public asset's path stamped with its modified time, so a browser fetches
+     * the new file after a change instead of running the copy it cached.
+     */
+    function asset_url(string $path): string
+    {
+        $file = FCPATH . ltrim($path, '/');
+
+        return $path . (is_file($file) ? '?v=' . filemtime($file) : '');
+    }
+}

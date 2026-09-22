@@ -11,6 +11,7 @@
     },
     "require": {
         "php": "^8.2",
+        "aws/aws-sdk-php": "^3.300",
         "codeigniter4/framework": "^4.7"
     },
     "require-dev": {
@@ -35,7 +36,10 @@
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
-        "sort-packages": true
+        "sort-packages": true,
+        "platform": {
+            "php": "8.2.0"
+        }
     },
     "scripts": {
         "test": "phpunit"

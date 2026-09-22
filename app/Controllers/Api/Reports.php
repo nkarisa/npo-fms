@@ -2,172 +2,178 @@
 
 namespace App\Controllers\Api;
 
-use App\Libraries\Prototype;
+use App\Libraries\Brand;
+use App\Repositories\Lookups;
+use App\Repositories\PeriodRepository;
+use App\Repositories\ReportRepository;
 
-/** Statement of financial position, activities, cash flows and trial balance — all derived from the chart of accounts. */
+/**
+ * Reports (v5): the statement of financial position, of activities, of cash flows
+ * and the trial balance, for a period, against the prior year or the approved
+ * budget, from ReportRepository. Each states its basis and whether its months are
+ * closed; each can be exported.
+ */
 class Reports extends BaseApiController
 {
-    private function acctBal(array $seed, string $code): float
-    {
-        foreach ($seed as $a) {
-            if ($a['code'] === $code) {
-                return $a['balance'];
-            }
-        }
-        return 0;
-    }
+    private const TABS = [
+        'Statement of financial position' => 'Financial position',
+        'Statement of activities'         => 'Activities',
+        'Statement of cash flows'         => 'Cash flows',
+        'Trial balance'                   => 'Trial balance',
+    ];
 
-    private function sumCodes(array $seed, array $codes): float
-    {
-        $t = 0;
-        foreach ($codes as $c) {
-            $t += $this->acctBal($seed, $c);
-        }
-        return $t;
-    }
-
-    private function nameOf(array $seed, string $code): string
-    {
-        foreach ($seed as $a) {
-            if ($a['code'] === $code) {
-                return $a['name'];
-            }
-        }
-        return $code;
-    }
-
-    private function line(array $seed, string $code): array
-    {
-        return ['code' => $code, 'name' => $this->nameOf($seed, $code), 'amount' => Prototype::fmt($this->acctBal($seed, $code))];
-    }
+    private const BLURBS = [
+        'Statement of financial position' => 'Assets, liabilities and fund balances at the reporting date, drawn straight from the chart of accounts.',
+        'Statement of activities'         => 'Income and expenditure for the period, split between unrestricted and restricted funds so donor money is never mixed with core.',
+        'Statement of cash flows'         => 'Movement in cash for the period, reconciled from surplus to closing bank and M-Pesa balances.',
+        'Trial balance'                   => 'Every active postable account with its debit or credit balance — the check that the ledger holds together.',
+    ];
 
     public function index()
     {
-        $report = $this->request->getGet('report') ?: 'Statement of financial position';
-        $seed   = Prototype::load('SEED');
+        $view = $this->view();
 
-        if ($report === 'Trial balance') {
-            return $this->json($this->trialBalance($seed));
-        }
-        if ($report === 'Statement of activities') {
-            return $this->json($this->activities($seed));
-        }
-        if ($report === 'Statement of cash flows') {
-            return $this->json($this->cashFlows($seed));
-        }
-
-        return $this->json($this->financialPosition($seed));
+        return $this->json($view);
     }
 
-    private function financialPosition(array $seed): array
+    /** The statement on screen, as a spreadsheet: every figure unformatted, the notes beneath. */
+    public function export()
     {
-        $currAssets = ['1110', '1120', '1130', '1140', '1210', '1220', '1230', '1240'];
-        $nonCurr    = ['1310', '1320', '1390'];
-        $currLiab   = ['2110', '2120', '2130', '2210', '2220', '2230', '2240'];
-        $funds      = ['3100', '3200', '3300', '3900'];
+        $view = $this->view();
+        if (isset($view['empty'])) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $view['empty']]);
+        }
 
-        $tca = $this->sumCodes($seed, $currAssets);
-        $tnca = $this->sumCodes($seed, $nonCurr);
-        $tcl = $this->sumCodes($seed, $currLiab);
-        $tf  = $this->sumCodes($seed, $funds);
-        $balanced = ($tca + $tnca - $tcl) === $tf;
+        $out = fopen('php://temp', 'r+');
+        fputcsv($out, [$view['heading']]);
+        fputcsv($out, [$view['sub']]);
+        fputcsv($out, [$view['basis']]);
+        fputcsv($out, []);
+        fputcsv($out, ['Code', $view['labelColumn'] ?: 'Line', ...$view['columns']]);
+        foreach ($view['sections'] as $section) {
+            if ($section['heading'] !== null) {
+                fputcsv($out, ['', $section['heading']]);
+            }
+            foreach ($section['rows'] as $row) {
+                fputcsv($out, [$row['code'] ?? '', $row['label'], ...array_map(static fn ($c) => $c['v'] === null ? '' : $c['v'], $row['cells'])]);
+            }
+        }
+        fputcsv($out, []);
+        foreach ($view['notes'] as $note) {
+            fputcsv($out, ['', $note]);
+        }
+        rewind($out);
+        // UTF-8 BOM so spreadsheet apps read "—" correctly.
+        $csv = "\xEF\xBB\xBF" . stream_get_contents($out);
+        fclose($out);
+
+        return $this->response
+            ->setHeader('Content-Type', 'text/csv; charset=utf-8')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . Brand::current()['name'] . ' ' . mb_strtolower($view['report']) . ' ' . $view['period'] . '.csv"')
+            ->setBody($csv);
+    }
+
+    private function view(): array
+    {
+        $repo = new ReportRepository();
+        $periods = $repo->periods();
+        $report = array_key_exists((string) $this->request->getGet('report'), self::TABS) ? (string) $this->request->getGet('report') : array_key_first(self::TABS);
+        $tabs = array_map(static fn ($k) => ['key' => $k, 'label' => self::TABS[$k]], array_keys(self::TABS));
+        if ($periods === []) {
+            return ['empty' => 'There are no accounting periods yet, so there is nothing to report on. Set up the financial year in Settings first.',
+                'report' => $report, 'tabs' => $tabs, 'title' => $report, 'blurb' => self::BLURBS[$report]];
+        }
+
+        $range = current(array_filter($periods, fn ($p) => $p['label'] === $this->request->getGet('period'))) ?: $periods[0];
+        $split = $this->request->getGet('split') !== '0';
+        $s = $repo->statement($report, $range, (string) ($this->request->getGet('compare') ?: 'Prior year'), $split);
+
+        $activities = $report === 'Statement of activities';
+        $asAt = in_array($report, ['Statement of financial position', 'Trial balance'], true);
+        $currency = $this->currency();
+        $held = $s['source'] !== null;
+        $comparative = $s['comparative'] === null ? ''
+            : ' · comparative: ' . $s['comparative']['label'] . ($s['comparative']['source'] === 'legacy' ? ' (legacy system)' : ($s['comparative']['held'] ? '' : ', not held'));
+        $budget = $s['budget'] === null ? '' : ' · comparative: approved budget' . ($s['budget']['held'] ? '' : ', none approved');
+        $open = $s['openPeriods'];
+
+        $notes = $s['notes'];
+        if (!$held) {
+            array_unshift($notes, 'Nothing is held for ' . $range['label'] . ' — neither postings on this ledger nor figures carried from a previous system.');
+        }
+        if ($s['comparative'] !== null && !$s['comparative']['held']) {
+            $notes[] = 'No figures are held for ' . $s['comparative']['label'] . ', so the comparative column is blank.';
+        } elseif (($s['comparative']['source'] ?? null) === 'legacy') {
+            $notes[] = 'Comparatives for ' . $s['comparative']['label'] . ' are the figures kept in the previous system, carried across when the ledger started; they close on the balances this ledger brought forward.';
+        }
+        if ($s['source'] === 'legacy') {
+            $notes[] = $range['label'] . ' was kept in the previous system: these are the figures carried across when the ledger started, and there are no postings to open.';
+        }
 
         return [
-            'title' => 'Statement of financial position',
-            'sections' => [
-                ['heading' => 'Current assets', 'rows' => array_map(fn ($c) => $this->line($seed, $c), $currAssets), 'total' => ['label' => 'Total current assets', 'amount' => Prototype::fmt($tca)]],
-                ['heading' => 'Non-current assets', 'rows' => array_map(fn ($c) => $this->line($seed, $c), $nonCurr), 'total' => ['label' => 'Total assets', 'amount' => Prototype::fmt($tca + $tnca)]],
-                ['heading' => 'Current liabilities', 'rows' => array_map(fn ($c) => $this->line($seed, $c), $currLiab), 'total' => ['label' => 'Net assets', 'amount' => Prototype::fmt($tca + $tnca - $tcl)]],
-                ['heading' => 'Funds and reserves', 'rows' => array_map(fn ($c) => $this->line($seed, $c), $funds), 'total' => ['label' => 'Total funds and reserves', 'amount' => Prototype::fmt($tf)]],
-            ],
-            'balanced' => $balanced,
-            'notes' => [$balanced ? 'Net assets equal total funds and reserves; the statement balances.' : 'Net assets differ from total funds and reserves — the statement does not balance.'],
+            'report'   => $report,
+            'tabs'     => $tabs,
+            'title'    => $report,
+            'blurb'    => self::BLURBS[$report],
+            'heading'  => (new Lookups())->organisationNames()['short'] . ' — ' . $report,
+            'sub'      => ($asAt ? 'As at ' . date('j M Y', strtotime($range['to'])) : 'For the period ' . date('j M', strtotime($range['from'])) . ' – ' . date('j M Y', strtotime($range['to'])))
+                . $comparative . $budget . ' · all figures in ' . $currency,
+            'periods'  => array_column($periods, 'label'),
+            'period'   => $range['label'],
+            'compares' => $activities ? ReportRepository::COMPARATIVES : ['Prior year', 'None'],
+            'compare'  => $s['compare'],
+            'showSplit' => $activities,
+            'split'    => $split,
+            'columns'  => $s['columns'],
+            'labelColumn' => $s['labelColumn'],
+            'sections' => $s['sections'],
+            'notes'    => $notes,
+            'balanced' => $s['balanced'] ?? true,
+            'source'   => $s['source'],
+            'closed'   => $s['closed'],
+            'drillPeriod' => $s['source'] === 'ledger' ? $this->ledgerPeriod($range) : null,
+            'hint'     => $this->hint($report, $s),
+            'footer'   => $report . ' · ' . $range['label'] . ' · ' . $s['footer'],
+            'basis'    => 'Prepared under IFRS · ' . $currency . ' functional currency · '
+                . ($s['source'] === 'legacy' ? 'figures carried from the previous system'
+                    : ($s['closed'] ? 'period closed' : 'unaudited management figures — ' . implode(', ', $open) . (count($open) === 1 ? ' is' : ' are') . ' open')),
         ];
     }
 
-    private function activities(array $seed): array
+    private function hint(string $report, array $s): string
     {
-        $incUnres = ['4210', '4220', '4230', '4240'];
-        $incRes   = ['4110', '4120', '4130', '4140'];
-        $expProg  = ['5110', '5120', '5130', '5140', '5150'];
-        $expPers  = ['5210', '5220', '5230'];
-        $expAdmin = ['5310', '5320', '5330', '5340', '5350'];
-        $expGrants= ['5410', '5420'];
-
-        $tiU = $this->sumCodes($seed, $incUnres);
-        $tiR = $this->sumCodes($seed, $incRes);
-        $teAll = $this->sumCodes($seed, array_merge($expProg, $expPers, $expAdmin, $expGrants));
-
-        return [
-            'title' => 'Statement of activities',
-            'sections' => [
-                ['heading' => 'Income', 'rows' => array_map(fn ($c) => $this->line($seed, $c), array_merge($incRes, $incUnres)), 'total' => ['label' => 'Total income', 'amount' => Prototype::fmt($tiU + $tiR)]],
-                ['heading' => 'Programme expenditure', 'rows' => array_map(fn ($c) => $this->line($seed, $c), $expProg), 'total' => ['label' => 'Total programme costs', 'amount' => Prototype::fmt($this->sumCodes($seed, $expProg))]],
-                ['heading' => 'Grants to implementing partners', 'rows' => array_map(fn ($c) => $this->line($seed, $c), $expGrants), 'total' => ['label' => 'Total sub-granting', 'amount' => Prototype::fmt($this->sumCodes($seed, $expGrants))]],
-                ['heading' => 'Personnel and administration', 'rows' => array_map(fn ($c) => $this->line($seed, $c), array_merge($expPers, $expAdmin)), 'total' => ['label' => 'Surplus / (deficit) for the period', 'amount' => Prototype::fmt($tiU + $tiR - $teAll)]],
-            ],
-            'notes' => ['Surplus for the period is ' . Prototype::fmt($tiU + $tiR - $teAll) . '.'],
-        ];
-    }
-
-    private function cashFlows(array $seed): array
-    {
-        $surplus = $this->sumCodes($seed, ['4110', '4120', '4130', '4140', '4210', '4220', '4230', '4240'])
-            - $this->sumCodes($seed, ['5110', '5120', '5130', '5140', '5150', '5210', '5220', '5230', '5310', '5320', '5330', '5340', '5350', '5410', '5420']);
-        $dep = $this->acctBal($seed, '5350');
-        $wcRecv = -$this->acctBal($seed, '1210') - $this->acctBal($seed, '1220') - $this->acctBal($seed, '1230');
-        $wcPay  = $this->sumCodes($seed, ['2110', '2120', '2130', '2210', '2220', '2230', '2240']);
-        $opCash = $surplus + $dep + $wcRecv + $wcPay;
-        $invest = -($this->acctBal($seed, '1310') + $this->acctBal($seed, '1320')) * 0.18;
-        $finance = $this->acctBal($seed, '3300') * 0.1;
-        $netCash = $opCash + $invest + $finance;
-        $closingCash = $this->sumCodes($seed, ['1110', '1120', '1130', '1140']);
-
-        return [
-            'title' => 'Statement of cash flows',
-            'sections' => [
-                ['heading' => 'Operating activities', 'rows' => [
-                    ['code' => '', 'name' => 'Surplus for the period', 'amount' => Prototype::fmt($surplus)],
-                    ['code' => '5350', 'name' => 'Adjustment — depreciation', 'amount' => Prototype::fmt($dep)],
-                    ['code' => '', 'name' => 'Movement in receivables and prepayments', 'amount' => Prototype::fmt($wcRecv)],
-                    ['code' => '', 'name' => 'Movement in payables and statutory liabilities', 'amount' => Prototype::fmt($wcPay)],
-                ], 'total' => ['label' => 'Net cash from operating activities', 'amount' => Prototype::fmt($opCash)]],
-                ['heading' => 'Investing activities', 'rows' => [
-                    ['code' => '1320', 'name' => 'Purchase of property and equipment', 'amount' => Prototype::fmt($invest)],
-                ], 'total' => ['label' => 'Net cash used in investing activities', 'amount' => Prototype::fmt($invest)]],
-                ['heading' => 'Financing activities', 'rows' => [
-                    ['code' => '3300', 'name' => 'Endowment contributions received', 'amount' => Prototype::fmt($finance)],
-                ], 'total' => ['label' => 'Net increase in cash and cash equivalents', 'amount' => Prototype::fmt($netCash)]],
-                ['heading' => 'Cash and cash equivalents', 'rows' => [
-                    ['code' => '', 'name' => 'Balance at the beginning of the period', 'amount' => Prototype::fmt($closingCash - $netCash)],
-                    ['code' => '', 'name' => 'Net increase for the period', 'amount' => Prototype::fmt($netCash)],
-                ], 'total' => ['label' => 'Balance at the end of the period', 'amount' => Prototype::fmt($closingCash)]],
-            ],
-            'notes' => ['Closing cash of ' . Prototype::fmt($closingCash) . ' includes restricted USD grant holdings.'],
-        ];
-    }
-
-    private function trialBalance(array $seed): array
-    {
-        $accts = array_values(array_filter($seed, fn ($a) => $a['status'] === 'Active' && ($a['level'] === 2 || $a['type'] === 'Equity') && $a['code'] !== '3000' && $a['code'] !== '3900'));
-        $colDr = 0;
-        $colCr = 0;
-        $rows = [];
-        foreach ($accts as $a) {
-            $dr = in_array($a['type'], ['Asset', 'Expense'], true);
-            $onDebit = $dr ? $a['balance'] >= 0 : $a['balance'] < 0;
-            $v = abs($a['balance']);
-            if ($onDebit) $colDr += $v; else $colCr += $v;
-            $rows[] = ['code' => $a['code'], 'name' => $a['name'], 'debit' => $onDebit ? Prototype::fmt($v) : '', 'credit' => $onDebit ? '' : Prototype::fmt($v)];
+        if ($s['source'] === 'legacy') {
+            return 'Figures from the previous system';
         }
-        $balanced = $colDr === $colCr;
+        if ($s['source'] === null) {
+            return 'Nothing held for this period';
+        }
 
-        return [
-            'title' => 'Trial balance',
-            'rows' => $rows,
-            'totals' => ['debit' => Prototype::fmt($colDr), 'credit' => Prototype::fmt($colCr)],
-            'balanced' => $balanced,
-            'notes' => [$balanced ? 'Debits and credits both total ' . Prototype::fmt($colDr) . '; the ledger is in balance.' : 'The ledger does not balance and must be investigated.'],
-        ];
+        return match ($report) {
+            'Trial balance'                   => $s['balanced'] ? 'Ledger in balance' : 'Ledger out of balance',
+            'Statement of financial position' => $s['balanced'] ? 'Statement balances' : 'Statement does not balance',
+            'Statement of cash flows'         => $s['balanced'] ? 'Click any line to open its postings' : 'Closing cash does not agree',
+            default                           => $s['split'] ? 'Restricted and unrestricted shown separately' : 'Click any line to open its postings',
+        };
+    }
+
+    /** The general ledger's name for the same months, so a line opens its postings for the period it reports. */
+    private function ledgerPeriod(array $range): ?string
+    {
+        foreach ((new PeriodRepository())->ledgerRanges() as $label => [$from, $to]) {
+            if ($from === $range['from'] && $to === $range['to']) {
+                return $label;
+            }
+        }
+
+        return null;
+    }
+
+    private function currency(): string
+    {
+        $lookups = new Lookups();
+        $row = db_connect()->table('entities')->select('functional_currency')->where('id', $lookups->entityId())->get()->getRowArray();
+
+        return $row['functional_currency'] ?? 'KES';
     }
 }

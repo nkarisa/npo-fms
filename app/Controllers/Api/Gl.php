@@ -2,193 +2,172 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Brand;
 use App\Libraries\Prototype;
+use App\Repositories\ChartRepository;
+use App\Repositories\JournalRepository;
+use App\Repositories\PeriodRepository;
+use App\Repositories\RuleViolation;
 
-/** General ledger — deterministically generates postings per account so figures stay stable across requests. */
+/**
+ * General ledger — the posted lines on one account for a period, filtered by fund,
+ * programme and award, with the balance brought forward and a running balance.
+ */
 class Gl extends BaseApiController
 {
-    private const MONTHS      = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
-    private const FULL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August'];
-
-    private function buildLedger(array $acct): array
-    {
-        mt_srand(crc32($acct['code'] . $acct['name']));
-        $debitNormal = in_array($acct['type'], ['Asset', 'Expense'], true);
-        $opening     = round($acct['balance'] * 0.38 / 1000) * 1000;
-        $movement    = $acct['balance'] - $opening;
-
-        $n = 10 + mt_rand(0, 5);
-        $weights = [];
-        $sum = 0;
-        for ($i = 0; $i < $n; $i++) {
-            $neg = (mt_rand(0, 99) / 100 < 0.16) ? -0.35 : 1;
-            $v   = (0.4 + mt_rand(0, 99) / 100) * $neg;
-            $weights[] = $v;
-            $sum += $v;
-        }
-
-        $sources = Prototype::load('SOURCES');
-        $narrationMap = Prototype::load('NARRATION');
-        $narr = $narrationMap[$acct['code']]
-            ?? $narrationMap[substr($acct['code'], 0, 2)]
-            ?? $narrationMap[substr($acct['code'], 0, 1)]
-            ?? $narrationMap['5'];
-
-        $contraFor = function () use ($acct) {
-            $r = mt_rand(0, 99) / 100;
-            return match ($acct['type']) {
-                'Income'    => $r < 0.55 ? '1120' : '1210',
-                'Expense'   => $r < 0.6 ? '1110' : '2110',
-                'Asset'     => $r < 0.5 ? '1110' : '2110',
-                'Liability' => '1110',
-                default     => '3900',
-            };
-        };
-
-        $entries = [];
-        $acc = 0;
-        for ($i = 0; $i < $n; $i++) {
-            $amt = round(($movement * ($weights[$i] / ($sum ?: 1))) / 100) * 100;
-            if ($i === $n - 1) {
-                $amt = $movement - $acc;
-            }
-            $acc += $amt;
-            $month = min(7, (int) floor(($i / $n) * 8 + mt_rand(0, 99) / 100 * 0.8));
-            $day   = 2 + mt_rand(0, 25);
-            $src   = $sources[array_rand($sources)];
-            $entries[] = [
-                'month'    => $month,
-                'day'      => $day,
-                'source'   => $src['name'],
-                'ref'      => $src['ref'] . '-26-' . str_pad((string) (140 + mt_rand(0, 799)), 4, '0', STR_PAD_LEFT),
-                'narration'=> $narr[array_rand($narr)],
-                'fund'     => $acct['fund'] === 'All funds' ? ['General Fund', 'Grant Fund'][mt_rand(0, 1)] : $acct['fund'],
-                'program'  => $acct['program'] === 'Shared' || $acct['program'] === '—'
-                    ? ['Election Observation', 'Civic Education', 'Governance Advocacy', 'Shared services'][mt_rand(0, 3)]
-                    : $acct['program'],
-                'funder'   => $acct['funder'],
-                'preparer' => Prototype::load('PREPARERS')[array_rand(Prototype::load('PREPARERS'))],
-                'doc'      => 'ELOG/' . $acct['code'] . '/' . (10 + mt_rand(0, 88)),
-                'contra'   => $contraFor(),
-                'amount'   => $amt,
-            ];
-        }
-
-        usort($entries, fn ($a, $b) => $a['month'] <=> $b['month'] ?: $a['day'] <=> $b['day']);
-
-        return ['opening' => $opening, 'debitNormal' => $debitNormal, 'entries' => $entries];
-    }
-
     public function index()
     {
-        $list   = Prototype::load('SEED');
-        $leaves = array_values(array_filter($list, fn ($a) => $a['level'] === 2 && $a['status'] === 'Active'));
-
-        $code = $this->request->getGet('account') ?: ($leaves[0]['code'] ?? '5110');
-        $acct = null;
-        foreach ($leaves as $a) {
-            if ($a['code'] === $code) {
-                $acct = $a;
-                break;
-            }
+        try {
+            return $this->json($this->ledger());
+        } catch (RuleViolation $e) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage()]);
         }
-        $acct ??= $leaves[0];
+    }
 
-        $period      = $this->request->getGet('period') ?: 'FY2026 · Jan – Aug';
-        $periodRange = Prototype::load('PERIOD_RANGE');
-        [$pStart, $pEnd] = $periodRange[$period] ?? [0, 7];
-        $fundFilter    = $this->request->getGet('fund') ?: 'All funds';
-        $programFilter = $this->request->getGet('program') ?: 'All programmes';
-        $q             = strtolower(trim($this->request->getGet('q') ?? ''));
+    /** The ledger as on screen, filters applied, as CSV. */
+    public function export()
+    {
+        try {
+            $ledger = $this->ledger();
+        } catch (RuleViolation $e) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => $e->getMessage()]);
+        }
+        $out = fopen('php://temp', 'w+');
+        fputcsv($out, ['Account', $ledger['account']['code'] . ' · ' . $ledger['account']['name']]);
+        fputcsv($out, ['Period', $ledger['filters']['period']]);
+        fputcsv($out, []);
+        fputcsv($out, ['Date', 'Reference', 'Narration', 'Source', 'Fund', 'Programme', 'Grant', 'Debit', 'Credit', 'Balance']);
+        fputcsv($out, [$ledger['openingDate'], '', 'Opening balance brought forward', '', '', '', '', '', '', $ledger['opening']]);
+        foreach ($ledger['rows'] as $r) {
+            fputcsv($out, [$r['fullDate'], $r['ref'], $r['narration'], $r['source'], $r['fund'], $r['program'], $r['grant'], $r['debit'], $r['credit'], $r['balance']]);
+        }
+        fputcsv($out, ['', '', 'Closing balance — ' . $ledger['filters']['period'], '', '', '', '', $ledger['totalDebit'], $ledger['totalCredit'], $ledger['closing']]);
+        rewind($out);
+        $csv = "\xEF\xBB\xBF" . stream_get_contents($out);
+        fclose($out);
 
-        $led = $this->buildLedger($acct);
+        return $this->response
+            ->setHeader('Content-Type', 'text/csv; charset=utf-8')
+            ->setHeader('Content-Disposition', 'attachment; filename="' . Brand::current()['name'] . ' general ledger ' . $ledger['account']['code'] . '.csv"')
+            ->setBody($csv);
+    }
 
-        $priorMovement = 0;
+    /** The lines of one posted entry, for the entry drawer. */
+    public function entry($ref)
+    {
+        $lines = (new JournalRepository())->entryLines((string) $ref);
+
+        return $lines === []
+            ? $this->response->setStatusCode(404)->setJSON(['error' => 'not found'])
+            : $this->json(['ref' => $ref, 'lines' => array_map(static fn ($l) => $l + [
+                'debitLabel' => Prototype::fmt($l['debit']), 'creditLabel' => Prototype::fmt($l['credit']),
+            ], $lines), 'total' => Prototype::fmt(array_sum(array_column($lines, 'debit')))]);
+    }
+
+    private function ledger(): array
+    {
+        $chart  = (new ChartRepository())->accounts();
+        $leaves = array_values(array_filter($chart, static fn ($a) => $a['postable'] && $a['status'] === 'Active' && $a['code'] !== ChartRepository::DERIVED_SURPLUS));
+        if ($leaves === []) {
+            throw new RuleViolation('There are no postable accounts yet, so there is no ledger to show. Import the chart of accounts first — imported accounts open at zero.');
+        }
+        $code   = $this->request->getGet('account') ?: '5110';
+        $acct   = current(array_filter($leaves, static fn ($a) => $a['code'] === $code)) ?: $leaves[0];
+
+        $ranges = (new PeriodRepository())->ledgerRanges();
+        $period = $this->request->getGet('period');
+        $period = isset($ranges[$period]) ? $period : array_key_first($ranges);
+        [$from, $to] = $ranges[$period];
+
+        $fund    = $this->request->getGet('fund') ?: 'All funds';
+        $program = $this->request->getGet('program') ?: 'All programmes';
+        $grant   = $this->request->getGet('grant') ?: 'All awards';
+        $q       = strtolower(trim((string) $this->request->getGet('q')));
+
+        $debitNormal = in_array($acct['type'], ['Asset', 'Expense'], true);
+        $signed = static fn (array $e) => $debitNormal ? $e['debit'] - $e['credit'] : $e['credit'] - $e['debit'];
+
+        $postings = (new JournalRepository())->postings($acct['code']);
+        $opening  = 0.0;
+        $prior    = 0.0;
         $inPeriod = [];
-        foreach ($led['entries'] as $e) {
-            if ($e['month'] < $pStart) {
-                $priorMovement += $e['amount'];
+        foreach ($postings as $e) {
+            // Balances brought forward open the year; postings before the period start open the period.
+            if ($e['opening']) {
+                $opening += $signed($e);
                 continue;
             }
-            if ($e['month'] > $pEnd) {
+            if ($e['date'] < $from) {
+                $prior += $signed($e);
                 continue;
             }
-            if ($fundFilter !== 'All funds' && $e['fund'] !== $fundFilter) {
-                continue;
-            }
-            if ($programFilter !== 'All programmes' && $e['program'] !== $programFilter) {
-                continue;
-            }
-            if ($q !== '' && !str_contains(strtolower($e['ref'] . ' ' . $e['narration'] . ' ' . $e['source']), $q)) {
+            if ($e['date'] > $to
+                || ($fund !== 'All funds' && $e['fund'] !== $fund)
+                || ($program !== 'All programmes' && $e['program'] !== $program)
+                || ($grant !== 'All awards' && $e['grant'] !== $grant)
+                || ($q !== '' && !str_contains(strtolower($e['ref'] . ' ' . $e['narration'] . ' ' . $e['source'] . ' ' . $e['grant']), $q))) {
                 continue;
             }
             $inPeriod[] = $e;
         }
 
-        $nameOf = function ($c) use ($list) {
-            foreach ($list as $a) {
-                if ($a['code'] === $c) {
-                    return $a['name'];
-                }
-            }
-            return 'Suspense';
-        };
+        $nameOf = static fn (string $c) => current(array_filter($chart, static fn ($a) => $a['code'] === $c))['name'] ?? 'Suspense';
+        $openingBalance = $opening + $prior;
+        $run = $openingBalance;
+        $tDr = 0.0;
+        $tCr = 0.0;
+        $rows = array_map(function ($e) use (&$run, &$tDr, &$tCr, $signed, $nameOf) {
+            $run += $signed($e);
+            $tDr += $e['debit'];
+            $tCr += $e['credit'];
 
-        $openingBal = $led['opening'] + $priorMovement;
-        $run = $openingBal;
-        $tDr = 0;
-        $tCr = 0;
-        $openingDate = $pStart === 0 ? '01 Jan' : '01 ' . self::MONTHS[$pStart];
-        $rows = [[
-            'date'      => $openingDate,
-            'ref'       => '',
-            'narration' => 'Opening balance brought forward',
-            'source'    => '',
-            'fund'      => '',
-            'program'   => '',
-            'contra'    => '',
-            'debit'     => '—',
-            'credit'    => '—',
-            'balance'   => Prototype::fmt($openingBal),
-            'isOpening' => true,
-        ]];
-        foreach ($inPeriod as $e) {
-            $run += $e['amount'];
-            $isDr = $led['debitNormal'] ? $e['amount'] >= 0 : $e['amount'] < 0;
-            $mag  = abs($e['amount']);
-            if ($isDr) {
-                $tDr += $mag;
-            } else {
-                $tCr += $mag;
-            }
-            $rows[] = [
-                'date'      => str_pad((string) $e['day'], 2, '0', STR_PAD_LEFT) . ' ' . self::MONTHS[$e['month']],
-                'ref'       => $e['ref'],
-                'narration' => $e['narration'],
-                'source'    => $e['source'],
-                'fund'      => $e['fund'],
-                'program'   => $e['program'],
-                'contra'    => $e['contra'] . ' · ' . $nameOf($e['contra']),
-                'debit'     => $isDr ? Prototype::fmt($mag) : '—',
-                'credit'    => $isDr ? '—' : Prototype::fmt($mag),
-                'balance'   => Prototype::fmt($run),
+            return [
+                'date' => date('d M', strtotime($e['date'])), 'fullDate' => date('j F Y', strtotime($e['date'])),
+                'ref' => $e['ref'], 'narration' => $e['narration'], 'source' => $e['source'],
+                'fund' => $e['fund'], 'program' => $e['program'], 'grant' => $e['grant'], 'grantUnassigned' => $e['grantUnassigned'],
+                'funder' => $e['funder'], 'preparer' => $e['preparer'], 'approver' => $e['approver'], 'doc' => $e['doc'],
+                'archived' => $e['archived'], 'contra' => $e['contra'] === '' ? '' : $e['contra'] . ' · ' . $nameOf($e['contra']),
+                'debit' => $e['debit'] > 0 ? Prototype::fmt($e['debit']) : '—',
+                'credit' => $e['credit'] > 0 ? Prototype::fmt($e['credit']) : '—',
+                'balance' => Prototype::fmt($run),
             ];
-        }
+        }, $inPeriod);
 
-        return $this->json([
-            'account'        => $acct,
-            'accountOptions' => array_map(fn ($a) => ['code' => $a['code'], 'label' => $a['code'] . ' · ' . $a['name']], $leaves),
-            'periodOptions'  => Prototype::load('PERIODS'),
-            'period'         => $period,
-            'fund'           => $fundFilter,
-            'program'        => $programFilter,
-            'rows'           => $rows,
-            'summary' => [
-                ['label' => 'Opening balance', 'value' => Prototype::fmt($openingBal), 'note' => $openingDate . ' 2026'],
-                ['label' => 'Debits', 'value' => Prototype::fmt($tDr), 'note' => count($inPeriod) . ' postings'],
-                ['label' => 'Credits', 'value' => Prototype::fmt($tCr), 'note' => $period],
-                ['label' => 'Closing balance', 'value' => Prototype::fmt($run), 'note' => $led['debitNormal'] ? 'debit normal' : 'credit normal'],
+        $seen = static fn (string $key) => array_values(array_unique(array_column(array_filter($postings, static fn ($e) => !$e['opening']), $key)));
+        $awards = [];
+        foreach ($inPeriod as $e) {
+            $awards[$e['grant']] ??= ['grant' => $e['grant'], 'count' => 0, 'amount' => 0.0];
+            $awards[$e['grant']]['count']++;
+            $awards[$e['grant']]['amount'] += $e['debit'] + $e['credit'];
+        }
+        usort($awards, static fn ($a, $b) => $b['count'] <=> $a['count']);
+        $withDebits = count(array_filter($inPeriod, static fn ($e) => $e['debit'] > 0));
+
+        return [
+            'account' => $acct + ['normal' => $debitNormal ? 'Debit' : 'Credit'],
+            'filters' => ['period' => $period, 'fund' => $fund, 'program' => $program, 'grant' => $grant, 'q' => $q],
+            'options' => [
+                'accounts' => array_map(static fn ($a) => ['code' => $a['code'], 'label' => $a['code'] . ' · ' . $a['name']], $leaves),
+                'periods'  => array_keys($ranges),
+                'funds'    => array_merge(['All funds'], $seen('fund')),
+                'programs' => array_merge(['All programmes'], $seen('program')),
+                'grants'   => array_merge(['All awards'], $seen('grant')),
             ],
-        ]);
+            'openingDate' => date('d M', strtotime($from)),
+            'opening'     => Prototype::fmt($openingBalance),
+            'rows'        => $rows,
+            'totalDebit'  => Prototype::fmt($tDr),
+            'totalCredit' => Prototype::fmt($tCr),
+            'closing'     => Prototype::fmt($run),
+            'summary' => [
+                ['label' => 'Opening balance', 'value' => Prototype::fmt($openingBalance), 'note' => 'as at ' . date('d M Y', strtotime($from))],
+                ['label' => 'Debits', 'value' => Prototype::fmt($tDr), 'note' => $withDebits . ' postings'],
+                ['label' => 'Credits', 'value' => Prototype::fmt($tCr), 'note' => (count($inPeriod) - $withDebits) . ' postings'],
+                ['label' => 'Net movement', 'value' => Prototype::fmt($run - $openingBalance), 'note' => $period],
+                ['label' => 'Closing balance', 'value' => Prototype::fmt($run), 'note' => $debitNormal ? 'debit normal' : 'credit normal'],
+            ],
+            'awards' => count($awards) > 1 ? array_map(static fn ($a) => ['grant' => $a['grant'], 'value' => Prototype::fmt($a['amount'])], $awards) : [],
+            'footer' => count($rows) . ' postings · ' . strtolower($acct['type']) . ' account · ' . strtolower($acct['restriction']) . ' · ' . $acct['fund'],
+        ];
     }
 }

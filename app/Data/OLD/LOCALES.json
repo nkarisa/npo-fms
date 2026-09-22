@@ -1,0 +1,48 @@
+[
+    {
+        "code": "en-GB",
+        "label": "English (UK)",
+        "native": "English",
+        "dir": "ltr",
+        "source": true,
+        "coverage": 100,
+        "reviewer": "Source strings",
+        "status": "Source"
+    },
+    {
+        "code": "fr",
+        "label": "French",
+        "native": "Français",
+        "dir": "ltr",
+        "coverage": 97,
+        "reviewer": "A. Mbaye · Regional Finance",
+        "status": "Published"
+    },
+    {
+        "code": "es",
+        "label": "Spanish",
+        "native": "Español",
+        "dir": "ltr",
+        "coverage": 94,
+        "reviewer": "C. Ibarra · Grants",
+        "status": "Published"
+    },
+    {
+        "code": "ar",
+        "label": "Arabic",
+        "native": "العربية",
+        "dir": "rtl",
+        "coverage": 81,
+        "reviewer": "H. Nasser · Finance Manager",
+        "status": "In review"
+    },
+    {
+        "code": "sw",
+        "label": "Swahili",
+        "native": "Kiswahili",
+        "dir": "ltr",
+        "coverage": 68,
+        "reviewer": "J. Otieno · Country Finance",
+        "status": "Draft"
+    }
+]

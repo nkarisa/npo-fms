@@ -1,0 +1,279 @@
+<?php
+
+use App\Database\Seeds\DatabaseSeeder;
+use App\Repositories\Lookups;
+use App\Repositories\PayablesRepository;
+use App\Repositories\ProcurementRepository;
+use App\Repositories\Repository;
+use App\Repositories\RuleViolation;
+use CodeIgniter\Test\CIUnitTestCase;
+use CodeIgniter\Test\DatabaseTestTrait;
+use CodeIgniter\Test\FeatureTestTrait;
+
+/**
+ * A requisition from draft to closed: coded to a budget line, approved only within
+ * what is available and by someone other than the requester, ordered under the
+ * three-quote rule from a pre-qualified supplier, received with the cost accrued,
+ * and billed on the three-way match so the approved bill clears the accrual.
+ */
+final class ProcurementTest extends CIUnitTestCase
+{
+    use DatabaseTestTrait;
+    use FeatureTestTrait;
+    use \Tests\Support\SignsIn;
+    use \Tests\Support\StoresDocuments;
+
+    protected $namespace = 'App';
+    protected $refresh   = true;
+    protected $seed      = DatabaseSeeder::class;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $_ENV['app.asOf'] = '2026-08-31';
+        Repository::forget();
+    }
+
+    protected function tearDown(): void
+    {
+        unset($_COOKIE['elog_actor']);
+        service('superglobals')->unsetCookie('elog_actor');
+        parent::tearDown();
+    }
+
+    public function testTheViewsCarryTheV5ListsAndStats(): void
+    {
+        $reqs = $this->api('api/procurement');
+        $this->assertSame(['Open requisitions', 'Awaiting my approval', 'Value in progress', 'Committed on POs', 'Over available budget'], array_column($reqs['stats'], 'label'));
+        $this->assertSame('5', $reqs['stats'][0]['value']);
+        $this->assertSame(['REQ-26-0062', 'REQ-26-0061', 'REQ-26-0060', 'REQ-26-0059', 'REQ-26-0058'], array_column($reqs['rows'], 'no'));
+        $this->assertSame(['Open', 'Awaiting approval', 'Approved', 'RFQ issued', 'PO raised', 'Goods received', 'Closed', 'All'], $reqs['tabs']);
+
+        // The laptops are coded to the capital budget line procurement's data carries.
+        $laptops = (new ProcurementRepository())->find('REQ-26-0061');
+        $this->assertSame([5200000, 'USAID / Uraia 2026'], [$laptops['budget'], $laptops['grant']]);
+        $this->assertFalse($reqs['rows'][1]['overBudget']);
+
+        $pos = $this->api('api/procurement?view=Purchase+orders');
+        $this->assertSame(['Awaiting delivery', 'Received', 'Closed'], array_values(array_unique(array_column($pos['rows'], 'state'))));
+        $this->assertSame('PO · GRN · invoice matched', array_column($pos['rows'], 'match', 'po')['PO-26-0104']);
+
+        $this->assertSame(['GRN-0088', 'GRN-0081'], array_column($this->api('api/procurement?view=Goods+received')['rows'], 'grn'));
+        $suppliers = $this->api('api/procurement?view=Suppliers')['rows'];
+        $this->assertCount($this->db->table('suppliers')->countAllResults(), $suppliers);
+        $this->assertSame(['Colour Print Kenya', 'Computech Ltd', 'Copy Cat Group'], array_column(array_slice($suppliers, 0, 3), 'name'));
+        $this->assertSame('Lapsed', array_column($suppliers, 'status', 'name')['Computech Ltd']);
+    }
+
+    public function testARequisitionIsRaisedWithQuotationDocumentsAndApprovedWithinBudget(): void
+    {
+        $lookups = new Lookups();
+        $repo = new ProcurementRepository();
+        $achieng = $lookups->userId('j.achieng@elog.or.ke');
+        $line = array_values(array_filter($repo->formOptions()['budgetLines'], static fn ($l) => $l['code'] === '5320'))[0];
+
+        $document = tempnam(sys_get_temp_dir(), 'quote');
+        file_put_contents($document, '%PDF-1.4 quotation');
+        $req = $repo->create([
+            'title' => 'Router replacement, 3 county offices', 'budgetLine' => $line['id'], 'needBy' => '2026-09-20', 'justification' => 'Two routers failed in August',
+            'lines' => [['desc' => 'Enterprise router', 'qty' => 3, 'unit' => '45,000'], ['desc' => '', 'qty' => 1, 'unit' => 0]],
+            'quotes' => [['supplier' => 'Safaricom PLC', 'amount' => 135000, 'note' => 'Installed', 'chosen' => true, 'file' => 0], ['supplier' => 'Liquid Telecom', 'amount' => 142000]],
+        ], $achieng, [['path' => $document, 'name' => 'safaricom-routers.pdf', 'size' => 18, 'mime' => 'application/pdf']]);
+
+        $this->assertSame(['REQ-26-0063', 'Draft', 135000, 'Shared services'], [$req['no'], $req['status'], $req['amount'], $req['program']]);
+        $this->assertSame('safaricom-routers.pdf', $req['quotes'][0]['file']);
+        $this->seeInDatabase('suppliers', ['name' => 'Liquid Telecom', 'status' => 'not_prequalified']);
+        $this->assertDownloads($this->get('api/procurement/REQ-26-0063/documents/' . $req['quotes'][0]['document']['id']), '%PDF-1.4 quotation');
+
+        $this->actAs('j.achieng@elog.or.ke');
+        $this->post('api/procurement/REQ-26-0063/submit')->assertStatus(200);
+        $this->post('api/procurement/REQ-26-0063/approve')->assertStatus(403);
+
+        $this->actAs('w.kamau@elog.or.ke');
+        $approved = $this->post('api/procurement/REQ-26-0063/approve');
+        $approved->assertStatus(200);
+        $this->assertSame('Approved', json_decode($approved->getJSON(), true)['requisition']['status']);
+
+        // Asking for more than the line has left is blocked, naming the shortfall.
+        $big = $repo->create(['title' => 'Satellite link', 'budgetLine' => $line['id'], 'lines' => [['desc' => 'VSAT', 'qty' => 1, 'unit' => $line['available'] + 1]]], $achieng);
+        $repo->submit($big['no'], $achieng);
+        try {
+            $repo->approve($big['no'], $lookups->userId('w.kamau@elog.or.ke'));
+            $this->fail('A requisition over the available budget was approved.');
+        } catch (RuleViolation $e) {
+            $this->assertStringContainsString('Blocked on budget', $e->getMessage());
+        }
+
+        $this->withBodyFormat('json')->post('api/procurement/' . $big['no'] . '/reject', ['reason' => ''])->assertStatus(422);
+        $rejected = $this->withBodyFormat('json')->post('api/procurement/' . $big['no'] . '/reject', ['reason' => 'Use the county office connection instead']);
+        $this->assertSame('Rejected', json_decode($rejected->getJSON(), true)['requisition']['status']);
+    }
+
+    public function testOrderReceiptAndBillMoveTheBudgetAndTheLedger(): void
+    {
+        $lookups = new Lookups();
+        $repo = new ProcurementRepository();
+        $accrued = $lookups->balance('2120');
+        $before = $repo->find('REQ-26-0060');
+
+        $this->actAs('s.njeri@elog.or.ke');
+        // Two quotations on a 1,340,000 requisition, neither with its document: the order
+        // needs a single-source justification.
+        $refused = $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', []);
+        $refused->assertStatus(422);
+        $this->assertStringContainsString('0 of the 3 quotations required with their documents attached', json_decode($refused->getJSON(), true)['error']);
+        $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', ['supplier' => 'Computech Ltd', 'waiver' => 'Framework'])->assertStatus(422);
+
+        $ordered = $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', ['waiver' => 'Framework rates agreed under tender ELOG/T/2025/04']);
+        $ordered->assertStatus(200);
+        $req = json_decode($ordered->getJSON(), true)['requisition'];
+        $this->assertSame(['PO raised', 'Rift Valley Car Hire', 'PO-26-0115'], [$req['status'], $req['supplier'], $req['po']]);
+        $this->assertEqualsWithDelta($before['committed'] + 1340000, $req['committed'], 0.001);
+
+        $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/receive', ['receivedBy' => ''])->assertStatus(422);
+        $received = json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/receive', ['receivedBy' => 'Store · A. Kariuki'])->getJSON(), true)['requisition'];
+        $this->assertSame(['Goods received', 'GRN-0089', 'Store · A. Kariuki'], [$received['status'], $received['grn'], $received['receivedBy']]);
+        $this->assertEqualsWithDelta($before['committed'], $received['committed'], 0.001);
+        $this->assertEqualsWithDelta($before['spent'] + 1340000, $received['spent'], 0.001);
+        Repository::forget();
+        $this->assertEqualsWithDelta($accrued + 1340000, $lookups->balance('2120'), 0.001);
+
+        $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/bill', ['invoiceNo' => ''])->assertStatus(422);
+        $this->assertStringContainsString("Attach the supplier's invoice", json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/bill', ['invoiceNo' => 'RVCH-2026-311'])->getJSON(), true)['error']);
+        $billed = json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/bill', ['invoiceNo' => 'RVCH-2026-311', 'documents' => [$this->document('s.njeri@elog.or.ke')]])->getJSON(), true);
+        $this->assertSame('Closed', $billed['requisition']['status']);
+        $this->assertSame(['Awaiting approval', 1340000, 67000], [$billed['bill']['status'], $billed['bill']['taxable'], $billed['bill']['wht']]);
+
+        // Approving the bill clears the accrual; only the VAT is new cost.
+        $spent = $billed['requisition']['spent'];
+        (new PayablesRepository())->approve([$billed['bill']['no']], $lookups->userId('d.kiptoo@elog.or.ke'));
+        Repository::forget();
+        $this->assertEqualsWithDelta($accrued, $lookups->balance('2120'), 0.001);
+        $this->assertEqualsWithDelta($spent + 214400, $repo->find('REQ-26-0060')['spent'], 0.001);
+    }
+
+    public function testTheQuotationThresholdIsSetUnderApprovalsInSettings(): void
+    {
+        $this->assertSame(500000.0, ProcurementRepository::quoteThreshold());
+        $this->assertTrue(ProcurementRepository::needsQuotes((new ProcurementRepository())->find('REQ-26-0060')));
+        $this->assertSame(500000, $this->api('api/settings')['procurement']['quoteThreshold']);
+
+        // Nil would put every purchase through three quotations; it is refused.
+        $nil = $this->withBodyFormat('json')->post('api/settings', ['procurement' => ['quoteThreshold' => '0']]);
+        $nil->assertStatus(422);
+        $this->assertStringContainsString('has to be above nil', json_decode($nil->getJSON(), true)['error']);
+
+        $saved = $this->withBodyFormat('json')->post('api/settings', ['procurement' => ['quoteThreshold' => '2,000,000']]);
+        $saved->assertStatus(200);
+        $saved = json_decode($saved->getJSON(), true);
+        $this->assertSame(2000000, $saved['procurement']['quoteThreshold']);
+        $this->assertSame([['area' => 'Approvals', 'what' => 'Procurement threshold raised from 500,000 to 2,000,000 — three quotations and a pre-qualified supplier above it']], $saved['changes']);
+        $this->assertStringContainsString('Procurement threshold raised', $saved['audit'][0]['what'] ?? json_encode($saved['audit'][0]));
+
+        // At 1,340,000 the car hire is now below the line: no quotations, no justification.
+        Repository::forget();
+        $this->assertFalse(ProcurementRepository::needsQuotes((new ProcurementRepository())->find('REQ-26-0060')));
+        $reqs = $this->api('api/procurement');
+        $this->assertSame(2000000, $reqs['threshold']);
+        $this->assertStringContainsString('three quotations required above 2,000,000', $reqs['footer']);
+        $this->assertSame(2000000, $this->api('api/payables/form')['prequalThreshold']);
+
+        $this->actAs('s.njeri@elog.or.ke');
+        // Only someone who manages settings can move it.
+        $this->withBodyFormat('json')->post('api/settings', ['procurement' => ['quoteThreshold' => '100']])->assertStatus(403);
+        $ordered = $this->withBodyFormat('json')->post('api/procurement/REQ-26-0060/purchase-order', []);
+        $ordered->assertStatus(200);
+        $this->assertSame('PO raised', json_decode($ordered->getJSON(), true)['requisition']['status']);
+    }
+
+    public function testAnRfqAndAReceivedOrderWithoutAnAccrualStillBill(): void
+    {
+        $this->actAs('s.njeri@elog.or.ke');
+        $this->post('api/procurement/REQ-26-0061/rfq')->assertStatus(422);
+
+        // REQ-26-0055 was received before the ledger was migrated: its bill charges the cost.
+        $billed = json_decode($this->withBodyFormat('json')->post('api/procurement/REQ-26-0055/bill', ['invoiceNo' => 'SAF-INV-88120', 'documents' => [$this->document('s.njeri@elog.or.ke')]])->getJSON(), true);
+        $this->assertSame('Closed', $billed['requisition']['status']);
+        $bill = (new PayablesRepository())->approve([$billed['bill']['no']], (new Lookups())->userId('w.kamau@elog.or.ke'))['done'][0];
+        $this->assertSame('Approved', $bill['status']);
+
+        $show = $this->api('api/procurement/REQ-26-0061');
+        $this->assertFalse($show['can']['approve']);
+        $this->actAs('w.kamau@elog.or.ke');
+        $this->assertTrue($this->api('api/procurement/REQ-26-0061')['can']['approve']);
+        // The prototype names quotation files; no documents came with it, so none are on file.
+        $this->assertSame('0 of 3 quotations have a document on file', $this->api('api/procurement/REQ-26-0061')['requisition']['quoteDocs']);
+    }
+
+    /** The request reads cookies from the shared superglobals, which a test request does not refresh. */
+    public function testSuppliersAreRegisteredByAPreparerAndPrequalifiedByAnApprover(): void
+    {
+        $this->actAs('s.njeri@elog.or.ke');
+        $form = $this->api('api/procurement/suppliers/form');
+        $this->assertSame(['register' => true, 'qualify' => false], $form['can']);
+        $this->assertContains('Professional fees', $form['categories']);
+
+        $post = fn (string $url, array $body) => $this->withBodyFormat('json')->post($url, $body);
+        $expect = function ($response, int $status): array {
+            $response->assertStatus($status);
+
+            return json_decode($response->getJSON(), true);
+        };
+        $refusal = fn ($response) => $expect($response, 422)['error'];
+
+        $this->assertStringContainsString('KRA PIN looks wrong', $refusal($post('api/procurement/suppliers', ['name' => 'Tana Logistics', 'pin' => 'A123', 'category' => 'Transport'])));
+        $this->assertStringContainsString('already on the supplier register', $refusal($post('api/procurement/suppliers', ['name' => 'safaricom plc', 'category' => 'Communication'])));
+        $this->assertStringContainsString('belongs to Safaricom PLC', $refusal($post('api/procurement/suppliers', ['name' => 'Tana Logistics', 'pin' => 'P051092845Z', 'category' => 'Transport'])));
+        $this->assertStringContainsString('needs an approver', $refusal($post('api/procurement/suppliers', [
+            'name' => 'Tana Logistics', 'pin' => 'P051555123T', 'category' => 'Transport', 'status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => 'B',
+        ])));
+
+        $created = $expect($post('api/procurement/suppliers', [
+            'name' => '  Tana   Logistics ', 'pin' => 'p051555123t', 'category' => 'Transport', 'whtRate' => '5', 'whtBasis' => 'on hire', 'paymentDetails' => 'KCB Moi Avenue 1102334455',
+        ]), 201)['supplier'];
+        $this->assertSame(['Tana Logistics', 'P051555123T', 'not_prequalified', 'Not pre-qualified', '5', 'on hire'],
+            [$created['name'], $created['pin'], $created['status'], $created['label'], $created['whtRate'], $created['whtBasis']]);
+        $this->assertStringStartsWith('Registered by', $created['history'][0]['what']);
+
+        $row = array_column($this->api('api/procurement?view=Suppliers')['rows'], null, 'name')['Tana Logistics'];
+        $this->assertSame([$created['id'], '5% on hire', 'Not pre-qualified'], [$row['id'], $row['wht'], $row['status']]);
+
+        // A preparer keeps the details but cannot pre-qualify.
+        $url = 'api/procurement/suppliers/' . $created['id'];
+        $post($url, ['status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => 'A'] + $created)->assertStatus(422);
+        $post($url, ['category' => 'Vehicle hire'] + $created)->assertStatus(200);
+
+        $this->actAs('w.kamau@elog.or.ke');
+        $this->assertStringContainsString('after today', $refusal($post($url, ['category' => 'Vehicle hire', 'status' => 'prequalified', 'prequalUntil' => '2026-08-31', 'rating' => 'A'] + $created)));
+        $this->assertStringContainsString('Rate the supplier', $refusal($post($url, ['category' => 'Vehicle hire', 'status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => ''] + $created)));
+        $qualified = $expect($post($url, ['category' => 'Vehicle hire', 'status' => 'prequalified', 'prequalUntil' => '2026-12-31', 'rating' => 'A'] + $created), 200)['supplier'];
+        $this->assertSame(['Pre-qualified', 'A', 'Vehicle hire'], [$qualified['label'], $qualified['rating'], $qualified['category']]);
+        $this->assertSame(['Updated by', 'Pre-qualified by'], array_map(static fn ($h) => implode(' ', array_slice(explode(' ', $h['what']), 0, 2)), array_slice($qualified['history'], 1)));
+
+        // Blocking takes the supplier off the bill form.
+        $post($url, ['status' => 'blocked'] + $qualified)->assertStatus(200);
+        $this->assertNotContains('Tana Logistics', array_column((new PayablesRepository())->suppliers(), 'name'));
+
+        // The PIN a supplier has been billed under stays.
+        $billed = $this->db->table('suppliers s')->select('s.id')->join('bills b', 'b.supplier_id = s.id')->where('s.kra_pin IS NOT NULL')->get(1)->getRowArray();
+        $supplier = $this->api('api/procurement/suppliers/' . $billed['id'])['supplier'];
+        $this->assertTrue($supplier['billed']);
+        $this->assertStringContainsString('cannot be changed', $refusal($post('api/procurement/suppliers/' . $billed['id'], ['pin' => 'P051000001X'] + $supplier)));
+
+        $this->get('api/procurement/suppliers/999999')->assertStatus(404);
+        $this->actAs('audit@pkfea.com');
+        $post('api/procurement/suppliers', ['name' => 'Anyone', 'category' => 'Transport'])->assertStatus(403);
+    }
+
+    private function actAs(string $email): void
+    {
+        $_COOKIE['elog_actor'] = $email;
+        service('superglobals')->setCookie('elog_actor', $email);
+    }
+
+    private function api(string $url): array
+    {
+        return json_decode($this->get($url)->getJSON(), true);
+    }
+}

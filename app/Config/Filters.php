@@ -12,6 +12,8 @@ use CodeIgniter\Filters\InvalidChars;
 use CodeIgniter\Filters\PageCache;
 use CodeIgniter\Filters\PerformanceMetrics;
 use CodeIgniter\Filters\SecureHeaders;
+use App\Filters\Installed;
+use App\Filters\SignedIn;
 
 class Filters extends BaseFilters
 {
@@ -34,6 +36,8 @@ class Filters extends BaseFilters
         'forcehttps'    => ForceHTTPS::class,
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
+        'signedin'      => SignedIn::class,
+        'installed'     => Installed::class,
     ];
 
     /**
@@ -72,6 +76,16 @@ class Filters extends BaseFilters
      */
     public array $globals = [
         'before' => [
+            // First of all: an instance that has not been installed has no schema to
+            // read, so every address is answered with the installer until it has one.
+            // Once installed, the installer itself is answered as not found.
+            'installed',
+            // Everything is behind a sign-in except the screens that do the signing in
+            // and the installer, which runs before there is anyone to sign in as.
+            'signedin' => ['except' => [
+                'login', 'accept-invite', 'reset-password', 'api/auth', 'api/auth/*',
+                'install', 'api/install', 'api/install/*',
+            ]],
             // 'honeypot',
             // 'csrf',
             // 'invalidchars',

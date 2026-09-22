@@ -1,0 +1,9 @@
+{
+  "name": "run-fms-driver",
+  "private": true,
+  "type": "module",
+  "description": "Playwright driver for the run-fms skill",
+  "dependencies": {
+    "playwright": "1.54.2"
+  }
+}

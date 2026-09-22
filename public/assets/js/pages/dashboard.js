@@ -2,98 +2,178 @@
   const app = document.getElementById('app');
   const data = await UI.fetchJSON('/api/dashboard');
 
+  // ---- Page head ----
+
   UI.pageHead(app, {
     kicker: data.date,
     title: 'Finance overview',
-    blurb: 'One reconciling book — drawn from the ledger as it stands this morning.',
+    blurb: data.subtitle,
+    actions: `
+      <button type="button" class="btn" id="dash-pack">Board pack</button>
+      <button type="button" class="btn btn-primary" id="dash-journal">New journal</button>`,
+  });
+  document.getElementById('dash-pack').addEventListener('click', openBoardPack);
+  document.getElementById('dash-journal').addEventListener('click', () => {
+    // Posting from the dashboard lands the user on Journals, where the entry lives.
+    UI.openNewJournalDrawer({ onSaved: () => { window.location.href = '/journals'; } });
   });
 
   app.appendChild(UI.statGrid(data.stats));
 
   const grid = document.createElement('div');
   grid.className = 'two-col';
+  const left = document.createElement('div');
+  left.className = 'dash-col';
+  const right = document.createElement('div');
+  right.className = 'dash-col';
 
-  // Needs a decision from you
-  const queueCard = document.createElement('div');
-  queueCard.className = 'card';
-  queueCard.innerHTML = `<div class="card-head"><span class="card-title">Needs a decision from you</span><span class="card-hint">${data.queue.length} items open</span></div>`;
+  const card = (title, hint) => {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="card-head"><span class="card-title">${UI.esc(title)}</span>`
+      + (hint ? `<span class="card-hint">${UI.esc(hint)}</span>` : '') + `</div>`;
+    return el;
+  };
+
+  // ---- Needs a decision from you ----
+
+  const queue = card('Needs a decision from you', data.queueHint);
   if (data.queue.length) {
-    const body = document.createElement('div');
-    data.queue.forEach(q => {
+    data.queue.forEach((q) => {
       const row = document.createElement('a');
       row.href = q.href || '#';
-      row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #F2F1EC;text-decoration:none;color:inherit;';
+      row.className = 'dash-row dash-queue';
       row.innerHTML = `
-        <div>
-          <div><span class="dot ${q.tone}"></span><strong>${UI.esc(q.title)}</strong></div>
-          <div class="muted" style="font-size:11.5px;margin-top:2px;">${UI.esc(q.detail)}</div>
+        <div class="dash-queue-text">
+          <div class="dash-queue-title"><span class="dot ${UI.esc(q.tone)}"></span><span class="dash-queue-label">${UI.esc(q.title)}</span></div>
+          <div class="dash-sub">${UI.esc(q.detail)}</div>
         </div>
-        <div style="font-family:'IBM Plex Mono',monospace;font-weight:600;">${UI.esc(q.value)}</div>
-        <div style="font-size:11px;color:#0F5C4A;font-weight:600;white-space:nowrap;">Open →</div>`;
-      body.appendChild(row);
+        <div class="dash-queue-value">${UI.esc(q.value)}</div>
+        <div class="dash-cta">${UI.esc(q.cta)} →</div>`;
+      queue.appendChild(row);
     });
-    queueCard.appendChild(body);
   } else {
-    queueCard.innerHTML += `<div class="empty-state">Nothing is waiting on you.</div>`;
+    queue.insertAdjacentHTML('beforeend', '<div class="empty-state">Nothing is waiting on you.</div>');
   }
+  left.appendChild(queue);
 
-  // Grant burn
-  const grantCard = document.createElement('div');
-  grantCard.className = 'card';
-  grantCard.innerHTML = `<div class="card-head"><span class="card-title">Grant burn against elapsed time</span></div>`;
-  const gBody = document.createElement('div');
-  data.grants.forEach(g => {
+  // ---- Grant burn against elapsed time ----
+
+  const grants = card('Grant burn against elapsed time', 'Spend rate below the marker means the award is running behind');
+  data.grants.forEach((g) => {
     const row = document.createElement('a');
     row.href = `/grants?grant=${encodeURIComponent(g.ref)}`;
-    row.style.cssText = 'display:block;padding:12px 16px;border-bottom:1px solid #F2F1EC;text-decoration:none;color:inherit;';
+    row.className = 'dash-row dash-grant';
     row.innerHTML = `
-      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;">
-        <strong>${UI.esc(g.funder)}</strong><span class="muted" style="flex:1;">${UI.esc(g.program)}</span>
-        <span style="font-family:'IBM Plex Mono',monospace;">${UI.esc(g.money)}</span>
+      <div class="dash-grant-head">
+        <span class="dash-grant-funder">${UI.esc(g.funder)}</span>
+        <span class="dash-grant-prog">${UI.esc(g.program)}</span>
+        <span class="dash-grant-money">${UI.esc(g.money)}</span>
       </div>
       <div class="bar-track">
-        <div class="bar-fill" style="width:${g.burnPct}%;"></div>
-        <div class="bar-mark" style="left:${g.elapsed}%;"></div>
+        <div class="bar-fill" style="width:${g.burnPct}%;background:${UI.esc(g.barColour)};"></div>
+        <div class="bar-mark" style="inset-inline-start:${g.elapsed}%;"></div>
+      </div>
+      <div class="dash-grant-foot">
+        <span>${UI.esc(g.burnLabel)}</span>
+        <span class="dash-grant-pace">${UI.esc(g.paceLabel)}</span>
       </div>`;
-    gBody.appendChild(row);
+    grants.appendChild(row);
   });
-  grantCard.appendChild(gBody);
+  grants.insertAdjacentHTML('beforeend', `<div class="dash-foot">${UI.esc(data.grantFooter)}</div>`);
+  left.appendChild(grants);
 
-  const left = document.createElement('div');
-  left.appendChild(queueCard);
-  left.appendChild(grantCard);
+  // ---- Where the money sits ----
 
-  const right = document.createElement('div');
-  const fundCard = document.createElement('div');
-  fundCard.className = 'card';
-  fundCard.innerHTML = `<div class="card-head"><span class="card-title">Top funds</span></div>`;
-  const fBody = document.createElement('div');
-  fBody.style.padding = '12px 16px';
-  data.funds.forEach(f => {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:12px;';
-    row.innerHTML = `<span>${UI.esc(f.name)}</span><span style="font-family:'IBM Plex Mono',monospace;">${UI.esc(f.value)}</span>`;
-    fBody.appendChild(row);
+  const funds = card('Where the money sits', data.fundHint);
+  data.funds.forEach((f) => {
+    const row = document.createElement('a');
+    row.href = f.href;
+    row.className = 'dash-row dash-fund';
+    row.innerHTML = `
+      <div class="dash-fund-head">
+        <span class="dash-fund-name">${UI.esc(f.name)}</span>
+        <span class="dash-fund-value">${UI.esc(f.value)}</span>
+      </div>
+      <div class="dash-fund-track"><div style="width:${f.pct}%;background:${UI.esc(f.colour)};"></div></div>`;
+    funds.appendChild(row);
   });
-  fundCard.appendChild(fBody);
+  right.appendChild(funds);
 
-  const activityCard = document.createElement('div');
-  activityCard.className = 'card';
-  activityCard.innerHTML = `<div class="card-head"><span class="card-title">Recent activity</span></div>`;
-  const aBody = document.createElement('div');
-  aBody.style.padding = '12px 16px';
-  data.activity.forEach(a => {
-    const row = document.createElement('div');
-    row.style.cssText = 'padding:6px 0;border-bottom:1px solid #F4F3EE;font-size:12px;';
-    row.innerHTML = `<div>${UI.esc(a.what)}</div><div class="muted" style="font-size:11px;">${UI.esc(a.when)} · ${UI.esc(a.who)} · ${UI.esc(a.area)}</div>`;
-    aBody.appendChild(row);
+  // ---- Does the book hold together ----
+
+  const checks = card('Does the book hold together');
+  data.checks.forEach((c) => {
+    const row = document.createElement('a');
+    row.href = c.href;
+    row.className = 'dash-row dash-check';
+    row.innerHTML = `
+      <span class="dash-check-mark ${c.ok ? 'is-ok' : 'is-bad'}">${c.ok ? '✓' : '!'}</span>
+      <div class="dash-check-text">
+        <span class="dash-check-label">${UI.esc(c.label)}</span>
+        <span class="dash-sub">${UI.esc(c.note)}</span>
+      </div>`;
+    checks.appendChild(row);
   });
-  activityCard.appendChild(aBody);
+  right.appendChild(checks);
 
-  right.appendChild(fundCard);
-  right.appendChild(activityCard);
+  // ---- Recent changes to the rules ----
 
-  grid.appendChild(left);
-  grid.appendChild(right);
+  const rules = card('Recent changes to the rules', 'Audit log');
+  data.activity.forEach((a) => {
+    rules.insertAdjacentHTML('beforeend', `
+      <div class="dash-row dash-rule">
+        <span class="dash-rule-what">${UI.esc(a.what)}</span>
+        <span class="dash-rule-meta">${UI.esc(a.meta)}</span>
+      </div>`);
+  });
+  rules.insertAdjacentHTML('beforeend', `<div class="dash-foot"><a href="/settings?section=Audit+log">Open the full audit log →</a></div>`);
+  right.appendChild(rules);
+
+  grid.append(left, right);
   app.appendChild(grid);
+
+  // ---- Board pack ----
+
+  async function openBoardPack() {
+    const bp = await UI.fetchJSON('/api/dashboard/board-pack');
+
+    UI.drawer(bp.title, `
+      <div class="bp">
+        <div class="bp-meta">${UI.esc(bp.meta)}</div>
+        <p class="bp-intro">${UI.esc(bp.intro)}</p>
+        <div class="bp-headline">
+          ${bp.headline.map((h) => `
+            <div class="bp-cell">
+              <span class="bp-cell-label">${UI.esc(h.label)}</span>
+              <span class="bp-cell-value">${UI.esc(h.value)}</span>
+              <span class="bp-cell-note">${UI.esc(h.note)}</span>
+            </div>`).join('')}
+        </div>
+        <div class="bp-head"><span>Contents</span><span class="bp-head-note">${UI.esc(bp.attention)}</span></div>
+        ${bp.sections.map((s) => `
+          <div class="bp-section">
+            <span class="bp-no">${UI.esc(s.no)}</span>
+            <span class="bp-name">${UI.esc(s.name)}</span>
+            <span class="bp-figure">${UI.esc(s.figure)}</span>
+          </div>`).join('')}
+        <div class="bp-head bp-head-tint"><span>Matters for the board</span></div>
+        ${bp.risks.map((r) => `
+          <div class="bp-risk">
+            <div class="bp-risk-text">
+              <span class="bp-risk-area">${UI.esc(r.area)}</span>
+              <span class="bp-risk-note">${UI.esc(r.note)}</span>
+            </div>
+            <span class="bp-state ${r.ok ? 'is-ok' : 'is-att'}">${r.ok ? 'In order' : 'Attention'}</span>
+          </div>`).join('')}
+      </div>
+      <div class="bp-foot">
+        <span class="bp-foot-note">${UI.esc(bp.footer)}</span>
+        <button type="button" class="btn btn-primary" id="bp-print">Print</button>
+      </div>`, { wide: true });
+
+    // The browser's print dialog also saves to PDF, which is what "Export PDF"
+    // needs until a server-side renderer exists.
+    document.getElementById('bp-print').addEventListener('click', () => window.print());
+  }
 })();

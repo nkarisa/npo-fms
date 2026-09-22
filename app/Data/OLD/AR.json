@@ -1,0 +1,377 @@
+[
+    {
+        "no": "INV-26-0044",
+        "donor": "UNDP Kenya",
+        "grantRef": "UNDP/BASKET/2026",
+        "type": "Grant claim",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "issue": "22 Aug 2026",
+        "due": "21 Sep 2026",
+        "dueIn": 26,
+        "ccy": "KES",
+        "amount": 9250000,
+        "received": 0,
+        "status": "Draft",
+        "basis": "Milestone claim — county tally centre rollout, signed off by the programme director.",
+        "lines": [
+            {
+                "code": "4110",
+                "desc": "Tally centre equipment and connectivity",
+                "amount": 5400000
+            },
+            {
+                "code": "4110",
+                "desc": "County coordinator stipends — 14 counties",
+                "amount": 2450000
+            },
+            {
+                "code": "4110",
+                "desc": "Indirect cost recovery at 7%",
+                "amount": 1400000
+            }
+        ],
+        "receipts": [],
+        "trail": [
+            {
+                "when": "22 Aug",
+                "what": "Draft raised from grant budget by M. Otieno"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0045",
+        "donor": "Safaricom Foundation",
+        "grantRef": "SAFFDN/CE-2026",
+        "type": "Grant claim",
+        "program": "Civic Education",
+        "fund": "Grant Fund",
+        "issue": "26 Aug 2026",
+        "due": "30 Sep 2026",
+        "dueIn": 33,
+        "ccy": "KES",
+        "amount": 2400000,
+        "received": 0,
+        "status": "Draft",
+        "basis": "First claim against the 2026 civic education agreement.",
+        "lines": [
+            {
+                "code": "4110",
+                "desc": "Voter education materials — print run",
+                "amount": 1560000
+            },
+            {
+                "code": "4110",
+                "desc": "Radio spots, 6 stations",
+                "amount": 840000
+            }
+        ],
+        "receipts": [],
+        "trail": [
+            {
+                "when": "26 Aug",
+                "what": "Draft raised by J. Achieng"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0041",
+        "donor": "USAID / Uraia",
+        "grantRef": "USAID/URAIA/2026",
+        "type": "Grant claim",
+        "program": "Election Observation",
+        "fund": "Grant Fund",
+        "issue": "05 Aug 2026",
+        "due": "04 Sep 2026",
+        "dueIn": 9,
+        "ccy": "USD",
+        "fx": 129.4,
+        "amountFc": 220000,
+        "amount": 28468000,
+        "received": 0,
+        "status": "Issued",
+        "basis": "Q3 cost reimbursement — actuals per the general ledger, certified by the Finance Manager.",
+        "lines": [
+            {
+                "code": "4110",
+                "desc": "Observer deployment — field costs",
+                "amount": 18400000
+            },
+            {
+                "code": "4110",
+                "desc": "Call centre and data costs",
+                "amount": 6600000
+            },
+            {
+                "code": "4110",
+                "desc": "Programme staff time apportioned",
+                "amount": 3468000
+            }
+        ],
+        "receipts": [],
+        "trail": [
+            {
+                "when": "04 Aug",
+                "what": "Claim assembled from ledger by M. Otieno"
+            },
+            {
+                "when": "05 Aug",
+                "what": "Issued to donor by W. Kamau"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0042",
+        "donor": "EU Delegation",
+        "grantRef": "EU/CE-2026/14",
+        "type": "Cost reimbursement",
+        "program": "Civic Education",
+        "fund": "Grant Fund",
+        "issue": "08 Aug 2026",
+        "due": "07 Sep 2026",
+        "dueIn": 12,
+        "ccy": "EUR",
+        "fx": 139.8,
+        "amountFc": 96000,
+        "amount": 13420800,
+        "received": 0,
+        "status": "Issued",
+        "basis": "Interim claim; expenditure verification certificate to follow above EUR 100,000.",
+        "lines": [
+            {
+                "code": "4110",
+                "desc": "County forums — venue and facilitation",
+                "amount": 8940000
+            },
+            {
+                "code": "4110",
+                "desc": "Monitoring and evaluation",
+                "amount": 3120000
+            },
+            {
+                "code": "4110",
+                "desc": "Visibility and publications",
+                "amount": 1360800
+            }
+        ],
+        "receipts": [],
+        "trail": [
+            {
+                "when": "07 Aug",
+                "what": "Claim prepared by S. Njeri"
+            },
+            {
+                "when": "08 Aug",
+                "what": "Issued to donor by W. Kamau"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0038",
+        "donor": "DANIDA",
+        "grantRef": "DANIDA/CE-2025/27",
+        "type": "Grant claim",
+        "program": "Civic Education",
+        "fund": "Grant Fund",
+        "issue": "28 Jul 2026",
+        "due": "27 Aug 2026",
+        "dueIn": -1,
+        "ccy": "KES",
+        "amount": 12400000,
+        "received": 6000000,
+        "status": "Part received",
+        "basis": "Second tranche claim; donor pays in two instalments on receipt of the interim report.",
+        "lines": [
+            {
+                "code": "4110",
+                "desc": "Civic education roadshows — 8 counties",
+                "amount": 7800000
+            },
+            {
+                "code": "4110",
+                "desc": "Community radio partnerships",
+                "amount": 3200000
+            },
+            {
+                "code": "4110",
+                "desc": "Indirect cost recovery at 12%",
+                "amount": 1400000
+            }
+        ],
+        "receipts": [
+            {
+                "when": "20 Aug",
+                "ref": "KCB/2026/40311",
+                "amount": 6000000,
+                "note": "First instalment received"
+            }
+        ],
+        "trail": [
+            {
+                "when": "27 Jul",
+                "what": "Claim prepared by S. Njeri"
+            },
+            {
+                "when": "28 Jul",
+                "what": "Issued to donor by W. Kamau"
+            },
+            {
+                "when": "20 Aug",
+                "what": "Part receipt of 6,000,000 posted to 1110"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0035",
+        "donor": "County Government of Kisumu",
+        "grantRef": "—",
+        "type": "Other income",
+        "program": "Shared services",
+        "fund": "General Fund",
+        "issue": "15 Jul 2026",
+        "due": "14 Aug 2026",
+        "dueIn": -14,
+        "ccy": "KES",
+        "amount": 1850000,
+        "received": 0,
+        "status": "Issued",
+        "basis": "Services under the county MoU — voter register verification support.",
+        "lines": [
+            {
+                "code": "4210",
+                "desc": "Technical support — register verification",
+                "amount": 1850000
+            }
+        ],
+        "receipts": [],
+        "trail": [
+            {
+                "when": "15 Jul",
+                "what": "Invoice issued by J. Achieng"
+            },
+            {
+                "when": "18 Aug",
+                "what": "First reminder sent"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0031",
+        "donor": "Konrad Adenauer Stiftung",
+        "grantRef": "KAS/2025-KE",
+        "type": "Grant claim",
+        "program": "Governance Advocacy",
+        "fund": "General Fund",
+        "issue": "30 Jun 2026",
+        "due": "30 Jul 2026",
+        "dueIn": -29,
+        "ccy": "KES",
+        "amount": 4800000,
+        "received": 0,
+        "status": "Issued",
+        "basis": "Award suspended pending the June monitoring finding — payment withheld by the funder.",
+        "lines": [
+            {
+                "code": "4110",
+                "desc": "Political party dialogue forums — Q2",
+                "amount": 4160000
+            },
+            {
+                "code": "4110",
+                "desc": "Indirect cost recovery",
+                "amount": 640000
+            }
+        ],
+        "receipts": [],
+        "trail": [
+            {
+                "when": "30 Jun",
+                "what": "Claim issued by P. Mwangi"
+            },
+            {
+                "when": "12 Aug",
+                "what": "Donor confirmed payment held pending finding Q-2026-04"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0029",
+        "donor": "Ford Foundation",
+        "grantRef": "FORD/GA-24",
+        "type": "Grant claim",
+        "program": "Governance Advocacy",
+        "fund": "Grant Fund",
+        "issue": "12 Jun 2026",
+        "due": "12 Jul 2026",
+        "dueIn": -47,
+        "ccy": "KES",
+        "amount": 3150000,
+        "received": 3150000,
+        "status": "Received",
+        "basis": "Final claim on the 2024–26 award.",
+        "lines": [
+            {
+                "code": "4110",
+                "desc": "Advocacy convenings — final quarter",
+                "amount": 2700000
+            },
+            {
+                "code": "4110",
+                "desc": "Audit and closeout costs",
+                "amount": 450000
+            }
+        ],
+        "receipts": [
+            {
+                "when": "09 Jul",
+                "ref": "KCB/2026/40188",
+                "amount": 3150000,
+                "note": "Settled in full"
+            }
+        ],
+        "trail": [
+            {
+                "when": "12 Jun",
+                "what": "Claim issued by P. Mwangi"
+            },
+            {
+                "when": "09 Jul",
+                "what": "Receipt posted and deferred income released"
+            }
+        ]
+    },
+    {
+        "no": "INV-26-0020",
+        "donor": "Uraia Trust",
+        "grantRef": "—",
+        "type": "Other income",
+        "program": "Shared services",
+        "fund": "General Fund",
+        "issue": "01 May 2026",
+        "due": "31 May 2026",
+        "dueIn": -89,
+        "ccy": "KES",
+        "amount": 640000,
+        "received": 0,
+        "status": "Written off",
+        "basis": "Sublease of second-floor office space; tenant vacated without settling.",
+        "lines": [
+            {
+                "code": "4220",
+                "desc": "Sublease — March to May 2026",
+                "amount": 640000
+            }
+        ],
+        "receipts": [],
+        "trail": [
+            {
+                "when": "01 May",
+                "what": "Invoice issued by J. Achieng"
+            },
+            {
+                "when": "31 Jul",
+                "what": "Written off to 5340 with Finance Manager approval"
+            }
+        ]
+    }
+]

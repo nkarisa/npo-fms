@@ -1,0 +1,54 @@
+Which role can change the organization settings? If not present create a use with this role.
+
+Transitioning from an lagacy application to this one - System Opening Ledger balances from legacy systems - Done
+
+Build an M-Pesa integration setting - Done
+
+Change Theme color - Done
+
+Archieve old data
+
+Document repository - aws s3 - Done
+
+Setting up bank e.g. KCB and Equity - Deactivating a bank
+
+Check notification pooling 
+
+Entities are not refreshing to their independent data - Done
+
+Dynamic approval flow
+
+User login/Password - Done
+
+OTP - SMS, Email and Authenticator apps - Done
+
+Password management/ Password policy (complexity) and rotation
+
+API Client 
+
+New Instance Set Up Steps - Done
+
+What is the relationship of a user and en entity in this app? - Done
+
+How to test a local development email server - Done
+
+Translate all hints and messages in the application for localization.
+
+App installer 
+
+Implement a consumable feature
+
+Provide permission to restrict who sees what in the settings page - Done
+
+Propose how consolidation works when various entities would use difference currency?
+
+Allow switching a role (a priviledge permission)
+
+Expiry of password after a given period
+Never repeat previous passwords
+
+Maintaince Mode 
+
+Multiple attempts password locking
+
+Show the password complexity policy on the reset-password screen - Done

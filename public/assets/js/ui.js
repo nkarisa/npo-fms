@@ -1,3 +1,25 @@
+/**
+ * Every request to this site says it came from the application's own pages
+ * (X-Requested-With), which the server requires of any change — a form on another
+ * site cannot add the header. And a request refused because the session has ended
+ * goes back to the sign-in page, then returns here. Done once, around fetch, so
+ * uploads and downloads written with fetch directly get both too.
+ */
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+    if (url.origin !== location.origin) return nativeFetch(input, init);
+    const headers = new Headers(init.headers || (typeof input === 'string' ? {} : input.headers));
+    headers.set('X-Requested-With', 'fetch');
+    const res = await nativeFetch(input, { ...init, headers });
+    if (res.status === 401 && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth')) {
+      location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+    }
+    return res;
+  };
+})();
+
 /** Small render helpers shared by every page script. No framework — just fetch + DOM. */
 const UI = (() => {
   const fmtMoney = (n) => {
@@ -8,9 +30,30 @@ const UI = (() => {
     return n < 0 ? `(${s})` : s;
   };
 
+  /**
+   * What this installation calls itself, for a file it names on the way out. The
+   * shell puts it on the document; a file the server names carries it already.
+   */
+  const brand = () => document.documentElement.dataset.brand || 'Finance';
+
+  /** Saves a blob, named by the server's Content-Disposition where it gave one. */
+  function download(blob, fallback, disposition) {
+    const named = /filename="?([^";]+)"?/.exec(disposition || '');
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: named ? named[1] : fallback });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async function fetchJSON(url) {
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    if (!res.ok) {
+      // A refusal explains itself; only fall back to the status code when it does not.
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed: ${res.status}`);
+    }
     return res.json();
   }
 
@@ -83,242 +126,861 @@ const UI = (() => {
     container.appendChild(div);
   }
 
-  // ---- New journal drawer, shared by the Journals and General ledger pages ----
-  const J_TYPE_OPTIONS = ['Standard', 'Accrual', 'Reversing', 'Recurring', 'Adjustment', 'Allocation'];
-  const J_PERIOD_OPTIONS = ['Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026'];
-  const J_PREPARER_OPTIONS = ['J. Achieng', 'M. Otieno', 'S. Njeri', 'P. Mwangi', 'W. Kamau'];
-  const J_PROGRAM_OPTIONS = ['Shared services', 'Election Observation', 'Civic Education', 'Governance Advocacy', 'Youth and Gender Inclusion'];
+  // ---- Journal editor, shared by the Journals, General ledger and dashboard pages ----
+  //
+  // The v5 journal editor, for a new entry or one already in the register. Everything
+  // it offers — periods, document series, linkable records, and the funds and
+  // programmes each award may carry — comes from /api/journals/form; the API applies
+  // the same rules again when the entry is saved, approved or reversed.
 
   let journalDrawer;
-  let accountOptions = null;
-  let grantOptions = null;
+  let jd = null; // { opts, form, journal, ed }
 
-  async function loadAccountOptions() {
-    if (accountOptions) return accountOptions;
-    const data = await fetchJSON('/api/coa');
-    accountOptions = data.accounts
-      .filter(a => a.level === 2 && a.status !== 'Archived')
-      .map(a => ({ code: a.code, label: `${a.code} · ${a.name}` }));
-    return accountOptions;
+  const JD_STATUS_CLASS = { Draft: 'draft', 'Pending approval': 'pending', Posted: 'posted', Reversed: 'reversed', Rejected: 'draft' };
+
+  /** The status pill the register and the editor share. */
+  const statusPill = (status) => `<span class="jr-pill ${JD_STATUS_CLASS[status] || 'draft'}">${esc(status)}</span>`;
+
+  const jdDate = (iso) => iso ? new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+  const jdPeriodOf = (iso) => (jd.form.periods.find(p => p.min <= iso && iso <= p.max) || {}).name || '';
+  const jdGrant = (ref) => jd.form.grants.find(g => g.ref === ref) || null;
+  const jdUnique = (list) => list.filter((v, i, a) => v && a.indexOf(v) === i);
+  const jdOptions = (list, current, label) => list.map(o => {
+    const value = typeof o === 'string' ? o : o.value;
+    return `<option value="${esc(value)}" ${value === current ? 'selected' : ''}>${esc(label ? label(o) : (typeof o === 'string' ? o : o.label))}</option>`;
+  }).join('');
+
+  function jdLine(l) {
+    return { code: '', desc: '', grant: '', grantLabel: '', fund: 'General Fund', program: 'Shared services', dr: '', cr: '', ...l };
   }
 
-  async function loadGrantOptions() {
-    if (grantOptions) return grantOptions;
-    const data = await fetchJSON('/api/grants?status=Active');
-    grantOptions = data.rows || [];
-    return grantOptions;
-  }
+  /** A line in a fund that awards are held in, with no award named. */
+  const jdGap = (l) => !l.grant && jd.form.awardFunds.includes(l.fund);
 
-  function lineRow(line) {
-    const row = document.createElement('div');
-    row.className = 'jd-line';
-    row.style.cssText = 'display:grid;grid-template-columns:160px 1fr 170px 120px 80px 80px 20px;gap:6px;align-items:center;margin-bottom:6px;';
-    const cellStyle = 'width:100%;min-width:0;box-sizing:border-box;';
-    const codeOptions = (accountOptions || []).map(o => `<option value="${o.code}" ${o.code === line?.code ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
-    const grantChoices = (grantOptions || []).map(g => `<option value="${esc(g.ref)}" data-fund="${esc(g.fund)}" data-program="${esc(g.program)}" ${g.ref === line?.grantRef ? 'selected' : ''}>${esc(g.ref)} · ${esc(g.title)}</option>`).join('');
-    row.innerHTML = `
-      <select class="jd-code" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;">
-        <option value="">Select account…</option>
-        ${codeOptions}
-      </select>
-      <input class="jd-desc" placeholder="Line description" value="${esc(line?.desc || '')}" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;">
-      <select class="jd-grant" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 4px;font-size:11.5px;">
-        <option value="">No grant</option>
-        ${grantChoices}
-      </select>
-      <select class="jd-program" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 4px;font-size:11.5px;">${J_PROGRAM_OPTIONS.map(o => `<option ${o === line?.program ? 'selected' : ''}>${o}</option>`).join('')}</select>
-      <input class="jd-dr" type="number" min="0" step="1" placeholder="Debit" value="${line?.dr || ''}" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;text-align:right;">
-      <input class="jd-cr" type="number" min="0" step="1" placeholder="Credit" value="${line?.cr || ''}" style="${cellStyle}border:1px solid #DDDAD2;border-radius:6px;padding:6px 7px;font-size:12px;text-align:right;">
-      <button type="button" class="jd-remove" style="width:100%;border:none;background:transparent;color:#8B948F;cursor:pointer;font-size:13px;">✕</button>`;
-    return row;
-  }
+  const jdStatus = () => jd.journal ? jd.journal.status : 'Draft';
+  /** Posted is immutable: a posted or reversed entry is corrected by reversal, never edited. */
+  const jdLocked = () => ['Posted', 'Reversed'].includes(jdStatus());
+  const jdCan = () => {
+    const { form, journal } = jd;
+    const status = jdStatus();
+    const mine = !journal || journal.preparer === form.preparer;
+    return {
+      save: !jdLocked() && form.canPrepare,
+      submit: status === 'Draft' && form.canPrepare,
+      post: status === 'Pending approval' && form.canApprove && !mine,
+      discard: !!journal && status === 'Draft' && form.canPrepare,
+      reverse: status === 'Posted' && !journal.opening,
+      sodBlocked: status === 'Pending approval' && (!form.canApprove || mine),
+      mine,
+    };
+  };
 
   function buildJournalDrawer() {
     journalDrawer = document.createElement('div');
-    journalDrawer.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(13,27,24,.28);z-index:1000;align-items:flex-start;justify-content:flex-end;';
+    journalDrawer.className = 'jd';
+    journalDrawer.hidden = true;
     journalDrawer.innerHTML = `
-      <div style="background:#fff;width:760px;max-width:100%;height:100%;overflow-y:auto;box-shadow:-16px 0 40px rgba(13,27,24,.12);">
-        <div style="padding:18px 22px 14px;border-bottom:1px solid #EEEDE8;display:flex;align-items:flex-start;gap:12px;">
-          <div>
-            <div style="font-size:10px;letter-spacing:0.09em;text-transform:uppercase;color:#8B948F;">New journal</div>
-            <div style="font-size:16px;font-weight:600;letter-spacing:-0.015em;">Create a journal entry</div>
+      <div class="jd-backdrop" data-close></div>
+      <div class="jd-panel" role="dialog" aria-modal="true" aria-label="Journal">
+        <div class="jd-head">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:9px;">
+              <span class="jd-caps" id="jd-kicker"></span>
+              <span id="jd-status"></span>
+            </div>
+            <span class="jd-caps">Narration</span>
+            <input id="jd-narration" class="jd-narration" placeholder="What this entry records — e.g. Reclassification of printing costs to Civic Education">
           </div>
-          <button type="button" id="jd-close" style="margin-left:auto;border:none;background:transparent;color:#8B948F;font-size:16px;cursor:pointer;">✕</button>
+          <button type="button" class="jd-x" data-close aria-label="Close">✕</button>
         </div>
-        <form id="jd-form" style="padding:18px 22px 24px;display:flex;flex-direction:column;gap:14px;">
-          <div id="jd-error" style="color:#A5442F;font-size:12px;display:none;"></div>
-
-          <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#6E7873;">Narration
-            <input name="narration" required placeholder="What is this entry for?" style="border:1px solid #DDDAD2;border-radius:6px;padding:7px 9px;font-size:12.5px;margin-top:4px;">
-          </label>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-            <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#6E7873;">Date
-              <input name="date" type="date" value="${new Date().toISOString().slice(0, 10)}" style="border:1px solid #DDDAD2;border-radius:6px;padding:7px 9px;font-size:12.5px;margin-top:4px;">
-            </label>
-            <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#6E7873;">Type
-              <select name="type" style="border:1px solid #DDDAD2;border-radius:6px;padding:7px 9px;font-size:12.5px;margin-top:4px;">${J_TYPE_OPTIONS.map(t => `<option>${t}</option>`).join('')}</select>
-            </label>
-            <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#6E7873;">Period
-              <select name="period" style="border:1px solid #DDDAD2;border-radius:6px;padding:7px 9px;font-size:12.5px;margin-top:4px;">${J_PERIOD_OPTIONS.map(p => `<option ${p === 'Aug 2026' ? 'selected' : ''}>${p}</option>`).join('')}</select>
-            </label>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#6E7873;">Preparer
-              <select name="preparer" style="border:1px solid #DDDAD2;border-radius:6px;padding:7px 9px;font-size:12.5px;margin-top:4px;">${J_PREPARER_OPTIONS.map(p => `<option>${p}</option>`).join('')}</select>
-            </label>
-            <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#6E7873;">Supporting document
-              <input name="doc" placeholder="e.g. ELOG/JV/0312" style="border:1px solid #DDDAD2;border-radius:6px;padding:7px 9px;font-size:12.5px;margin-top:4px;">
-            </label>
-          </div>
-          <label style="display:flex;flex-direction:column;gap:5px;font-size:11px;color:#6E7873;">Memo
-            <textarea name="memo" rows="2" style="border:1px solid #DDDAD2;border-radius:6px;padding:8px 9px;font-size:12.5px;resize:vertical;margin-top:4px;"></textarea>
-          </label>
-
-          <div style="height:1px;background:#EEEDE8;"></div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div style="font-size:10px;letter-spacing:0.09em;text-transform:uppercase;color:#8B948F;">Lines</div>
-            <button type="button" id="jd-add-line" class="btn" style="margin-left:auto;padding:4px 10px;">Add line</button>
-          </div>
-          <div style="display:grid;grid-template-columns:160px 1fr 170px 120px 80px 80px 20px;gap:6px;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;color:#A3ABA7;">
-            <span>Account</span><span>Description</span><span>Grant</span><span>Programme</span><span>Debit</span><span>Credit</span><span></span>
-          </div>
-          <div id="jd-lines"></div>
-          <div id="jd-balance" style="font-size:12px;font-weight:600;text-align:right;"></div>
-
-          <div style="display:flex;gap:8px;margin-top:8px;">
-            <button type="button" id="jd-save-draft" class="btn">Save draft</button>
-            <button type="button" id="jd-submit" class="btn btn-primary">Submit for approval</button>
-            <button type="button" id="jd-cancel" class="btn" style="margin-left:auto;">Cancel</button>
-          </div>
-        </form>
+        <div class="jd-meta" id="jd-meta"></div>
+        <div class="jd-body">
+          <div style="overflow-x:auto;"><div style="min-width:1154px;">
+            <div class="jd-grid jd-grid-head jd-caps">
+              <div>Account</div><div>Line description</div><div>Grant / award</div><div>Fund</div><div>Programme</div>
+              <div style="text-align:end;">Debit</div><div style="text-align:end;">Credit</div><div></div>
+            </div>
+            <div id="jd-lines"></div>
+            <div style="padding:9px 12px;border-bottom:1px solid #F0EEE9;" id="jd-add-line-row"><button type="button" class="jd-dashed" id="jd-add-line">+ Add line</button></div>
+            <div class="jd-grid jd-totals">
+              <div></div><div style="padding:0 12px;font-size:12px;font-weight:600;">Totals</div><div></div><div></div><div></div>
+              <div class="jd-total" id="jd-total-dr"></div><div class="jd-total" id="jd-total-cr"></div><div></div>
+            </div>
+          </div></div>
+            <div class="jd-foot">
+              <div id="jd-summary" style="display:flex;flex-direction:column;gap:12px;"></div>
+              <label class="jd-memo">Approval memo
+                <textarea id="jd-memo" rows="2" placeholder="Context for the approver — grant condition, audit reference, correction being made"></textarea>
+              </label>
+              <div style="display:flex;flex-direction:column;gap:7px;">
+                <div class="jd-caps">Supporting evidence</div>
+                <div id="jd-files" style="display:flex;flex-direction:column;gap:7px;"></div>
+                <label class="jd-dashed" id="jd-attach-button" style="align-self:flex-start;"><span id="jd-attach-label"></span>
+                  <input type="file" id="jd-attach" multiple hidden>
+                </label>
+                <span class="jd-note" id="jd-files-note" style="font-size:11px;">The reference points at the record; the audit file wants the document itself — invoice, board minute or funder letter.</span>
+              </div>
+              <div id="jd-trail" style="display:flex;flex-direction:column;gap:7px;"></div>
+            </div>
+        </div>
+        <div class="jd-actions" id="jd-actions"></div>
       </div>`;
     document.body.appendChild(journalDrawer);
 
-    const linesBox = journalDrawer.querySelector('#jd-lines');
-    linesBox.addEventListener('input', updateBalance);
+    const $ = (id) => journalDrawer.querySelector('#' + id);
+
+    journalDrawer.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeJournalDrawer(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !journalDrawer.hidden) closeJournalDrawer(); });
+    // Any edit marks the entry changed, so approval never posts something other than what was saved.
+    journalDrawer.querySelector('.jd-panel').addEventListener('input', (e) => { if (jd && !e.target.closest('#jd-actions')) jd.dirty = true; });
+    journalDrawer.querySelector('.jd-panel').addEventListener('change', (e) => { if (jd && !e.target.closest('#jd-actions')) jd.dirty = true; });
+
+    $('jd-narration').addEventListener('input', (e) => { jd.ed.narration = e.target.value; });
+    $('jd-memo').addEventListener('input', (e) => { jd.ed.memo = e.target.value; });
+
+    // ---- Header: period, posting date, type, source document ----
+    $('jd-meta').addEventListener('change', (e) => {
+      const ed = jd.ed;
+      const form = jd.form;
+      if (e.target.id === 'jd-period') {
+        const period = form.periods.find(p => p.name === e.target.value);
+        if (period.closed && !form.allowClosed) {
+          toast(`${period.name} is closed to further posting.`);
+        } else {
+          // Keep the day of the month, within the new period.
+          const day = ed.date.slice(8);
+          ed.period = period.name;
+          ed.date = period.min.slice(0, 8) + (day <= period.max.slice(8) ? day : period.max.slice(8));
+        }
+      } else if (e.target.id === 'jd-date') {
+        const iso = e.target.value;
+        const period = jdPeriodOf(iso);
+        if (period && period !== ed.period) {
+          toast(`The posting date must fall within ${ed.period}. Change the period first if the entry belongs in ${period}.`);
+        } else if (iso) {
+          ed.date = iso;
+        }
+      } else if (e.target.id === 'jd-type') {
+        ed.type = e.target.value;
+      } else if (e.target.id === 'jd-doc') {
+        ed.docLink = e.target.value;
+      }
+      renderJournalMeta();
+      renderJournalFiles();
+    });
+
+    // ---- Lines ----
+    const linesBox = $('jd-lines');
+    linesBox.addEventListener('input', (e) => {
+      const row = e.target.closest('.jd-row');
+      if (!row) return;
+      const l = jd.ed.lines[+row.dataset.i];
+      if (e.target.name === 'desc') l.desc = e.target.value;
+      if (e.target.name === 'dr' || e.target.name === 'cr') {
+        const other = e.target.name === 'dr' ? 'cr' : 'dr';
+        e.target.value = e.target.value.replace(/[^0-9.]/g, '');
+        l[e.target.name] = e.target.value;
+        // A line is a debit or a credit, never both.
+        if (e.target.value) { l[other] = ''; row.querySelector(`[name=${other}]`).value = ''; }
+        renderJournalSummary();
+      }
+    });
     linesBox.addEventListener('change', (e) => {
-      if (!e.target.classList.contains('jd-grant')) return;
-      const selected = e.target.selectedOptions[0];
-      const row = e.target.closest('.jd-line');
-      if (selected.value) {
-        row.dataset.fund = selected.dataset.fund;
-        row.querySelector('.jd-program').value = selected.dataset.program;
-      } else {
-        delete row.dataset.fund;
-        row.querySelector('.jd-program').value = 'Shared services';
+      const row = e.target.closest('.jd-row');
+      if (!row) return;
+      const i = +row.dataset.i;
+      const l = jd.ed.lines[i];
+      const value = e.target.value;
+      if (e.target.name === 'code') l.code = value;
+      if (e.target.name === 'fund') l.fund = value;
+      if (e.target.name === 'grant') {
+        // The award decides which funds and programmes the line may carry.
+        const g = jdGrant(value);
+        l.grant = value;
+        l.grantLabel = g ? g.label : '';
+        if (g) {
+          if (!g.funds.includes(l.fund)) l.fund = g.funds[0];
+          if (!g.programmes.includes(l.program)) l.program = g.programmes[0];
+        } else {
+          l.fund = 'General Fund';
+        }
+      }
+      if (e.target.name === 'program') {
+        const g = jdGrant(l.grant);
+        l.program = value;
+        if (g && !g.programmes.includes(value)) { l.grant = ''; l.grantLabel = ''; }
+      }
+      if (['grant', 'program', 'fund'].includes(e.target.name)) {
+        row.replaceWith(renderJournalLine(l, i));
+        renderJournalSummary();
       }
     });
     linesBox.addEventListener('click', (e) => {
-      if (e.target.classList.contains('jd-remove') && linesBox.children.length > 2) {
-        e.target.closest('.jd-line').remove();
-        updateBalance();
-      }
+      if (!e.target.classList.contains('jd-remove')) return;
+      jd.ed.lines.splice(+e.target.closest('.jd-row').dataset.i, 1);
+      jd.dirty = true;
+      renderJournalLines();
     });
-    journalDrawer.querySelector('#jd-add-line').addEventListener('click', () => {
-      linesBox.appendChild(lineRow());
-      updateBalance();
+    $('jd-add-line').addEventListener('click', () => {
+      jd.ed.lines.push(jdLine({ code: jdDefaultCode('5310') }));
+      jd.dirty = true;
+      renderJournalLines();
     });
-    journalDrawer.querySelector('#jd-close').addEventListener('click', closeJournalDrawer);
-    journalDrawer.querySelector('#jd-cancel').addEventListener('click', closeJournalDrawer);
-    journalDrawer.addEventListener('click', (e) => { if (e.target === journalDrawer) closeJournalDrawer(); });
 
-    function updateBalance() {
-      const dr = [...linesBox.querySelectorAll('.jd-dr')].reduce((a, el) => a + (parseFloat(el.value) || 0), 0);
-      const cr = [...linesBox.querySelectorAll('.jd-cr')].reduce((a, el) => a + (parseFloat(el.value) || 0), 0);
-      const bal = journalDrawer.querySelector('#jd-balance');
-      const balanced = dr === cr && dr > 0;
-      if (balanced) {
-        bal.style.color = '#2C6B58';
-        bal.textContent = `Balanced · ${fmtMoney(dr)} each side`;
+    // ---- Supporting evidence ----
+    $('jd-attach').addEventListener('change', (e) => {
+      jd.ed.files.push(...e.target.files);
+      e.target.value = '';
+      renderJournalFiles();
+    });
+    $('jd-files').addEventListener('click', (e) => {
+      const button = e.target.closest('.jd-remove');
+      if (!button) return;
+      e.preventDefault();
+      if (button.dataset.kept !== undefined) {
+        jd.ed.removed.push(+button.dataset.kept);
       } else {
-        bal.style.color = '#A5442F';
-        bal.textContent = `Out of balance by ${fmtMoney(Math.abs(dr - cr))} · debits ${fmtMoney(dr)}, credits ${fmtMoney(cr)}`;
+        jd.ed.files.splice(+button.dataset.i, 1);
       }
-      // Debits must equal credits before either save action is allowed — no exception for drafts.
-      journalDrawer.querySelector('#jd-save-draft').disabled = !balanced;
-      journalDrawer.querySelector('#jd-submit').disabled = !balanced;
+      jd.dirty = true;
+      renderJournalFiles();
+    });
+
+    // ---- Footer actions ----
+    $('jd-actions').addEventListener('click', (e) => {
+      const action = e.target.closest('[data-action]');
+      if (!action || action.disabled) return;
+      ({
+        'save-draft': () => submitJournal('Draft'),
+        submit: () => submitJournal('Pending approval'),
+        post: approveJournal,
+        reject: () => renderJournalActions(true),
+        'reject-cancel': () => renderJournalActions(false),
+        'reject-confirm': rejectJournal,
+        discard: discardJournal,
+        reverse: reverseJournal,
+      })[action.dataset.action]();
+    });
+  }
+
+  const jdDefaultCodeFor = (form, code) => form.accounts.some(a => a.code === code) ? code : (form.accounts[0] || {}).code || '';
+  const jdDefaultCode = (code) => jdDefaultCodeFor(jd.form, code);
+
+  function renderJournalHead() {
+    const { journal, form } = jd;
+    const $ = (id) => journalDrawer.querySelector('#' + id);
+    $('jd-kicker').textContent = journal ? `Journal · ${journal.ref}` : `New journal · ${form.ref}`;
+    $('jd-status').innerHTML = statusPill(jdStatus());
+    $('jd-narration').value = jd.ed.narration;
+    $('jd-narration').readOnly = !jdCan().save;
+    $('jd-memo').value = jd.ed.memo;
+    $('jd-memo').readOnly = !jdCan().save;
+    $('jd-memo').placeholder = jdCan().save ? 'Context for the approver — grant condition, audit reference, correction being made' : 'No memo.';
+    $('jd-add-line-row').hidden = !jdCan().save;
+    $('jd-attach-button').hidden = !jdCan().save;
+  }
+
+  function renderJournalMeta() {
+    const { form, ed, journal } = jd;
+    const disabled = jdCan().save ? '' : 'disabled';
+    const period = form.periods.find(p => p.name === ed.period) || { name: ed.period, min: ed.date, max: ed.date, closed: true };
+    const open = form.periods.filter(p => !p.closed).map(p => p.name);
+    const periodOptions = jdUnique(form.periods.filter(p => !p.closed || p.name === ed.period || form.allowClosed).map(p => p.name).concat([ed.period]));
+    const periodNote = jdLocked()
+      ? `${journal.status} in ${period.name}`
+      : period.closed
+        ? (form.allowClosed ? `${period.name} is closed — posting is permitted only because the control allows it` : `${period.name} is closed — this entry cannot be posted`)
+        : (open.length ? `Open for posting: ${open.join(', ')}` : 'No period is open for posting');
+
+    // A link the register no longer offers (the entry's own reference, or the record that raised it) stays selectable.
+    const known = ed.docLink === 'auto' || form.documents.some(d => d.value === ed.docLink);
+    const docs = [{ value: 'auto', label: 'Manual — auto-numbered' }]
+      .concat(known ? [] : [{ value: ed.docLink, label: (journal && journal.doc) || 'Linked record' }])
+      .concat(form.documents);
+    const doc = form.documents.find(d => d.value === ed.docLink);
+    const [kind, key] = ed.docLink.split(':');
+    const docNote = ed.docLink === 'auto'
+      ? (journal && journal.docLink === 'auto' && journal.doc ? journal.doc : `${form.docRefs[ed.type]} · next in the series`)
+      : doc ? doc.note
+      : kind === 'recurring' ? `Generated from recurring template ${key} · ${journal.doc}`
+      : kind === 'module' ? `Raised by ${key.replace(/_/g, ' ')} from ${journal.doc || 'its source record'}`
+      : (journal && journal.doc) || 'Reference carried from the source ledger';
+
+    const preparer = journal ? journal.preparer : form.preparer;
+    const preparerNote = jdCan().mine ? 'You · recorded from your sign-in' : 'Cannot be reassigned';
+
+    journalDrawer.querySelector('#jd-meta').innerHTML = `
+      <label class="jd-field">Period
+        <select id="jd-period" ${disabled}>${jdOptions(periodOptions, ed.period)}</select>
+        <span class="jd-note ${period.closed && !form.allowClosed && !jdLocked() ? 'warn' : ''}">${esc(periodNote)}</span>
+      </label>
+      <label class="jd-field">Posting date
+        <input type="date" id="jd-date" value="${esc(ed.date)}" min="${esc(period.min)}" max="${esc(period.max)}" ${disabled}>
+        <span class="jd-note">${jdLocked() ? esc(jdDate(ed.date)) : `Any day in ${esc(period.name)} · ${esc(jdDate(period.min))} to ${esc(jdDate(period.max))}`}</span>
+      </label>
+      <label class="jd-field">Journal type
+        <select id="jd-type" ${disabled}>${jdOptions(jdUnique(form.types.concat([ed.type])), ed.type)}</select>
+      </label>
+      <label class="jd-field">Source document
+        <select id="jd-doc" style="max-width:290px;" ${disabled}>${jdOptions(docs, ed.docLink)}</select>
+        <span class="jd-note">${esc(docNote)}</span>
+      </label>
+      <label class="jd-field">Prepared by
+        <div class="jd-preparer">
+          <span style="font-size:12.5px;font-weight:500;color:#28352F;text-transform:none;letter-spacing:0;">${esc(preparer)}</span>
+          <span style="margin-inline-start:auto;font-size:10px;color:#8B948F;text-transform:none;letter-spacing:0;">${esc(preparerNote)}</span>
+        </div>
+      </label>`;
+  }
+
+  function renderJournalLine(l, i) {
+    const { form } = jd;
+    const disabled = jdCan().save ? '' : 'disabled';
+    const g = jdGrant(l.grant);
+    const grants = [{ value: '', label: 'Unassigned' }]
+      .concat(l.grant && !g ? [{ value: l.grant, label: l.grantLabel || l.grant }] : [])
+      .concat(form.grants.map(x => ({ value: x.ref, label: x.label })));
+    const funds = jdUnique((g ? g.funds : form.funds).concat([l.fund]));
+    const programmes = jdUnique((g ? g.programmes : form.programmes).concat([l.program]));
+    const accounts = form.accounts.some(a => a.code === l.code) ? form.accounts : [{ code: l.code, label: l.code }].concat(form.accounts);
+
+    const row = document.createElement('div');
+    row.className = 'jd-grid jd-row';
+    row.dataset.i = i;
+    row.innerHTML = `
+      <div><select name="code" class="jd-cell mono" ${disabled}>${jdOptions(accounts.map(a => ({ value: a.code, label: a.label })), l.code)}</select></div>
+      <div><input name="desc" class="jd-cell text" value="${esc(l.desc)}" placeholder="Description" ${disabled}></div>
+      <div><select name="grant" class="jd-cell ${jdGap(l) ? 'gap' : ''}" ${disabled}>${jdOptions(grants, l.grant)}</select></div>
+      <div title="${g && g.funds.length === 1 ? 'Fixed by the agreement' : ''}"><select name="fund" class="jd-cell" ${disabled}>${jdOptions(funds, l.fund)}</select></div>
+      <div><select name="program" class="jd-cell" ${disabled}>${jdOptions(programmes, l.program)}</select></div>
+      <div><input name="dr" class="jd-cell amount" inputmode="decimal" value="${esc(l.dr)}" placeholder="—" ${disabled}></div>
+      <div><input name="cr" class="jd-cell amount" inputmode="decimal" value="${esc(l.cr)}" placeholder="—" ${disabled}></div>
+      <div style="display:flex;align-items:center;justify-content:center;padding:0;">${disabled ? '' : '<button type="button" class="jd-remove" aria-label="Remove line">✕</button>'}</div>`;
+    return row;
+  }
+
+  function renderJournalLines() {
+    const box = journalDrawer.querySelector('#jd-lines');
+    box.replaceChildren(...jd.ed.lines.map(renderJournalLine));
+    renderJournalSummary();
+  }
+
+  function renderJournalSummary() {
+    const { ed } = jd;
+    if (journalDrawer.querySelector('#jd-files-note')) renderJournalFiles();
+    const $ = (id) => journalDrawer.querySelector('#' + id);
+    const dr = ed.lines.reduce((a, l) => a + (parseFloat(l.dr) || 0), 0);
+    const cr = ed.lines.reduce((a, l) => a + (parseFloat(l.cr) || 0), 0);
+    const balanced = dr === cr && dr > 0;
+    const gaps = ed.lines.filter(jdGap).length;
+    const grantsUsed = jdUnique(ed.lines.map(l => l.grant)).map(ref => (jdGrant(ref) || {}).label || (ed.lines.find(l => l.grant === ref) || {}).grantLabel || ref);
+    const funds = jdUnique(ed.lines.map(l => l.fund));
+
+    $('jd-total-dr').textContent = fmtMoney(dr);
+    $('jd-total-cr').textContent = fmtMoney(cr);
+
+    let html = balanced
+      ? `<div class="jd-msg ok">✓ Entry balances. Debits equal credits at ${fmtMoney(dr)}.</div>`
+      : (dr > 0 || cr > 0)
+        ? `<div class="jd-msg warn">Out of balance by ${fmtMoney(Math.abs(dr - cr))}. The entry cannot be saved or submitted until debits equal credits.</div>`
+        : '<div class="jd-msg idle">Enter the debit and credit amounts. The entry can be submitted once both sides agree.</div>';
+    if (gaps > 0) {
+      html += `<div class="jd-msg warn stack">
+        <span>${gaps === 1 ? 'One line charges a restricted fund with no grant against it.' : `${gaps} lines charge a restricted fund with no grant against them.`}</span>
+        <span style="color:#9A7A55;font-size:11.5px;">Restricted funds report by award. Without a grant on the line the cost cannot be claimed on a donor report.</span>
+      </div>`;
+    } else if (grantsUsed.length > 1) {
+      html += `<div class="jd-small">Split across ${grantsUsed.length} awards · ${esc(grantsUsed.join(', '))}</div>`;
     }
-    journalDrawer._updateBalance = updateBalance;
+    html += `<div class="jd-small">Ledger fund follows the award · ${esc(funds.join(', ') || 'no fund yet')}</div>`;
+    $('jd-summary').innerHTML = html;
+
+    // Debits must equal credits before either save action is allowed — no exception for drafts.
+    const set = (action, disabled) => { const b = $('jd-actions').querySelector(`[data-action="${action}"]`); if (b) b.disabled = disabled; };
+    set('save-draft', !balanced);
+    set('submit', !balanced || gaps > 0);
+    set('post', !balanced || gaps > 0);
+  }
+
+  function renderJournalFiles() {
+    const { ed } = jd;
+    const editable = jdCan().save;
+    // What went for approval stays in front of the approver until the entry is taken
+    // back to draft (JournalRepository::update refuses the removal too).
+    const submitted = jdStatus() === 'Pending approval';
+    const size = (b) => b < 1024000 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1)} MB`;
+    const kept = ed.attachments.filter(a => !ed.removed.includes(a.id));
+    const ref = jd.journal ? encodeURIComponent(jd.journal.ref) : '';
+    journalDrawer.querySelector('#jd-files').innerHTML = kept.map(a => `
+      <a class="jd-file" href="/api/journals/${ref}/attachments/${a.id}" style="text-decoration:none;color:inherit;">
+        <span class="jd-file-name">${esc(a.name)}</span>
+        <span class="jd-file-size">${esc(a.size)}</span>
+        ${editable && !submitted ? `<button type="button" class="jd-remove" data-kept="${a.id}" aria-label="Remove ${esc(a.name)}">✕</button>` : ''}
+      </a>`).join('') + ed.files.map((f, i) => `
+      <div class="jd-file">
+        <span class="jd-file-name">${esc(f.name)}</span>
+        <span class="jd-file-size">${size(f.size)}</span>
+        <button type="button" class="jd-remove" data-i="${i}" aria-label="Remove ${esc(f.name)}">✕</button>
+      </div>`).join('');
+    const count = kept.length + ed.files.length;
+    journalDrawer.querySelector('#jd-attach-label').textContent = count ? '+ Attach another document' : '+ Attach the supporting document';
+    const note = journalDrawer.querySelector('#jd-files-note');
+    const needed = jdDocumentNeeded();
+    note.hidden = count > 0 && !(editable && submitted && kept.length);
+    note.classList.toggle('warn', editable && !!needed && !count);
+    note.textContent = editable && submitted && kept.length ? 'The documents it was submitted with stay while it awaits approval. Save it as a draft to remove one.'
+      : !editable ? 'No supporting document is attached.'
+      : needed || 'The reference points at the record; the audit file wants the document itself — invoice, board minute or funder letter.';
+  }
+
+  /**
+   * Why this entry needs a supporting document before it goes for approval, or ''
+   * (JournalRepository::documentRule): a manual entry above the threshold, or of a
+   * type that always needs one. A reversal and an entry raised from a record have
+   * that record behind them.
+   */
+  function jdDocumentNeeded() {
+    const { ed, form } = jd;
+    const rule = form.documentRule || { threshold: 0, types: [] };
+    const manual = !(jd.journal && jd.journal.reversalOf) && (ed.docLink === 'auto' || ed.docLink.startsWith('existing:'));
+    if (!manual) return '';
+    const dr = ed.lines.reduce((a, l) => a + (parseFloat(l.dr) || 0), 0);
+    if (rule.types.includes(ed.type)) return `Required before submitting: an ${ed.type.toLowerCase()} journal goes for approval only with the document that supports it — a board minute, a reconciliation or the auditor's note.`;
+    if (rule.threshold > 0 && dr > rule.threshold) return `Required before submitting: this entry is ${fmtMoney(dr)}, above the ${fmtMoney(rule.threshold)} at which a journal needs its supporting document. A draft can be saved without it.`;
+    return '';
+  }
+
+  function renderJournalTrail() {
+    const trail = jd.journal ? jd.journal.trail || [] : [];
+    journalDrawer.querySelector('#jd-trail').innerHTML = trail.length ? `
+      <div class="jd-caps">Audit trail</div>
+      ${trail.map(t => `<div style="display:flex;gap:10px;font-size:12px;color:#3E4A44;"><span style="color:#A3ABA7;font-family:'IBM Plex Mono',monospace;font-size:11px;min-width:78px;">${esc(t.when)}</span>${esc(t.what)}</div>`).join('')}` : '';
+  }
+
+  /** The footer: what the acting user may do with the entry in its current status. */
+  function renderJournalActions(rejecting) {
+    const { journal, form } = jd;
+    const can = jdCan();
+    const box = journalDrawer.querySelector('#jd-actions');
+
+    if (rejecting) {
+      box.innerHTML = `
+        <input id="jd-reject-reason" class="jd-reason" placeholder="Reason for returning ${esc(journal.ref)} to ${esc(journal.preparer)} — kept on the audit trail">
+        <span class="jd-error" id="jd-error" hidden></span>
+        <div style="margin-inline-start:auto;display:flex;align-items:center;gap:9px;">
+          <button type="button" class="btn" data-action="reject-cancel">Cancel</button>
+          <button type="button" class="btn btn-primary" data-action="reject-confirm">Return to draft</button>
+        </div>`;
+      box.querySelector('#jd-reject-reason').focus();
+      return;
+    }
+
+    const sodNote = can.mine
+      ? 'You prepared this entry. Approval has to come from someone else — switch actor in the account menu.'
+      : `${form.role} may prepare and submit, but not post. ${journal ? journal.preparer : 'The preparer'} is waiting on an approver.`;
+
+    box.innerHTML = `
+      ${can.sodBlocked ? `<span class="jd-sod">◐ Prepared by ${esc(journal.preparer)}. ${esc(sodNote)}</span>` : ''}
+      ${can.discard ? '<button type="button" class="btn jd-quiet" data-action="discard">Discard</button>' : ''}
+      ${can.reverse ? '<button type="button" class="btn jd-quiet" data-action="reverse">Reverse entry</button>' : ''}
+      <span class="jd-error" id="jd-error" hidden></span>
+      <div style="margin-inline-start:auto;display:flex;align-items:center;gap:9px;">
+        <button type="button" class="btn" data-close>Close</button>
+        ${can.save ? '<button type="button" class="btn" data-action="save-draft">Save draft</button>' : ''}
+        ${can.submit ? '<button type="button" class="btn btn-primary" data-action="submit">Submit for approval</button>' : ''}
+        ${can.post ? '<button type="button" class="btn" data-action="reject">Reject</button>' : ''}
+        ${can.post ? '<button type="button" class="btn btn-primary" data-action="post">Approve and post</button>' : ''}
+      </div>`;
+    renderJournalSummary();
   }
 
   function closeJournalDrawer() {
-    journalDrawer.style.display = 'none';
+    if (!journalDrawer || journalDrawer.hidden) return;
+    const opts = jd ? jd.opts : {};
+    journalDrawer.hidden = true;
+    jd = null;
+    if (opts.onClose) opts.onClose();
   }
 
-  function collectLines() {
-    return [...journalDrawer.querySelectorAll('.jd-line')].map(row => ({
-      code: row.querySelector('.jd-code').value.trim(),
-      desc: row.querySelector('.jd-desc').value.trim(),
-      fund: row.dataset.fund || 'General Fund',
-      grantRef: row.querySelector('.jd-grant').value,
-      program: row.querySelector('.jd-program').value,
-      dr: parseFloat(row.querySelector('.jd-dr').value) || 0,
-      cr: parseFloat(row.querySelector('.jd-cr').value) || 0,
-    }));
+  function showJournalError(message) {
+    const error = journalDrawer.querySelector('#jd-error');
+    error.textContent = message;
+    error.hidden = false;
   }
 
+  /** Runs a footer action with its buttons held, closing the editor on success. */
+  async function journalAction(run) {
+    const buttons = journalDrawer.querySelectorAll('#jd-actions button');
+    journalDrawer.querySelector('#jd-error').hidden = true;
+    buttons.forEach(b => { b.dataset.was = b.disabled ? '1' : ''; b.disabled = true; });
+    try {
+      const { message, journal } = await run();
+      const { opts } = jd;
+      closeJournalDrawer();
+      toast(message);
+      if (opts.onSaved) opts.onSaved(journal);
+    } catch (err) {
+      showJournalError(err.message || 'Could not reach the server.');
+      buttons.forEach(b => { b.disabled = b.dataset.was === '1'; });
+    }
+  }
+
+  function submitJournal(status) {
+    const { ed, journal } = jd;
+    return journalAction(async () => {
+      const body = new FormData();
+      body.append('payload', JSON.stringify({
+        narration: ed.narration, date: ed.date, type: ed.type, period: ed.period, docLink: ed.docLink, memo: ed.memo, status,
+        removeAttachments: ed.removed,
+        lines: ed.lines.map(l => ({ code: l.code, desc: l.desc.trim(), grantRef: l.grant, fund: l.fund, program: l.program, dr: parseFloat(l.dr) || 0, cr: parseFloat(l.cr) || 0 })),
+      }));
+      ed.files.forEach(f => body.append('attachments[]', f, f.name));
+
+      const url = journal ? `/api/journals/${encodeURIComponent(journal.ref)}` : '/api/journals';
+      const res = await fetch(url, { method: 'POST', headers: { Accept: 'application/json' }, body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not save the journal.');
+      return { journal: data.journal, message: `${data.journal.ref} · ${status === 'Draft' ? 'draft saved' : 'submitted for approval'}.` };
+    });
+  }
+
+  function approveJournal() {
+    const { journal, form } = jd;
+    if (jd.dirty) {
+      showJournalError('Approval posts the entry as it was submitted. Close without saving, or save the changes and have them approved again.');
+      return;
+    }
+    return journalAction(async () => {
+      const data = await postJSON(`/api/journals/${encodeURIComponent(journal.ref)}/approve`);
+      return { journal: data.journal, message: `${journal.ref} · approved and posted by ${form.preparer}.` };
+    });
+  }
+
+  function rejectJournal() {
+    const { journal } = jd;
+    const reason = journalDrawer.querySelector('#jd-reject-reason').value.trim();
+    return journalAction(async () => {
+      const data = await postJSON(`/api/journals/${encodeURIComponent(journal.ref)}/reject`, { reason });
+      return { journal: data.journal, message: `${journal.ref} returned to ${journal.preparer} as a draft.` };
+    });
+  }
+
+  function discardJournal() {
+    const { journal } = jd;
+    return journalAction(async () => {
+      await postJSON(`/api/journals/${encodeURIComponent(journal.ref)}/discard`);
+      return { journal: null, message: `${journal.ref} discarded.` };
+    });
+  }
+
+  function reverseJournal() {
+    const { journal } = jd;
+    return journalAction(async () => {
+      const data = await postJSON(`/api/journals/${encodeURIComponent(journal.ref)}/reverse`);
+      return { journal: data.journal, message: `${data.journal.ref} raised against ${journal.ref} and sent for approval.` };
+    });
+  }
+
+  function showJournalDrawer(opts, form, journal, ed) {
+    if (!journalDrawer) buildJournalDrawer();
+    jd = { opts, form, journal, ed, dirty: false };
+    renderJournalHead();
+    renderJournalMeta();
+    renderJournalLines();
+    renderJournalFiles();
+    renderJournalTrail();
+    renderJournalActions(false);
+    journalDrawer.querySelector('.jd-body').scrollTop = 0;
+    journalDrawer.hidden = false;
+    if (jdCan().save) journalDrawer.querySelector('#jd-narration').focus();
+  }
+
+  /** Opens the editor for a new entry. `defaultLine` pre-codes the first line (the general ledger's account). */
   async function openNewJournalDrawer(opts) {
     opts = opts || {};
-    await Promise.all([loadAccountOptions(), loadGrantOptions()]);
-    if (!journalDrawer) buildJournalDrawer();
-
-    const form = journalDrawer.querySelector('#jd-form');
-    form.reset();
-    form.querySelector('[name=date]').value = new Date().toISOString().slice(0, 10);
-    journalDrawer.querySelector('#jd-error').style.display = 'none';
-
-    const linesBox = journalDrawer.querySelector('#jd-lines');
-    linesBox.innerHTML = '';
-    const first = opts.defaultLine || {};
-    linesBox.appendChild(lineRow({ code: first.code, fund: first.fund, program: first.program }));
-    linesBox.appendChild(lineRow());
-    journalDrawer._updateBalance();
-
-    const errorBox = journalDrawer.querySelector('#jd-error');
-
-    async function submit(status) {
-      errorBox.style.display = 'none';
-      const fd = new FormData(form);
-      const dateVal = fd.get('date');
-      const formatted = dateVal ? new Date(dateVal + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, ' ') : '';
-      const payload = {
-        narration: fd.get('narration'),
-        date: formatted,
-        type: fd.get('type'),
-        period: fd.get('period'),
-        preparer: fd.get('preparer'),
-        doc: fd.get('doc'),
-        memo: fd.get('memo'),
-        status,
-        lines: collectLines(),
-      };
-      try {
-        const res = await fetch('/api/journals', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const body = await res.json();
-        if (!res.ok) {
-          errorBox.textContent = body.error || 'Could not save the journal.';
-          errorBox.style.display = 'block';
-          return;
-        }
-        closeJournalDrawer();
-        toast(`${body.journal.ref} · ${status === 'Draft' ? 'draft saved' : 'submitted for approval'}.`);
-        if (opts.onSaved) opts.onSaved(body.journal);
-      } catch (err) {
-        errorBox.textContent = 'Could not reach the server.';
-        errorBox.style.display = 'block';
-      }
+    let form;
+    try {
+      form = await fetchJSON('/api/journals/form');
+    } catch (err) {
+      toast('The journal form could not be loaded.');
+      return;
+    }
+    if (!form.canPrepare) {
+      toast(`${form.role} cannot raise journal entries. Switch to a preparer in the account menu.`);
+      return;
     }
 
-    journalDrawer.querySelector('#jd-save-draft').onclick = () => submit('Draft');
-    journalDrawer.querySelector('#jd-submit').onclick = () => submit('Pending approval');
-
-    journalDrawer.style.display = 'flex';
+    const first = opts.defaultLine || {};
+    showJournalDrawer(opts, form, null, {
+      narration: '', period: form.period, date: form.date, type: 'Standard', docLink: 'auto', memo: '', files: [], attachments: [], removed: [],
+      lines: [
+        jdLine({ code: first.code || '5310', fund: form.funds.includes(first.fund) ? first.fund : 'General Fund', program: form.programmes.includes(first.program) ? first.program : 'Shared services' }),
+        jdLine({ code: '1110' }),
+      ].map(l => ({ ...l, code: jdDefaultCodeFor(form, l.code) })),
+    });
   }
 
-  return { fmtMoney, fetchJSON, toast, statGrid, tabs, table, esc, badge, pageHead, openNewJournalDrawer };
+  /** Opens an entry from the register: editable while it is a draft or awaiting approval, read-only once posted. */
+  async function openJournal(ref, opts) {
+    opts = opts || {};
+    let form, journal;
+    try {
+      [form, journal] = await Promise.all([fetchJSON('/api/journals/form'), fetchJSON(`/api/journals/${encodeURIComponent(ref)}`)]);
+    } catch (err) {
+      toast(`Journal ${ref} could not be found.`);
+      if (opts.onClose) opts.onClose();
+      return;
+    }
+
+    showJournalDrawer(opts, form, journal, {
+      narration: journal.narration || '', period: journal.period, date: journal.dateISO, type: journal.type, docLink: journal.docLink,
+      memo: journal.memo || '', files: [], attachments: journal.attachments || [], removed: [],
+      lines: journal.lines.map(l => jdLine({
+        code: l.code, desc: l.desc, grant: l.grantRef || '', grantLabel: l.grant || '', fund: l.fund, program: l.program,
+        dr: l.dr ? String(l.dr) : '', cr: l.cr ? String(l.cr) : '',
+      })),
+    });
+  }
+
+
+  // ---- Supporting documents, shared by every module (Api\Attachments) ----
+
+  const DOC_ACCEPT = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx,.csv,.txt,.msg,.eml';
+
+  /** A record's documents as links that download them. */
+  function docList(docs, empty = 'No supporting document on file.') {
+    if (!docs || !docs.length) return `<div class="doc-empty">${esc(empty)}</div>`;
+    return `<div class="doc-list">${docs.map(d => `
+      <a class="doc-row" href="/api/attachments/${d.id}">
+        <span class="doc-name">${esc(d.name)}</span>
+        <span class="doc-meta">${esc([d.size, d.by, d.on].filter(Boolean).join(' · '))}</span>
+      </a>`).join('')}</div>`;
+  }
+
+  /**
+   * A document picker for a form. Each file uploads as it is chosen and waits,
+   * held against the uploader, until the form is saved with `ids()` as its
+   * `documents`. `required` and `recommended` label it; the server enforces what
+   * is required.
+   *
+   *   const docs = UI.docPicker(el, { label: "Supplier's invoice", required: true, hint: '…' });
+   *   postJSON(url, { ...form, documents: docs.ids() });
+   *
+   * A form that redraws itself passes the same `files` array each time, so the
+   * uploads — finished or still going — carry over to the new picker.
+   */
+  function docPicker(host, opts = {}) {
+    const files = opts.files || [];
+    host.innerHTML = `
+      <div class="doc-pick">
+        <div class="doc-pick-head">
+          <span>${esc(opts.label || 'Supporting documents')}</span>
+          ${opts.required ? '<span class="doc-tag req">Required</span>' : opts.recommended ? '<span class="doc-tag rec">Recommended</span>' : ''}
+        </div>
+        <div class="doc-files"></div>
+        <label class="doc-add"><span class="doc-add-label">+ Attach a document</span><input type="file" multiple hidden accept="${DOC_ACCEPT}"></label>
+        ${opts.hint ? `<div class="doc-hint">${esc(opts.hint)}</div>` : ''}
+      </div>`;
+    const list = host.querySelector('.doc-files');
+    const input = host.querySelector('input[type=file]');
+
+    const render = () => {
+      list.innerHTML = files.map((f, i) => `
+        <div class="doc-row${f.error ? ' bad' : ''}">
+          <span class="doc-name">${esc(f.name)}</span>
+          <span class="doc-meta">${esc(f.error || (f.id ? f.size : 'Uploading…'))}</span>
+          <button type="button" class="doc-x" data-i="${i}" aria-label="Remove ${esc(f.name)}">✕</button>
+        </div>`).join('');
+      host.querySelector('.doc-add-label').textContent = files.some(f => f.id) ? '+ Attach another' : '+ Attach a document';
+      if (opts.onChange) opts.onChange(files.filter(f => f.id).length);
+    };
+    // An upload that finishes after a redraw updates whichever picker now shows the files.
+    files.render = render;
+
+    input.addEventListener('change', () => {
+      for (const file of input.files) {
+        const entry = { name: file.name, id: null, size: '', error: '' };
+        files.push(entry);
+        const body = new FormData();
+        body.append('file', file, file.name);
+        fetch('/api/attachments', { method: 'POST', body })
+          .then(async (res) => {
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `Upload failed: ${res.status}`);
+            Object.assign(entry, data.document);
+          })
+          .catch((e) => { entry.error = e.message; })
+          .finally(() => files.render());
+      }
+      input.value = '';
+      render();
+    });
+    list.addEventListener('click', (e) => {
+      const b = e.target.closest('.doc-x');
+      if (!b) return;
+      const [f] = files.splice(+b.dataset.i, 1);
+      if (f && f.id) fetch(`/api/attachments/${f.id}/discard`, { method: 'POST' }).catch(() => {});
+      render();
+    });
+
+    if (files.length) render();
+
+    return {
+      ids: () => files.filter(f => f.id).map(f => f.id),
+      busy: () => files.some(f => !f.id && !f.error),
+      clear: () => { files.length = 0; render(); },
+    };
+  }
+
+  /**
+   * A record's documents, with a picker to add more when the person may
+   * (POST /api/documents/{kind}/{ref}). `onAdded(documents)` runs once they are on file.
+   */
+  function docPanel(host, { kind, ref, docs, canAdd, label, empty, hint, recommended, onAdded }) {
+    host.innerHTML = `
+      <div class="doc-panel">
+        <div class="doc-panel-list">${docList(docs, empty)}</div>
+        ${canAdd ? '<div class="doc-panel-add"></div><button type="button" class="btn doc-panel-save" hidden>Add to the file</button>' : ''}
+      </div>`;
+    if (!canAdd) return;
+    const save = host.querySelector('.doc-panel-save');
+    const picker = docPicker(host.querySelector('.doc-panel-add'), {
+      label: label || 'Add a document', recommended, hint,
+      onChange: (n) => { save.hidden = n === 0; },
+    });
+    save.addEventListener('click', async () => {
+      if (picker.busy()) return toast('Wait for the upload to finish.');
+      save.disabled = true;
+      try {
+        const res = await postJSON(`/api/documents/${kind}/${String(ref).split('/').map(encodeURIComponent).join('/')}`, { documents: picker.ids() });
+        host.querySelector('.doc-panel-list').innerHTML = docList(res.documents, empty);
+        picker.clear();
+        toast(res.message);
+        if (onAdded) onAdded(res.documents);
+      } catch (e) {
+        toast(e.message);
+      } finally {
+        save.disabled = false;
+      }
+    });
+  }
+
+  // ---- Generic record drawer, shared by the modules added for the v5 nav ----
+
+  let recordDrawer;
+
+  /**
+   * POSTs JSON and surfaces the API's own message on failure.
+   *
+   * The controllers answer a rejected action with a reason rather than a generic
+   * error — a budget block names the shortfall, a blocked receipt names what is
+   * actually outstanding — so that text is what the user needs to see.
+   */
+  async function postJSON(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    // The refusal's other fields (e.g. needsAuthority) travel with the error.
+    if (!res.ok) throw Object.assign(new Error(data.error || `Request failed: ${res.status}`), { status: res.status, data });
+    return data;
+  }
+
+  function buildRecordDrawer() {
+    recordDrawer = document.createElement('div');
+    recordDrawer.className = 'rd';
+    recordDrawer.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(13,27,24,.28);z-index:1000;align-items:center;justify-content:center;';
+    recordDrawer.innerHTML = `
+      <div class="rd-panel" role="dialog" aria-modal="true" style="background:#fff;width:432px;max-width:100%;max-height:100%;overflow-y:auto;border:1px solid #E4E2DB;border-radius:11px;box-shadow:0 24px 60px rgba(13,27,24,.24);display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid #E4E2DB;position:sticky;top:0;background:#fff;z-index:1;">
+          <span class="rd-title" style="font-size:13px;font-weight:600;"></span>
+          <button type="button" class="rd-close" style="margin-left:auto;border:1px solid #DDDAD2;background:#fff;border-radius:6px;width:26px;height:26px;cursor:pointer;color:#6E7873;font-size:14px;line-height:1;">&times;</button>
+        </div>
+        <div class="rd-body" style="flex:1;"></div>
+      </div>`;
+    document.body.appendChild(recordDrawer);
+    recordDrawer.addEventListener('click', (e) => { if (e.target === recordDrawer) closeDrawer(); });
+    recordDrawer.querySelector('.rd-close').addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+  }
+
+  /** `wide` gives a summary document (the board pack) room; records stay at 432px. */
+  function drawer(title, html, opts) {
+    if (!recordDrawer) buildRecordDrawer();
+    const panel = recordDrawer.querySelector('.rd-panel');
+    panel.style.width = opts && opts.wide ? '640px' : '432px';
+    recordDrawer.querySelector('.rd-title').textContent = title;
+    recordDrawer.querySelector('.rd-body').innerHTML = html;
+    panel.scrollTop = 0;
+    recordDrawer.style.display = 'flex';
+  }
+
+  function closeDrawer() {
+    if (recordDrawer) recordDrawer.style.display = 'none';
+  }
+
+  /** A labelled bar, used for budget consumption and verification progress. */
+  function bar(pct, tone) {
+    const width = Math.max(0, Math.min(100, pct));
+    const colour = tone === 'urgent' ? '#A6412F' : tone === 'warn' ? '#B4703A' : 'var(--accent-ink)';
+    return `<span class="bar-track" style="display:block;"><span class="bar-fill" style="width:${width}%;background:${colour};"></span></span>`;
+  }
+
+  /**
+   * The password policy (Settings → Users) as a checklist under a new-password field.
+   * `rules` is what the API serves as passwordRules; the server checks them all
+   * again, and alone decides `common`.
+   */
+  function passwordRules(rules) {
+    return `<ul class="pw-rules" aria-live="polite">${(rules || []).map((r) => `<li data-rule="${esc(r.key)}">${esc(r.text)}</li>`).join('')}</ul>`;
+  }
+
+  /** Ticks off the checklist from passwordRules() as `value` is typed. `who` is {email, name}. */
+  function tickPasswordRules(list, rules, value, who) {
+    if (!list) return;
+    const chars = [...value];
+    const count = (re) => (value.match(re) || []).length;
+    const letters = count(/\p{L}/gu);
+    const digits = count(/\p{Nd}/gu);
+    const kinds = { upper: count(/\p{Lu}/gu), lower: count(/\p{Ll}/gu), digit: digits, symbol: chars.length - letters - digits };
+    const lower = value.toLowerCase();
+    const local = String(who?.email || '').split('@')[0].toLowerCase();
+    const parts = `${local} ${String(who?.name || '').toLowerCase()}`.split(/[^\p{L}\p{N}]+/u).filter((p) => p.length >= 4);
+    const met = {
+      length: (r) => chars.length >= r.min,
+      upper: (r) => kinds.upper >= r.min,
+      lower: (r) => kinds.lower >= r.min,
+      digit: (r) => kinds.digit >= r.min,
+      symbol: (r) => kinds.symbol >= r.min,
+      kinds: (r) => Object.values(kinds).filter((n) => n > 0).length >= r.min,
+      distinct: (r) => new Set(chars).size >= r.min,
+      personal: () => !(local.length >= 3 && lower.includes(local)) && !parts.some((p) => lower.includes(p)),
+    };
+    (rules || []).forEach((r) => {
+      const li = list.querySelector(`[data-rule="${r.key}"]`);
+      if (!li) return;
+      const ok = value === '' || !met[r.key] ? null : met[r.key](r);
+      li.classList.toggle('ok', ok === true);
+      li.classList.toggle('no', ok === false);
+    });
+  }
+
+  /**
+   * Hands a newly chosen password to the browser's password manager, where it can
+   * take it (Chrome, Edge), so the next sign-in fills the new password instead of
+   * the one it replaced. A page that saves by fetch never navigates, and without
+   * this the browser keeps offering the old one.
+   */
+  async function rememberPassword(email, password, name) {
+    if (!email || !password || typeof window.PasswordCredential !== 'function' || !navigator.credentials?.store) return;
+    try {
+      await navigator.credentials.store(new window.PasswordCredential({ id: email, password, name: name || email }));
+    } catch (_) {
+      // The browser declined or has no password manager; the person types it next time.
+    }
+  }
+
+  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill, docList, docPicker, docPanel, passwordRules, tickPasswordRules, rememberPassword };
 })();
