@@ -56,7 +56,7 @@ final class SettingsAccess
      */
     public const DRAFT = [
         'organisation' => 'Organisation', 'entities' => 'Organisation',
-        'ledger' => 'Ledger', 'toggles' => 'Ledger', 'postingAccounts' => 'Ledger', 'postingAccountsFollow' => 'Ledger',
+        'ledger' => 'Ledger', 'toggles' => 'Ledger', 'postingAccounts' => 'Ledger', 'postingAccountsFollow' => 'Ledger', 'assetClasses' => 'Ledger',
         'segments' => 'Segments', 'currencies' => 'Currencies', 'taxes' => 'Taxes', 'days' => 'Terms and reminders',
         'approvals' => 'Approvals', 'approvalsFollow' => 'Approvals', 'procurement' => 'Approvals',
         'payroll' => 'Payroll', 'payAccounts' => 'Payroll',

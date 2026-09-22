@@ -795,6 +795,18 @@ warning appears if you try to leave with unsaved changes.
   invoiced, withholding tax, receivables, the allowance, staff advances, suspense)
   can move only once that balance is nil, or after it has been journalled across;
   otherwise the entries that clear it would land in the new account.
+  Below them, the **asset classes** (`AssetClassRepository`): each class's name,
+  tag prefix, the useful life a new asset starts with, and the cost account it is
+  carried in. The cost account is where a purchase is capitalised from, where a
+  donated or found asset of the class is debited on approval (the credit is the
+  donated-assets or assets-found posting account), and what the register's cost
+  is tied to. It must be an active asset account in the accumulated depreciation
+  account's group (1300 in the standard chart), and it is fixed while the class
+  carries assets at cost — a different account needs a new class. A class is
+  added here but never removed, since every asset names its class; a new install
+  has none until one is added. Changing a class's life or prefix affects only
+  assets registered afterwards. Depreciation posts to the posting accounts, not
+  to the class.
 - **Segments** — which coding segments are required and shown on reports, with a
   warning if grant/fund segments are left optional; and, below them, the **funds**
   every posting is coded to. A fund is opened as it is entered rather than saved

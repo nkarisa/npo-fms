@@ -24,6 +24,7 @@
     userQuery: '', userPage: 0, auditQuery: '', auditPage: 0,
     curForm: { code: '', name: '', rate: '' },
     entForm: { code: '', name: '', type: 'Branch', currency: '' },
+    classForm: { name: '', prefix: '', life: '5', cost: '' },
     fundForm: { code: '', name: '', restriction: 'Unrestricted', group: 'General Fund', funder: '' },
     benForm: { name: '', basis: 'flat', taxable: true },
     gradeForm: { grade: '', band: '', ben: {} },
@@ -64,6 +65,7 @@
       entities: () => d.entities.map(e => ({ code: e.code, name: e.name, type: e.type, currency: e.currency, status: e.status })),
       ledger: () => d.ledger,
       postingAccounts: () => Object.fromEntries(d.postingAccounts.map(p => [p.role, p.code])),
+      assetClasses: () => d.assetClasses.map(c => ({ id: c.id, name: c.name, prefix: c.prefix, life: c.life, cost: c.cost })),
       toggles: () => Object.fromEntries(d.toggles.map(t => [t.key, t.on])),
       segments: () => Object.fromEntries(d.segments.map(s => [s.key, s.required])),
       currencies: () => d.currencies.map(c => ({ code: c.code, name: c.name, rate: c.rate, active: c.active })),
@@ -134,6 +136,7 @@
       if (draft.appearance) paintTheme(draft.appearance);
       view.curForm = { code: '', name: '', rate: '' };
       view.entForm = { code: '', name: '', type: 'Branch', currency: '' };
+      view.classForm = { name: '', prefix: '', life: '5', cost: '' };
       view.fundForm = { code: '', name: '', restriction: 'Unrestricted', group: 'General Fund', funder: '' };
       view.benForm = { name: '', basis: 'flat', taxable: true };
       view.gradeForm = { grade: '', band: '', ben: {} };
@@ -374,6 +377,8 @@
         </div>
         ${rule}
         ${postingAccounts()}
+        ${rule}
+        ${assetClasses()}
         ${rule}
         <div class="st-block">
           <div class="st-kicker">Open periods</div>
@@ -654,6 +659,57 @@
             </div>`;
           }).join('')}
         </div></div>
+      </div>`;
+  }
+
+  /**
+   * The classes an asset is registered under, and the fixed-asset account each is
+   * carried in — the account a donated or found asset of the class is debited to on
+   * approval. The account is fixed while the class carries assets.
+   */
+  function assetClasses() {
+    const cols = 'grid-template-columns:minmax(150px,1fr) 84px 76px minmax(200px,1.2fr);';
+    const held = Object.fromEntries(data.assetClasses.map(c => [c.id, c]));
+    const options = data.assetClassOptions;
+    const short = (c) => c.length > 46 ? c.slice(0, 45) + '…' : c;
+    const accounts = (current, bind, label, disabled) => `<select class="st-cell" data-bind="${bind}" aria-label="${esc(label)}" ${disabled ? 'disabled' : ''}>
+      ${options.some(o => o.code === current) ? '' : `<option value="${esc(current)}" selected>${current ? esc(current) + ' · not a fixed-asset account' : '— choose —'}</option>`}
+      ${options.map(o => `<option value="${esc(o.code)}" ${o.code === current ? 'selected' : ''}>${esc(short(o.code + ' · ' + o.name))}</option>`).join('')}
+    </select>`;
+    const f = view.classForm;
+    return `
+      <div class="st-block">
+        <div class="st-kicker">Asset classes</div>
+        <div class="st-note">The class an asset is registered under. Its cost account is where a purchase is capitalised from, where a donated or found asset of the class is debited when it is approved, and what the register is tied to. It stays fixed while the class carries assets. The useful life is where a new asset starts; assets already registered keep theirs. Depreciation posts to the posting accounts above, whatever the class.</div>
+        ${options.length ? '' : warn('The chart has no fixed-asset accounts to carry a class in. Add them under the accumulated depreciation account\'s group on the Chart of accounts screen first.')}
+        ${draft.assetClasses.length ? '' : warn('There are no asset classes yet, so nothing can be put on the asset register. Add one below.')}
+        ${draft.assetClasses.length ? `<div class="st-table"><div style="min-width:560px;">
+          <div class="st-tr st-th" style="${cols}"><div>Class</div><div>Tag prefix</div><div>Life (yrs)</div><div>Cost account</div></div>
+          ${draft.assetClasses.map((c, i) => {
+            const h = c.id ? held[c.id] : null;
+            const fixed = h && h.carried > 0;
+            return `
+            <div class="st-tr" style="${cols}">
+              <div class="st-stack"><input class="st-cell" data-bind="assetClasses.${i}.name" value="${esc(c.name)}" maxlength="60" aria-label="Class name">
+                <span class="st-sub">${h ? (h.assets ? plural(h.assets, 'asset', 'assets') + ' registered' + (h.carried ? ` · ${h.carried} carried at cost` : '') : 'No assets yet') : `new · <button type="button" class="st-linkbtn" data-act="cls-drop" data-id="${i}" data-manage>Remove</button>`}</span></div>
+              <div><input class="st-cell mono upper" data-bind="assetClasses.${i}.prefix" value="${esc(c.prefix)}" maxlength="10" aria-label="${esc(c.name)} tag prefix"></div>
+              <div><input class="st-cell mono" data-bind="assetClasses.${i}.life" data-num value="${esc(c.life)}" inputmode="numeric" aria-label="${esc(c.name)} useful life in years"></div>
+              <div class="st-stack">${accounts(c.cost, `assetClasses.${i}.cost`, `Cost account for ${c.name}`, fixed)}
+                ${fixed ? `<span class="st-sub">Fixed while it carries assets — add a new class for another account.</span>` : ''}</div>
+            </div>`;
+          }).join('')}
+        </div></div>` : ''}
+        <div class="st-addbox">
+          <span class="st-addtitle">Add an asset class</span>
+          <div class="st-addrow">
+            <label class="st-field" style="flex:1 1 200px;min-width:160px;">Class name<input data-bind="form.classForm.name" value="${esc(f.name)}" placeholder="Laboratory equipment" maxlength="60"></label>
+            <label class="st-field" style="flex:0 0 96px;">Tag prefix<input data-bind="form.classForm.prefix" value="${esc(f.prefix)}" placeholder="LAB" maxlength="10" class="mono upper"></label>
+            <label class="st-field" style="flex:0 0 84px;">Life (yrs)<input data-bind="form.classForm.life" value="${esc(f.life)}" inputmode="numeric" class="mono"></label>
+            <label class="st-field" style="flex:1 1 200px;min-width:170px;">Cost account${accounts(f.cost, 'form.classForm.cost', 'Cost account for the new class', false)}</label>
+            <button type="button" class="btn btn-primary" data-act="cls-add" data-manage>Add class</button>
+          </div>
+          <span class="st-sub">Tags are numbered under the prefix — LAB-001, LAB-002. The class is saved with the rest of your changes.</span>
+        </div>
       </div>`;
   }
 
@@ -1274,6 +1330,25 @@
       draft.entities.push({ code, name, type: f.type, currency: f.currency || draft.ledger.currency, status: 'Live' });
       view.entForm = { code: '', name: '', type: 'Branch', currency: '' };
       UI.toast(`${name} added — save to open it for posting.`);
+    }
+    if (act === 'cls-add') {
+      const f = view.classForm;
+      const name = f.name.trim();
+      const prefix = f.prefix.trim().toUpperCase();
+      const life = Number(f.life);
+      if (!name) return UI.toast('Name the class as the register should show it — Laboratory equipment.');
+      if (draft.assetClasses.some(c => c.name.trim().toLowerCase() === name.toLowerCase())) return UI.toast(`There is already an asset class called ${name}.`);
+      if (!/^[A-Z0-9]{1,10}$/.test(prefix)) return UI.toast('Use 1 to 10 letters or digits for the tag prefix — LAB.');
+      if (draft.assetClasses.some(c => c.prefix.trim().toUpperCase() === prefix)) return UI.toast(`Another class already numbers its tags under ${prefix}.`);
+      if (!Number.isInteger(life) || life < 1 || life > 50) return UI.toast('Enter a useful life of 1 to 50 years.');
+      if (!f.cost) return UI.toast('Choose the fixed-asset account the class is carried in.');
+      draft.assetClasses.push({ id: null, name, prefix, life, cost: f.cost });
+      view.classForm = { name: '', prefix: '', life: '5', cost: '' };
+      UI.toast(`${name} added — save to register assets under it.`);
+    }
+    if (act === 'cls-drop') {
+      const c = draft.assetClasses[Number(id)];
+      if (c && !c.id) draft.assetClasses.splice(Number(id), 1);
     }
     // A fund is opened as it is entered: the ledger refers to it, so it cannot wait
     // in a draft in the browser while something is coded to it.

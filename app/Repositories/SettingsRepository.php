@@ -578,6 +578,10 @@ final class SettingsRepository extends Repository
             $from('postingAccounts');
             $this->planPostingAccounts((array) ($draft['postingAccounts'] ?? []), $plan, (array) ($draft['postingAccountsFollow'] ?? []));
         }
+        if (isset($draft['assetClasses'])) {
+            $from('assetClasses');
+            $this->planAssetClasses((array) $draft['assetClasses'], $plan);
+        }
         if (isset($draft['payroll'])) {
             $from('payroll');
             $this->planPayroll((array) $draft['payroll'], $plan);
@@ -1238,6 +1242,35 @@ final class SettingsRepository extends Repository
             $what = $accounts->check($role, $code);
             if ($what !== null) {
                 $plan('Ledger', $what, fn () => $accounts->set($role, $code));
+            }
+        }
+    }
+
+    /**
+     * The asset classes: each one's name, tag prefix, the useful life a new asset
+     * starts with and the cost account it is carried in (AssetClassRepository says
+     * when that can move). A class without an id is added; classes are not removed
+     * here, because every asset ever registered names its class.
+     *
+     * $in: [{id?, name, prefix, life, cost}]
+     */
+    private function planAssetClasses(array $in, callable $plan): void
+    {
+        $classes = new AssetClassRepository();
+        // The classes as they will stand once this save is applied, for names and prefixes in use.
+        $standing = [];
+        foreach ($classes->all() as $c) {
+            $standing['id:' . $c['id']] = $c;
+        }
+        foreach (array_values($in) as $i => $c) {
+            $standing[empty($c['id']) ? 'new:' . $i : 'id:' . (int) $c['id']] = (array) $c;
+        }
+        foreach (array_values($in) as $i => $c) {
+            $c = (array) $c;
+            $key = empty($c['id']) ? 'new:' . $i : 'id:' . (int) $c['id'];
+            foreach ($classes->check($c, array_values(array_diff_key($standing, [$key => true]))) as $n => $what) {
+                // One write however many parts of the class changed.
+                $plan('Ledger', $what, $n === 0 ? fn () => $classes->set($c) : null);
             }
         }
     }

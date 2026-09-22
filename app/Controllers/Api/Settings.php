@@ -6,6 +6,7 @@ use App\Libraries\Brand;
 use App\Libraries\I18n as I18nLib;
 use App\Libraries\SettingsAccess;
 use App\Libraries\Theme;
+use App\Repositories\AssetClassRepository;
 use App\Repositories\AuthRepository;
 use App\Repositories\NotPermitted;
 use App\Repositories\PayablesRepository;
@@ -45,6 +46,7 @@ class Settings extends BaseApiController
         'funds' => ['Segments'], 'fundOptions' => ['Segments'], 'segments' => ['Segments'],
         'ledger' => ['Ledger'], 'ledgerOptions' => ['Ledger'], 'periods' => ['Ledger'], 'toggles' => ['Ledger'],
         'postingAccounts' => ['Ledger'], 'postingAccountOptions' => ['Ledger'],
+        'assetClasses' => ['Ledger'], 'assetClassOptions' => ['Ledger'],
         'currencies' => ['Currencies'], 'taxes' => ['Taxes'], 'days' => ['Terms and reminders'],
         'approvals' => ['Approvals'], 'ownApprovals' => ['Approvals'], 'approverRoles' => ['Approvals'],
         'procurement' => ['Approvals'], 'sodRules' => ['Approvals'],
@@ -65,7 +67,7 @@ class Settings extends BaseApiController
     }
 
     /**
-     * Saves the draft. Body: any of organisation, entities, ledger, toggles, segments,
+     * Saves the draft. Body: any of organisation, entities, ledger, toggles, assetClasses, segments,
      * currencies, approvals, procurement, taxes, days, postingAccounts, payroll, appearance, users, language — only what differs
      * from what is held is changed, and only in the sections this user can change
      * (SettingsAccess). The logo is not in the draft; it has its own endpoints below.
@@ -239,6 +241,8 @@ class Settings extends BaseApiController
             ],
             'postingAccounts' => fn () => (new PostingAccounts())->all(),
             'postingAccountOptions' => fn () => (new PostingAccounts())->options(),
+            'assetClasses' => fn () => (new AssetClassRepository())->all(),
+            'assetClassOptions' => fn () => (new AssetClassRepository())->costOptions(),
             'toggles'      => fn () => $settings->toggles(),
             'periods'      => fn () => $settings->periods(),
             'segments'     => fn () => $settings->segments(),
