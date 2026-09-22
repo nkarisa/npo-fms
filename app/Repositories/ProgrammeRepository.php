@@ -45,7 +45,7 @@ final class ProgrammeRepository extends Repository
         return $this->cached('all', function () {
             $budget = array_column($this->rows(
                 "SELECT v.programme_id, SUM(v.budget) AS budget, SUM(v.committed) AS committed FROM {v_budget_availability} v
-                 JOIN {budget_versions} bv ON bv.id = v.budget_version_id WHERE bv.status = 'approved' GROUP BY v.programme_id"
+                 JOIN {budget_versions} bv ON bv.id = v.budget_version_id WHERE " . BudgetRepository::workingYearApproved() . " GROUP BY v.programme_id"
             ), null, 'programme_id');
             $actual = array_column($this->rows(
                 "SELECT l.programme_id, SUM(l.debit - l.credit) AS actual FROM {journal_lines} l JOIN {journals} j ON j.id = l.journal_id

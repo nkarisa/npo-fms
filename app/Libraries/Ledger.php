@@ -194,22 +194,16 @@ class Ledger
 
     // ---- Budget ----
 
-    /** Phased budget to date, then the status a line earns against it. */
+    /**
+     * Phased budget to date, by each line's phasing profile, and the status a line
+     * earns against it — the same measure the Budgets screen shows.
+     */
     public static function budgetLines(): array
     {
-        return array_map(static function ($l) {
-            $phased = (int) round($l['annual'] * self::monthsElapsed() / 12);
-            $status = $l['actual'] > $l['annual'] ? 'Over'
-                : ($l['actual'] > $phased * 1.1 ? 'Watch'
-                : ($l['actual'] < $phased * 0.7 ? 'Underspent' : 'On track'));
-
-            return array_merge($l, [
-                'phased'   => $phased,
-                'variance' => $phased - $l['actual'],
-                'pct'      => $l['annual'] > 0 ? (int) round($l['actual'] / $l['annual'] * 100) : 0,
-                'status'   => $status,
-            ]);
-        }, (new BudgetRepository())->lines());
+        return array_map(static fn ($l) => array_merge($l, [
+            'variance' => $l['phased'] - $l['actual'],
+            'pct'      => $l['annual'] > 0 ? (int) round($l['actual'] / $l['annual'] * 100) : 0,
+        ]), (new BudgetRepository())->lines());
     }
 
     public static function overBudgetLines(): array

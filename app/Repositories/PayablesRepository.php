@@ -184,7 +184,7 @@ final class PayablesRepository extends Repository
             foreach ($this->rows(
                 "SELECT v.account_id, v.fund_id, v.programme_id, SUM(v.budget) AS budget, SUM(v.actual) AS actual, SUM(v.committed) AS committed
                  FROM {v_budget_availability} v JOIN {budget_versions} bv ON bv.id = v.budget_version_id
-                 WHERE bv.status = 'approved' GROUP BY v.account_id, v.fund_id, v.programme_id"
+                 WHERE " . BudgetRepository::workingYearApproved() . " GROUP BY v.account_id, v.fund_id, v.programme_id"
             ) as $r) {
                 $out[$r['account_id'] . ':' . $r['fund_id'] . ':' . $r['programme_id']] = [
                     'budget' => (float) $r['budget'], 'actual' => (float) $r['actual'], 'committed' => (float) $r['committed'],
@@ -235,7 +235,7 @@ final class PayablesRepository extends Repository
                 "SELECT v.*, a.code, a.name AS account_name, f.ledger_group, g.short_name AS grant_short
                  FROM {v_budget_availability} v JOIN {budget_versions} bv ON bv.id = v.budget_version_id
                  JOIN {accounts} a ON a.id = v.account_id JOIN {funds} f ON f.id = v.fund_id LEFT JOIN {grants} g ON g.id = v.grant_id
-                 WHERE bv.status = 'approved' ORDER BY a.code, v.budget_line_id"
+                 WHERE " . BudgetRepository::workingYearApproved() . " ORDER BY a.code, v.budget_line_id"
             ));
         });
     }

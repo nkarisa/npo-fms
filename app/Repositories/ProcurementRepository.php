@@ -323,7 +323,7 @@ final class ProcurementRepository extends Repository
         }, $this->rows(
             "SELECT v.*, a.code, a.name AS account_name, f.ledger_group FROM {v_budget_availability} v
              JOIN {budget_versions} bv ON bv.id = v.budget_version_id JOIN {accounts} a ON a.id = v.account_id JOIN {funds} f ON f.id = v.fund_id
-             WHERE bv.status = 'approved' ORDER BY a.code"
+             WHERE " . BudgetRepository::workingYearApproved() . " ORDER BY a.code"
         ));
 
         $people = array_map(static fn ($u) => ['email' => $u['email'], 'label' => $u['short'] . ' · ' . $u['role']],

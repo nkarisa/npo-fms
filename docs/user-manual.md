@@ -171,7 +171,7 @@ is planned.
 | Accounting | Staff advances | Coming soon |
 | Funds and grants | Funds | Coming soon |
 | Funds and grants | Grants and awards | Coming soon |
-| Funds and grants | Budgets | Coming soon |
+| Funds and grants | [Budgets](#budgets) | ✅ |
 | Funds and grants | Donor reports | Coming soon |
 | Insight | Cashflow forecast | Coming soon |
 | Insight | Reports | Coming soon |
@@ -789,6 +789,80 @@ whoever manages roles could widen their own permissions. Its card is marked
 | Someone lost their phone and codes | Users → **Manage** → **Reset second step** |
 | Create a role | Roles → **New role** → name, permissions → **Add role** |
 | Change what a role can do | Roles → **Edit** on its card → tick or untick permissions → **Save role** |
+
+---
+
+## Budgets
+
+**Funds and grants → Budgets.** The approved budget against actual, month by
+month. Variance is measured against the **phasing to date** — how the line was
+expected to be spent by now, by its profile — so an election programme that
+spends most of its money mid-year is not flagged in January.
+
+### 1. Reading the page
+
+- The **stat cards** give the year at a glance: annual budget, phased to date,
+  actual to date, variance to phasing (favourable if positive), and how many lines
+  need attention.
+- **Budget version** chooses which version to read. The approved one is marked
+  *(approved)*; a revision being worked on is *(working)*; next year's is *(draft)*.
+- **Group by** regroups the table by account group, programme or fund.
+  **Compare to** switches the comparison between the phasing to date and the
+  full-year budget.
+- The **Consumed** bar shows how much of the annual budget is spent; the dark mark
+  shows how much was phased to date. A bar past its mark is spending ahead of plan.
+- **Status:** *Over* — actual has passed the annual budget. *Watch* — more than
+  10% ahead of the phasing. *Underspent* — below 70% of the phasing. Otherwise
+  *On track*.
+
+Click a line to see its monthly budget against actual, what each version held for
+it, and the rules for revising it. **View postings** opens the general ledger on
+its account.
+
+### 2. Moving budget between lines
+
+1. **Budget revision** (or **Request revision** on a line).
+2. Choose the line to **reduce** and the line to **increase**, the **amount**, the
+   **authority reference** and a **justification**.
+3. The dialog says straight away whether the move is allowed. It is not when the
+   lines are in different funds or under different grant agreements, when more is
+   asked for than is uncommitted, when it would increase indirect-cost recovery on
+   a grant, or when it takes more than 10% of a grant-funded line without the
+   funder's written consent.
+4. **Apply to working version.** The first movement opens the working revision
+   (for example *FY2026 Revision 2*), a copy of the approved budget. The approved
+   budget does not change yet.
+5. When all the movements are in, choose the working version and **Submit for
+   approval**.
+
+The approver opens the same version and either **Approves** it — it then replaces
+the approved budget, and the procurement budget check reads it from then on — or
+**Sends it back** with a note. The person who moved the money cannot approve it.
+A draft you no longer want can be **Discarded**.
+
+### 3. Next year's budget
+
+1. **New financial year.** Choose the year, the **uplift on core lines**, and
+   whether to keep lines that have nothing left (at zero, for comparison).
+2. **Derive the budget.** Grant-funded lines come from each award's remaining
+   ceiling, shared by the months of the award that fall in the year; core lines are
+   this year's approved figure plus the uplift. Three checks follow: every grant
+   line within its award ceiling, restricted spend within what the awards still
+   owe, and core spend against unrestricted income and reserves.
+3. **Raise … (draft).** Submit it for approval when ready. It cannot be used for
+   variance reporting until the Executive Director approves it.
+
+### 4. Quick reference
+
+| Task | How |
+|---|---|
+| See spend against plan for a programme | **Group by** → Programme |
+| Compare with the whole year | **Compare to** → Full-year budget |
+| Move budget | **Budget revision** → lines, amount, reference, justification → **Apply to working version** |
+| Send a revision for approval | Choose the *(working)* version → **Submit for approval** |
+| Approve a revision | Choose the *(pending approval)* version → **Approve** |
+| Start next year's budget | **New financial year** → assumptions → **Derive the budget** → **Raise** |
+| Send the variance report | **Export variance report** (CSV) |
 
 ---
 

@@ -117,7 +117,7 @@ class BaselineSeeder extends Seeder
         'even'  => ['Even', [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]],
         'peak'  => ['Election peak', [0.5, 0.6, 0.8, 1, 1.4, 1.8, 2.2, 2, 1.4, 0.9, 0.6, 0.5]],
         'front' => ['Front-loaded', [1.8, 1.7, 1.5, 1.3, 1.1, 0.9, 0.8, 0.7, 0.6, 0.6, 0.5, 0.5]],
-        'back'  => ['Back-loaded', [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.1, 1.3, 1.5, 1.6, 1.7, 1.9]],
+        'back'  => ['Back-loaded', [0.4, 0.5, 0.6, 0.7, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2, 2]],
     ];
 
     /** What a budget revision must respect, by the fund it moves money within. */

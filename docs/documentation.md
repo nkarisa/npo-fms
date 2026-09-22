@@ -575,16 +575,49 @@ held to.
 
 ### Budgets
 
-**Purpose:** compare the annual budget (phased against elapsed time) with posted
-actuals, grouped.
+**Purpose:** the approved budget against actual, phased month by month, with the
+versions a year's budget goes through. Variance is read against each line's
+phasing to date (its profile: even, election peak, front- or back-loaded), not
+the annual figure, so a seasonal programme is not flagged for spending in season.
 
-**On screen:** header (*Budgets*), stat cards, a search and a grouping dropdown,
-then grouped sections. Each group has a header (annual · actual · %) and a table —
-Code, Name, Fund, Programme, Annual, Phased, Actual, Variance, Status (Over /
-Watch / Underspent / on track).
+**On screen:**
+- **Header** — kicker *Funds and grants*, title *Budgets*, and **New financial
+  year**, **Budget revision** and **Export variance report**.
+- **Stat cards** — annual budget, phased to date, actual to date, variance to
+  phasing, lines needing attention.
+- **Version banner** (not shown for the approved budget) — where a working
+  revision or a draft stands, the movements applied to it, and **Submit for
+  approval**, **Approve**, **Send back** or **Discard**.
+- **Filters** — Budget version, Group by (Account group / Programme / Fund),
+  Compare to (phasing to date / full-year budget), and a search.
+- **Variance table** — Budget line, Fund, Programme, Annual budget, Phased (or
+  full-year), Actual to date, Variance (adverse in red), Consumed (bar with a mark
+  at the phasing), Status (Over / Watch / On track / Underspent). Group rows carry
+  subtotals; a total row closes the table.
 
-**What you can do:** search budget lines and change the grouping dimension. The
-table is read-only.
+**What you can do:**
+- Open a **line** to see its monthly phasing against actual, what each version
+  held for it, the revision rules of its fund, **View postings** in the general
+  ledger, and **Request revision**.
+- **Move budget between lines** into the working revision: the lines must be in
+  the same fund and the same grant agreement; no more than is uncommitted can be
+  moved; indirect-cost lines on a grant cannot be increased; and more than 10% of
+  a grant-funded line (counting earlier movements in the revision) needs the
+  funder's written consent first. An authority reference and a justification are
+  required.
+- **New financial year** — derive next year's budget: grant lines from each award's
+  remaining ceiling, apportioned by the months of the award that fall in the year;
+  core lines rolled forward with an uplift. It is raised as a draft.
+- **Export** the variance report for the version, grouping and basis on screen, as CSV.
+
+**Who can do what:** anyone can view. Moving budget, raising a year's budget,
+submitting and discarding need `journal.prepare`. A revision is approved under the
+*Budget revisions* approval rule (the Finance Manager; above its threshold with the
+funder's consent recorded); a year's budget by whoever holds `period.authorise`
+(the Executive Director). Nobody approves a version they prepared, submitted or
+moved money in. Approving one supersedes the year's approved version — only one
+is approved at a time, and procurement, payables and the programme register read
+the approved version of the working year.
 
 ### Donor reports
 

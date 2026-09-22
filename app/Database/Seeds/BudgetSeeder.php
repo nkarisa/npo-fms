@@ -6,8 +6,8 @@ use App\Database\Seeds\Support\SeedContext;
 use CodeIgniter\Database\Seeder;
 
 /**
- * The FY2026 budget: the original and the revised version, each line phased
- * across the twelve periods by its profile.
+ * The FY2026 budget: the original and Revision 1, each line phased across the
+ * twelve periods by its profile.
  *
  * Source: BUDGET ("orig" and "annual") and PROFILE. Actuals are not stored; they
  * come from the ledger (see v_budget_availability).
@@ -21,12 +21,16 @@ class BudgetSeeder extends Seeder
         $entity = $ctx->entityId();
         $fy = $ctx->require('fiscal_years', 'FY2026');
 
+        // The original, approved by the Executive Director in December, and the
+        // revision the Finance Manager approved since, which the year now runs on.
         $versions = [
             'orig'   => $ctx->insert('budget_versions', ['entity_id' => $entity, 'fiscal_year_id' => $fy, 'name' => 'Original',
-                'status' => 'superseded', 'prepared_by' => $ctx->systemUserId(), 'created_at' => $now]),
+                'status' => 'superseded', 'prepared_by' => $ctx->userOrSystem('W. Kamau'), 'approved_by' => $ctx->userOrSystem('D. Kiptoo'),
+                'approved_at' => '2025-12-12 10:00:00', 'created_at' => '2025-12-01 09:00:00']),
         ];
-        $versions['annual'] = $ctx->insert('budget_versions', ['entity_id' => $entity, 'fiscal_year_id' => $fy, 'name' => 'Revised',
-            'based_on_version_id' => $versions['orig'], 'status' => 'approved', 'prepared_by' => $ctx->systemUserId(), 'created_at' => $now]);
+        $versions['annual'] = $ctx->insert('budget_versions', ['entity_id' => $entity, 'fiscal_year_id' => $fy, 'name' => 'Revision 1',
+            'based_on_version_id' => $versions['orig'], 'status' => 'approved', 'prepared_by' => $ctx->userOrSystem('M. Otieno'),
+            'approved_by' => $ctx->userOrSystem('W. Kamau'), 'approved_at' => '2026-04-15 11:00:00', 'created_at' => $now]);
 
         $profiles = $ctx->data('PROFILE');
 

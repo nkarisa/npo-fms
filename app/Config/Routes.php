@@ -219,6 +219,16 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('grants/(:any)/activate', 'Api\Grants::activate/$1');
     $routes->get('grants/(:any)', 'Api\Grants::show/$1');
     $routes->get('budgets', 'Api\Budgets::index');
+    $routes->get('budgets/line', 'Api\Budgets::line');
+    $routes->get('budgets/export', 'Api\Budgets::export');
+    $routes->get('budgets/new-year', 'Api\Budgets::deriveYear');
+    $routes->post('budgets/new-year', 'Api\Budgets::raiseYear');
+    $routes->post('budgets/revisions', 'Api\Budgets::reallocate');
+    // A version is named by its year and name ("FY2026 Revision 2"), so it travels in the body.
+    $routes->post('budgets/versions/submit', 'Api\Budgets::submit');
+    $routes->post('budgets/versions/approve', 'Api\Budgets::approve');
+    $routes->post('budgets/versions/send-back', 'Api\Budgets::sendBack');
+    $routes->post('budgets/versions/discard', 'Api\Budgets::discard');
     $routes->get('donor-reports', 'Api\DonorReports::index');
     $routes->get('donor-reports/languages', 'Api\DonorReports::languages');
     $routes->post('donor-reports/languages', 'Api\DonorReports::setLanguage');

@@ -3772,11 +3772,24 @@ paths:
   /budgets:
     get:
       tags: [Budgets]
-      summary: Budget against actual, grouped
+      summary: A budget version against actual, phased to date and grouped
+      description: |
+        Opens on the approved version of the working year. Each line is compared
+        with its phasing to date (by its phasing profile) or the full-year budget.
+        `state` says where the version stands and what the caller may do with it;
+        `revision` lists the lines a movement can be made between, with what the
+        revision dialog checks before sending.
       parameters:
+        - name: version
+          in: query
+          description: A version key, its year and name ("FY2026 Revision 2"). Defaults to the approved version of the working year.
+          schema: { type: string }
         - name: group
           in: query
           schema: { type: string, enum: [Account group, Programme, Fund], default: Account group }
+        - name: basis
+          in: query
+          schema: { type: string, enum: [phased, full], default: phased }
         - { $ref: '#/components/parameters/Search' }
       responses:
         '200':
@@ -3787,10 +3800,172 @@ paths:
                 type: object
                 additionalProperties: true
                 properties:
+                  versions: { type: array, items: { type: object, properties: { key: { type: string }, label: { type: string } } } }
+                  version: { type: string }
+                  versionLabel: { type: string, example: FY2026 Revision 1 (approved) }
+                  state:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [draft, pending_approval, approved, superseded] }
+                      isRevision: { type: boolean }
+                      note: { type: string }
+                      returnedNote: { type: string, nullable: true }
+                      moves: { type: array, items: { type: object, additionalProperties: true } }
+                      canSubmit: { type: boolean }
+                      canApprove: { type: boolean }
+                      canSendBack: { type: boolean }
+                      canDiscard: { type: boolean }
+                      needsAuthority: { type: boolean, description: Approval above the rule's threshold needs the outside authority's reference. }
+                      approvalNote: { type: string, nullable: true }
                   groups: { type: array, items: { type: object, additionalProperties: true } }
                   groupOptions: { type: array, items: { type: string } }
+                  basisOptions: { type: array, items: { type: object, properties: { key: { type: string }, label: { type: string } } } }
+                  totals: { type: object, additionalProperties: true }
                   stats: { type: array, items: { $ref: '#/components/schemas/StatCard' } }
+                  revision: { type: object, nullable: true, additionalProperties: true }
+                  newYear: { type: object, properties: { years: { type: array, items: { type: integer } } } }
+                  canPrepare: { type: boolean }
                   locale: { $ref: '#/components/schemas/Locale' }
+
+  /budgets/line:
+    get:
+      tags: [Budgets]
+      summary: One budget line — monthly phasing against actual, version history, revision rules
+      parameters:
+        - { name: version, in: query, schema: { type: string } }
+        - name: key
+          in: query
+          required: true
+          description: The line's coding, "account:fund:programme:grant" (grant empty when none).
+          schema: { type: string }
+      responses:
+        '200':
+          description: The line.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /budgets/export:
+    get:
+      tags: [Budgets]
+      summary: The variance report for a version, as CSV
+      parameters:
+        - { name: version, in: query, schema: { type: string } }
+        - { name: group, in: query, schema: { type: string, enum: [Account group, Programme, Fund] } }
+        - { name: basis, in: query, schema: { type: string, enum: [phased, full] } }
+      responses:
+        '200':
+          description: CSV, UTF-8 with a byte-order mark.
+          content:
+            text/csv: { schema: { type: string } }
+
+  /budgets/revisions:
+    post:
+      tags: [Budgets]
+      summary: Move budget between two lines in the working revision
+      description: |
+        Opens the working revision from the approved version if there is none. The
+        lines must share a fund group and a grant agreement; the amount may not exceed
+        what is uncommitted on the line reduced; an indirect-cost line on a grant is
+        not increased; and more than 10% of a grant-funded line, counting earlier
+        movements in the revision, is refused pending the funder's consent. Needs
+        `journal.prepare`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to, amount, ref, reason]
+              properties:
+                from: { type: string, description: Line key to reduce. }
+                to: { type: string, description: Line key to increase. }
+                amount: { type: string, example: '2,000,000' }
+                ref: { type: string, description: Authority reference. }
+                reason: { type: string }
+      responses:
+        '200':
+          description: Applied.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /budgets/versions/{action}:
+    post:
+      tags: [Budgets]
+      summary: Submit, approve, send back or discard a version
+      description: |
+        `submit` and `discard` (a draft) need `journal.prepare`. `approve` follows the
+        budget revision approval rule for a revision and needs `period.authorise` for a
+        year's budget; nobody approves what they prepared, submitted or moved money in.
+        Approving supersedes the year's approved version. `send-back` returns a
+        submitted version to draft with a note.
+      parameters:
+        - name: action
+          in: path
+          required: true
+          schema: { type: string, enum: [submit, approve, send-back, discard] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: string, example: FY2026 Revision 2 }
+                authorityRef: { type: string, description: approve — the outside authority's reference, where the rule needs one. }
+                note: { type: string, description: send-back — what the preparer should change. }
+      responses:
+        '200':
+          description: Done; `version` names the version to show next.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /budgets/new-year:
+    get:
+      tags: [Budgets]
+      summary: Derive next year's budget on the assumptions given, without writing it
+      parameters:
+        - { name: year, in: query, required: true, schema: { type: integer, example: 2027 } }
+        - { name: uplift, in: query, schema: { type: integer, minimum: 0, maximum: 15, default: 0 }, description: Percent added to core lines. }
+        - { name: keep, in: query, schema: { type: string, enum: ['0', '1'], default: '1' }, description: Keep lines with nothing left, at zero. }
+      responses:
+        '200':
+          description: The derived lines, summary and the three funding checks.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    post:
+      tags: [Budgets]
+      summary: Raise the derived budget as a draft for the year
+      description: Opens the fiscal year for the entity if it has not got it. Needs `journal.prepare`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [year]
+              properties:
+                year: { type: integer }
+                uplift: { type: integer }
+                keepEmpty: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Raised.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   # -------------------------------------------------------------- Donor reports
   /donor-reports:
