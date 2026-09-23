@@ -159,9 +159,40 @@
 
     const main = app.querySelector('#st-main');
     main.addEventListener('input', (e) => { if (bind(e.target, false)) renderHead(); });
-    main.addEventListener('change', (e) => { if (bind(e.target, true)) { renderHead(); renderSection(); } });
+    main.addEventListener('change', (e) => {
+      if (!bind(e.target, true)) return;
+      renderHead();
+      // Deferred: a redraw run straight off this blur would land before the click
+      // that caused it has finished moving focus to the next cell, tearing out
+      // that cell (a fresh element replaces it) before the browser gets there —
+      // so a field edited right after another looks like it was never entered.
+      // Waiting a tick lets focus land first; refocus() then carries it onto the
+      // cell's redrawn twin so typing can continue straight through the redraw.
+      setTimeout(() => {
+        const focused = refocusable(main);
+        renderSection();
+        refocus(main, focused);
+      }, 0);
+    });
     main.addEventListener('click', onAction);
     window.addEventListener('beforeunload', (e) => { if (dirty()) { e.preventDefault(); e.returnValue = ''; } });
+  }
+
+  /** Where focus sits within a table redraw is about to replace, or null off it. */
+  function refocusable(main) {
+    const el = document.activeElement;
+    if (!el || !main.contains(el) || !el.dataset.bind) return null;
+
+    return { path: el.dataset.bind, selection: el.setSelectionRange && el.selectionStart !== undefined ? [el.selectionStart, el.selectionEnd] : null };
+  }
+
+  /** Puts focus back on a redrawn table's cell for the same field, cursor included. */
+  function refocus(main, focused) {
+    if (!focused) return;
+    const el = main.querySelector(`[data-bind="${focused.path}"]`);
+    if (!el) return;
+    el.focus();
+    if (focused.selection) el.setSelectionRange(focused.selection[0], focused.selection[1]);
   }
 
   /** Writes an edited field into the draft (or a form). Returns whether anything changed. */
@@ -573,12 +604,14 @@
             const roles = data.approverRoles.includes(d.approver) ? data.approverRoles : [d.approver, ...data.approverRoles];
             const ladder = draft.ladders[a.key] || [];
             const open = view.ladderOpen === a.key;
+            const second = ladder[1];
+            const secondName = second ? (second.role || second.authority || '—') : null;
             return `
             <div class="st-tr" style="grid-template-columns:minmax(140px,1fr) 152px 190px 160px 130px;">
               <div class="st-ellipsis">${esc(a.label)}</div>
               <div><input class="st-cell mono end" data-num data-bind="approvals.${esc(a.key)}.threshold" value="${esc(nil ? 'nil — always' : fmt(num(d.threshold)))}" aria-label="${esc(a.label)} threshold"></div>
               <div><select class="st-cell" data-bind="approvals.${esc(a.key)}.approver" aria-label="${esc(a.label)} approver">${roles.map(r => `<option ${r === d.approver ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></div>
-              <div class="st-muted st-ellipsis">${nil ? 'Every transaction' : 'Above: ' + esc(a.escalation)}</div>
+              <div class="st-muted st-ellipsis">${nil ? (secondName ? `Every transaction · then ${esc(secondName)}` : 'Every transaction') : 'Above: ' + esc(a.escalation)}</div>
               <div><button type="button" class="st-ladder-btn ${open ? 'on' : ''}" data-act="ladder-open" data-id="${esc(a.key)}" aria-expanded="${open}">${ladder.length || 1} step${ladder.length === 1 ? '' : 's'} ${open ? '▴' : '▾'}</button></div>
             </div>
             ${open ? ladderEditor(a, ladder) : ''}`;

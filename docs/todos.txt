@@ -56,4 +56,4 @@ Maintaince Mode - Done
 
 Show the password complexity policy on the reset-password screen - Done
 
-Prevent editing by any user a submited journal, bill, requisition and advance request and  issued donor invoice unless returned.
+Prevent editing by any user a submited journal, bill, requisition and advance request and  issued donor invoice unless returned. - Done (journal: only draft/rejected are editable now; bill, requisition, advance and donor invoice already have no edit path once created)

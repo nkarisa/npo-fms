@@ -7,21 +7,22 @@ use App\Libraries\Prototype;
 
 /**
  * The signatures a document must collect before it counts as approved, and who
- * may give each of them. Approval limits are data, not code: the ladder and the
- * role ceilings are rows an administrator edits in Settings. An entity may hold
- * a ladder of its own; one that holds none follows the head office's.
+ * may give each of them. Approval limits are data, not code: the ladder is rows
+ * an administrator edits in Settings. An entity may hold a ladder of its own; one
+ * that holds none follows the head office's.
  *
  * A document type's rule carries an ordered ladder of steps (`approval_steps`).
  * Each step names a **role** rather than a person, so anyone holding that role
  * can sign it, and engages only for amounts inside its band — which is how the
  * old single approver with an escalation above a threshold is said in steps, and
- * why nothing changed when ladders arrived (see stepsFor()).
+ * why nothing changed when ladders arrived (see stepsFor()). What a role may sign
+ * is entirely its steps' bands: there is no separate cap behind them, so freeing a
+ * step of its ceiling really does free it.
  *
  * - A step is satisfied once `quorum` different people holding its role have
  *   signed it. The first step not yet satisfied is the one now open.
  * - A step naming an authority outside the system (the Board Treasurer, a board
  *   minute) is satisfied by the in-system approver recording its reference.
- * - A role's ceiling (`approval_limits`) caps what it may sign in one transaction.
  * - Nobody signs twice in a round, and a return closes the round: the document
  *   goes back to its preparer and, once resubmitted, is signed again from the top.
  *
@@ -263,11 +264,6 @@ final class ApprovalPolicy extends Repository
                 . '. Each signature on the ladder is a different person.', 'needsAuthority' => false];
         }
 
-        $ceiling = $this->ceiling($signingAs, $documentType);
-        if ($ceiling !== null && $amount > $ceiling) {
-            return ['message' => "The {$signingAs} may approve up to KES " . Prototype::fmt($ceiling) . " in one transaction. {$ref} is {$amountText}.", 'needsAuthority' => false];
-        }
-
         return null;
     }
 
@@ -482,8 +478,8 @@ final class ApprovalPolicy extends Repository
 
     /**
      * Whether the signature a record is waiting for is this person's to give: they
-     * hold a role that signs the open step, they have not already signed this
-     * round, and the value is inside their role's ceiling.
+     * hold a role that signs the open step, and they have not already signed this
+     * round.
      *
      * Worked out from signatures already read, so a register asks no question of
      * the database beyond the role lookups, which are cached.
@@ -505,13 +501,8 @@ final class ApprovalPolicy extends Repository
             $this->ladder($document['type'], $document['amount']),
             $open
         );
-        $signingAs = $this->signingRole($signatories, $actorId);
-        if ($signingAs === null) {
-            return false;
-        }
-        $ceiling = $this->ceiling($signingAs, $document['type']);
 
-        return $ceiling === null || $document['amount'] <= $ceiling;
+        return $this->signingRole($signatories, $actorId) !== null;
     }
 
     /** What a waiting record shows about its ladder, in a register and in its drawer. */
@@ -676,17 +667,5 @@ final class ApprovalPolicy extends Repository
         $at = (int) array_search($open['step'], array_column($ladder, 'step'), true) + 1;
 
         return ' This is signature ' . $at . ' of ' . count($ladder) . '.';
-    }
-
-    /** The most a role may approve in one transaction of a type; null for no ceiling. */
-    private function ceiling(string $role, string $documentType): ?float
-    {
-        $row = $this->row(
-            'SELECT al.ceiling FROM {approval_limits} al JOIN {roles} r ON r.id = al.role_id
-             WHERE r.name = ? AND (al.document_type = ? OR al.document_type IS NULL) ORDER BY al.document_type IS NULL LIMIT 1',
-            [$role, $documentType]
-        );
-
-        return $row === null || $row['ceiling'] === null ? null : (float) $row['ceiling'];
     }
 }

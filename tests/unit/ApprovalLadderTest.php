@@ -123,16 +123,6 @@ final class ApprovalLadderTest extends CIUnitTestCase
         $this->assertStringNotContainsString('signature 1 of', $refusal['message'], 'a one-step ladder does not count signatures at the reader');
     }
 
-    public function testACeilingStillCapsWhatARoleMaySignInOneTransaction(): void
-    {
-        // Budget revisions above 2,000,000 need the funder's consent, which the
-        // Finance Manager records — but their ceiling is 5,000,000 whatever the
-        // document type, and that is the wall they meet first.
-        $refusal = (new ApprovalPolicy())->refusal('budget_revision', 6000000.0, $this->user('w.kamau@elog.or.ke'), 'BR-1', 'FC/2026/01');
-
-        $this->assertStringContainsString('The Finance Manager may approve up to KES 5,000,000 in one transaction', $refusal['message']);
-    }
-
     public function testADocumentTypeWithNoRuleIsHeldToNone(): void
     {
         $this->assertNull((new ApprovalPolicy())->refusal('period_reopen', 10.0, $this->user('j.achieng@elog.or.ke'), 'X'));

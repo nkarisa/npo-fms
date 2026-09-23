@@ -116,7 +116,7 @@ class Account extends BaseApiController
         return [
             'me' => [
                 'name' => $me['name'], 'email' => $me['email'], 'initials' => $me['initials'], 'role' => $me['role'],
-                'lastSignIn' => $me['lastSignIn'], 'limit' => $me['limit'], 'rights' => $me['rights'],
+                'lastSignIn' => $me['lastSignIn'], 'rights' => $me['rights'],
             ],
             'access' => array_map(static fn ($a) => [
                 'role' => $a['role'],

@@ -122,10 +122,10 @@ characters). Being idle for 30 minutes signs you out.
 
 **Purpose:** your own sign-in settings, and what your roles let you do.
 
-**On screen:** *You* (name, email, last sign-in and where from, what you can do,
-approval limit); *Roles* (each role you hold and at which entities, then every
-permission they give you together); *Second sign-in step* (on or off, the method,
-recovery codes left); *Password*; and *Recent sign-in activity*.
+**On screen:** *You* (name, email, last sign-in and where from, what you can do);
+*Roles* (each role you hold and at which entities, then every permission they
+give you together); *Second sign-in step* (on or off, the method, recovery codes
+left); *Password*; and *Recent sign-in activity*.
 
 **What you can do:** change your password (needs the current one); set up, switch
 or remove your second step; make a new set of recovery codes, which cancels the

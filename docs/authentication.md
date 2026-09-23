@@ -264,7 +264,7 @@ each one is checked somewhere in the code. They cannot be added from the screen.
 |---|---|
 | `ledger.view` | View the ledger, reports and supporting records |
 | `journal.prepare` | Prepare and submit journals and documents |
-| `journal.approve` | Approve documents within the role's ceiling |
+| `journal.approve` | Approve documents within the ladder's bands |
 | `journal.post` | Post approved journals to the ledger |
 | `requisition.raise` | Raise purchase requisitions |
 | `payroll.view` | View payroll records (every read is logged) |

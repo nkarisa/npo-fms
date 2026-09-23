@@ -94,8 +94,12 @@ Leaving `applies_upto` empty on step 1 turns the same pair into a true two-step
 ladder: the Finance Manager signs every run, and the Executive Director
 countersigns the large ones.
 
-A role's ceiling in `approval_limits` still caps what it may sign in one
-transaction, and is checked at each step.
+What a role may sign is entirely its steps' bands — there is no separate,
+document-type-blind cap behind them (there was, in `approval_limits`, until it
+was dropped: it only ever fought whatever a ladder's own bands already said, so
+freeing a step of its ceiling did not free the role signing it). Cap what the
+Finance Manager may sign by banding *their own* step, not by adding a second
+control elsewhere.
 
 ### Writing one
 
@@ -235,7 +239,7 @@ own copies the head office's ladder down first, so nothing is lost.
 | `approval_rules` | Unchanged as the per-entity, per-document-type header: the label the screens show. `escalation_role_id` and `escalation_note` are kept for one release and then dropped |
 | `approval_steps` | The ordered ladder under a rule. Columns above |
 | `approval_signatures` | Every signature and every return, append-only. `round`, `step_no`, `role`, `user_id`, `decision`, `amount`, `authority_ref`, `note`, `signed_at` |
-| `approval_limits` | Unchanged: the most a role may sign in one transaction |
+| `approval_limits` | Dropped (`DropApprovalCeilings`): a role's blanket ceiling, once checked alongside the ladder. Bands do that job alone now |
 | `<document>.approved_by`, `.approved_at` | Unchanged: the final signer |
 | `<document>.status` | Unchanged. No status enum gains a value; a part-signed document is `pending_approval` |
 
@@ -345,9 +349,8 @@ tell, so nobody is told: its reference is recorded by whoever signs next.
 
 The same question — *is this one mine to sign?* — is what separates a queue from
 a list. Each standing carries `mine`: the viewer holds a role that signs the open
-step, has not already signed this round, and the value is inside their ceiling.
-Registers add their own condition, that the viewer did not prepare it, and count
-the two figures separately:
+step, and has not already signed this round. Registers add their own condition,
+that the viewer did not prepare it, and count the two figures separately:
 
 > 14 of 31 journals · 6 awaiting approval · 2 awaiting yours
 

@@ -213,9 +213,10 @@ final class JournalRepository extends Repository
     }
 
     /**
-     * Saves changes to a draft, or to an entry awaiting approval, as a draft or
-     * submitted for approval. An entry awaiting approval returns to draft while its
-     * lines are replaced. The preparer is not reassigned. A `docLink` the entry
+     * Saves changes to a draft, or to an entry the approver has returned, as a
+     * draft or submitted for approval. An entry awaiting approval cannot be
+     * touched by anyone until it comes back — reject() is what returns it, and it
+     * lands back in draft. The preparer is not reassigned. A `docLink` the entry
      * already carries keeps its document reference.
      *
      * @param list<int> $removeAttachments ids of supporting documents to remove
@@ -223,21 +224,18 @@ final class JournalRepository extends Repository
     public function update(string $ref, array $j, int $actorId, array $files = [], array $removeAttachments = []): array
     {
         $journal = $this->header($ref);
-        if (!in_array($journal['status'], ['draft', 'rejected', 'pending_approval'], true)) {
-            throw new RuleViolation($ref . ' is ' . strtolower(self::label($journal['status'])) . ' and can no longer be changed. Correct it with a reversal.');
-        }
-        if ($journal['source_type'] === 'fund_transfer') {
+        // Checked before the general status guard: a transfer's lines are never its own
+        // to edit, in any status short of posted — reported that way, not as "pending
+        // approval and can no longer be changed", which would point the user nowhere.
+        if ($journal['source_type'] === 'fund_transfer' && !in_array($journal['status'], ['posted', 'reversed'], true)) {
             throw new RuleViolation($ref . ' records an inter-fund transfer, and its lines are the transfer\'s. Discard it once returned, and raise the transfer again from Funds.');
+        }
+        if (!in_array($journal['status'], ['draft', 'rejected'], true)) {
+            throw new RuleViolation($ref . ' is ' . strtolower(self::label($journal['status'])) . ' and can no longer be changed. Correct it with a reversal.');
         }
 
         $current = $this->find($ref);
-        // A document that went for approval with the entry is part of what the approver
-        // is looking at, so it stays until the entry is taken back to draft — by its
-        // preparer saving it as a draft, or by the approver returning it.
         $removeAttachments = array_values(array_intersect(array_map('intval', $removeAttachments), array_column($current['attachments'], 'id')));
-        if ($removeAttachments !== [] && $journal['status'] === 'pending_approval') {
-            throw new RuleViolation($ref . ' is awaiting approval, and the documents it was submitted with stay with it. Save it as a draft to take it back from approval, then remove the document.');
-        }
         $keepDocument = ($j['docLink'] ?? 'auto') === $current['docLink'];
         [$period, $date, $lines] = $this->prepare(['docLink' => 'auto'] + $j);
         $source = $keepDocument ? false : $this->source($j['docLink'] ?? 'auto');

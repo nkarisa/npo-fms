@@ -1367,10 +1367,14 @@ final class SettingsRepository extends Repository
 
         // The header is what rule() reports and what the refusal messages read from,
         // so it says what the ladder says: the first signature, the band it holds to
-        // and who or what the value passes to above it.
+        // and who or what the value passes to above it. The threshold is the value at
+        // which the ladder passes beyond that first signature — the ceiling it holds
+        // to where it has one, and otherwise where the signature after it engages, so
+        // an escalation that signs as well as the first is read as an escalation and
+        // not as nil.
         $second = $ladder[1] ?? null;
         $this->db->table('approval_rules')->where('id', (int) $rule['id'])->update([
-            'threshold'          => $ladder[0]['upto'] ?? 0,
+            'threshold'          => $ladder[0]['upto'] ?? ($second['above'] ?? 0),
             'approver_role_id'   => $roleId($ladder[0]['role']),
             'escalation_role_id' => $second === null ? null : $roleId($second['role']),
             'escalation_note'    => $second === null ? null : $second['authority'],

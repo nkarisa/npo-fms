@@ -189,7 +189,7 @@ final class RoleRepository extends Repository
         }
 
         $this->transaction(function () use ($roleId, $role, $actorId) {
-            // Permissions and approval ceilings go with the role (ON DELETE CASCADE).
+            // Permissions go with the role (ON DELETE CASCADE).
             $this->db->table('roles')->where('id', $roleId)->delete();
             $this->logChange('Roles', $role['name'] . ' role deleted', $actorId);
         });
