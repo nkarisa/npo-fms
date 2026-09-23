@@ -71,7 +71,7 @@ final class PayablesRepository extends Repository
             $ladders = (new ApprovalPolicy())->standings('bill', array_column(array_map(
                 static fn ($b) => ['id' => (int) $b['id'], 'type' => 'bill', 'amount' => (float) $b['total']],
                 array_values(array_filter($rows, static fn ($b) => $b['status'] === 'pending_approval'))
-            ), null, 'id'));
+            ), null, 'id'), $this->lookups->viewerId());
 
             return array_map(function ($b) use ($lines, $budgets, $banks, $trails, $documents, $ladders) {
                 $billLines = $lines[(int) $b['id']] ?? [];

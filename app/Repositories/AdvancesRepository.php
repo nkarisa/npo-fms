@@ -70,7 +70,7 @@ final class AdvancesRepository extends Repository
             $ladders = (new ApprovalPolicy())->standings('advance', array_column(array_map(
                 static fn ($a) => ['id' => (int) $a['id'], 'type' => 'advance', 'amount' => (float) $a['amount']],
                 array_values(array_filter($rows, static fn ($a) => $a['status'] === 'requested'))
-            ), null, 'id'));
+            ), null, 'id'), $this->lookups->viewerId());
 
             return array_map(function ($a) use ($surrenders, $recovered, $reminders, $trails, $documents, $ladders) {
                 $id   = (int) $a['id'];

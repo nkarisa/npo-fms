@@ -834,9 +834,11 @@ warning appears if you try to leave with unsaved changes.
   surrender date before an advance can be recovered from pay (14), and how far
   ahead a supplier shows as expiring (30), a donor report is flagged (45) and a
   tranche shows as due (30). A bill or claim already raised keeps its due date.
-- **Approvals** — thresholds and approvers per transaction type, with a
-  segregation-of-duties note (how the signatures a document collects are decided
-  is in [approvals.md](approvals.md)), and the **procurement threshold** (KES 500,000 to
+- **Approvals** — thresholds and approvers per transaction type, each opening out
+  into the **ladder of signatures** that type collects: a row per signature naming
+  who signs it, the band of values it engages for, and how many of them must sign
+  (how a document climbs one is in [approvals.md](approvals.md)). Also a
+  segregation-of-duties note, and the **procurement threshold** (KES 500,000 to
   start): above it a purchase needs three quotations before its purchase order,
   and a bill captured straight into Payables is paid only to a pre-qualified
   supplier.

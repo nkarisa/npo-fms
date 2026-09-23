@@ -158,6 +158,12 @@ final class Lookups extends Repository
      *
      * @return list<int>
      */
+    /** Who is looking: the signed-in user, or whoever they are acting as. */
+    public function viewerId(): ?int
+    {
+        return EntityScope::viewerId();
+    }
+
     public function holdersOf(string $role, ?int $entityId = null): array
     {
         $entityId ??= $this->entityId();

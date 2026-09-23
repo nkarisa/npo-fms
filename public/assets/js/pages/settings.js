@@ -70,6 +70,11 @@
       segments: () => Object.fromEntries(d.segments.map(s => [s.key, s.required])),
       currencies: () => d.currencies.map(c => ({ code: c.code, name: c.name, rate: c.rate, active: c.active })),
       approvals: () => Object.fromEntries(d.approvals.map(a => [a.key, { threshold: a.threshold, approver: a.approver }])),
+      // The signatures each type asks for, in order. A band above is the short way
+      // of saying a one or two step ladder; this is the long way, and it wins.
+      ladders: () => Object.fromEntries(d.approvals.map(a => [a.key, (d.ladders[a.key] || []).map(s => ({
+        role: s.role || '', authority: s.authority || '', above: s.above, upto: s.upto === null ? '' : s.upto, quorum: s.quorum,
+      }))])),
       // Set to go back to the head office's, for an entity that has its own.
       approvalsFollow: () => false,
       postingAccountsFollow: () => [],
@@ -561,18 +566,22 @@
         ${head('Approval thresholds', 'Bands are read from the bottom up: a transaction takes the highest band its value reaches. Every band above nil enforces the two-person rule.')}
         ${bandsNote('approvalsFollow', 'approval bands', data.ownApprovals, draft.approvalsFollow)}
         <div class="st-table"><div style="min-width:640px;">
-          <div class="st-tr st-th" style="grid-template-columns:minmax(140px,1fr) 152px 190px 160px;"><div>Transaction type</div><div class="end">Threshold (${esc(data.scope.currency)})</div><div>Approver</div><div>Above threshold</div></div>
+          <div class="st-tr st-th" style="grid-template-columns:minmax(140px,1fr) 152px 190px 160px 130px;"><div>Transaction type</div><div class="end">Threshold (${esc(data.scope.currency)})</div><div>Approver</div><div>Above threshold</div><div>Signatures</div></div>
           ${data.approvals.map(a => {
             const d = draft.approvals[a.key];
             const nil = num(d.threshold) === 0;
             const roles = data.approverRoles.includes(d.approver) ? data.approverRoles : [d.approver, ...data.approverRoles];
+            const ladder = draft.ladders[a.key] || [];
+            const open = view.ladderOpen === a.key;
             return `
-            <div class="st-tr" style="grid-template-columns:minmax(140px,1fr) 152px 190px 160px;">
+            <div class="st-tr" style="grid-template-columns:minmax(140px,1fr) 152px 190px 160px 130px;">
               <div class="st-ellipsis">${esc(a.label)}</div>
               <div><input class="st-cell mono end" data-num data-bind="approvals.${esc(a.key)}.threshold" value="${esc(nil ? 'nil — always' : fmt(num(d.threshold)))}" aria-label="${esc(a.label)} threshold"></div>
               <div><select class="st-cell" data-bind="approvals.${esc(a.key)}.approver" aria-label="${esc(a.label)} approver">${roles.map(r => `<option ${r === d.approver ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></div>
               <div class="st-muted st-ellipsis">${nil ? 'Every transaction' : 'Above: ' + esc(a.escalation)}</div>
-            </div>`;
+              <div><button type="button" class="st-ladder-btn ${open ? 'on' : ''}" data-act="ladder-open" data-id="${esc(a.key)}" aria-expanded="${open}">${ladder.length || 1} step${ladder.length === 1 ? '' : 's'} ${open ? '▴' : '▾'}</button></div>
+            </div>
+            ${open ? ladderEditor(a, ladder) : ''}`;
           }).join('')}
         </div></div>
         <div style="margin-top:22px;">
@@ -592,6 +601,51 @@
           ${data.sodRules.map(r => `<div class="st-bullet"><span>·</span>${esc(r)}</div>`).join('')}
         </div>
       </div>`;
+  }
+
+  /**
+   * The ladder for one transaction type, step by step: who signs, for what band of
+   * values, and how many of them. A step naming an authority outside the system —
+   * the Board Treasurer, a board minute — is satisfied by whoever signs recording
+   * its reference, so it takes one signature and cannot come first.
+   */
+  function ladderEditor(a, ladder) {
+    const roles = data.approverRoles;
+    const step = (s, i) => `
+      <div class="st-tr st-ladder-step" style="grid-template-columns:30px minmax(150px,1fr) 120px 120px 92px 40px;">
+        <div class="st-muted mono">${i + 1}</div>
+        <div>
+          <select class="st-cell" data-bind="ladders.${esc(a.key)}.${i}.role" aria-label="Signature ${i + 1} role">
+            <option value="">— an authority outside the system —</option>
+            ${roles.map(r => `<option ${r === s.role ? 'selected' : ''}>${esc(r)}</option>`).join('')}
+          </select>
+          ${s.role === '' ? `<input class="st-cell" style="margin-top:4px;" data-bind="ladders.${esc(a.key)}.${i}.authority" value="${esc(s.authority)}" placeholder="Board Treasurer" aria-label="Signature ${i + 1} authority">` : ''}
+        </div>
+        <div><input class="st-cell mono end" data-bind="ladders.${esc(a.key)}.${i}.above" value="${esc(num(s.above) === 0 ? '' : fmt(num(s.above)))}" placeholder="from nil" aria-label="Signature ${i + 1} engages above"></div>
+        <div><input class="st-cell mono end" data-bind="ladders.${esc(a.key)}.${i}.upto" value="${esc(s.upto === '' ? '' : fmt(num(s.upto)))}" placeholder="no ceiling" aria-label="Signature ${i + 1} up to"></div>
+        <div><input class="st-cell mono end" data-num data-bind="ladders.${esc(a.key)}.${i}.quorum" value="${esc(s.quorum)}" aria-label="Signature ${i + 1} quorum"></div>
+        <div class="end">${ladder.length > 1 ? `<button type="button" class="jd-remove" data-act="ladder-remove" data-id="${esc(a.key)}.${i}" data-manage aria-label="Remove signature ${i + 1}">×</button>` : ''}</div>
+      </div>`;
+
+    return `
+      <div class="st-ladder">
+        <div class="st-tr st-th" style="grid-template-columns:30px minmax(150px,1fr) 120px 120px 92px 40px;">
+          <div></div><div>Signed by</div><div class="end">Above</div><div class="end">Up to</div><div class="end">How many</div><div></div>
+        </div>
+        ${ladder.map(step).join('')}
+        <div class="st-ladder-foot">
+          <button type="button" class="btn" data-act="ladder-add" data-id="${esc(a.key)}" data-manage ${ladder.length >= (data.maxLadder || 6) ? 'disabled' : ''}>Add a signature</button>
+          <span class="st-muted">${esc(ladderNote(ladder))}</span>
+        </div>
+      </div>`;
+  }
+
+  /** What the ladder as drafted comes to, in the words the plan will use. */
+  function ladderNote(ladder) {
+    if (ladder.length === 0) return 'Nobody signs these yet.';
+    const banded = ladder.filter(s => num(s.above) > 0 || s.upto !== '');
+    return `${ladder.reduce((n, s) => n + Math.max(1, num(s.quorum)), 0)} signatures in all`
+      + (banded.length ? ' · a step engages only inside its band, so a value may not reach them all' : ' · every signature is asked for at any value');
   }
 
   /**
@@ -1362,6 +1416,26 @@
       // approvalsFollow or procurement.follow: back to the head office's, on saving.
       const [a, b] = id.split('.');
       if (b) draft[a][b] = !draft[a][b]; else draft[a] = !draft[a];
+      renderHead();
+      renderSection();
+      return;
+    }
+    if (act === 'ladder-open') {
+      view.ladderOpen = view.ladderOpen === id ? null : id;
+      renderSection();
+      return;
+    }
+    if (act === 'ladder-add') {
+      // A new signature starts where the last one left off: the whole range, by
+      // the same role, so it is a step that always engages until it is narrowed.
+      draft.ladders[id] = [...(draft.ladders[id] || []), { role: data.approverRoles[0] || '', authority: '', above: 0, upto: '', quorum: 1 }];
+      renderHead();
+      renderSection();
+      return;
+    }
+    if (act === 'ladder-remove') {
+      const [key, at] = id.split('.');
+      draft.ladders[key] = draft.ladders[key].filter((_, i) => i !== Number(at));
       renderHead();
       renderSection();
       return;

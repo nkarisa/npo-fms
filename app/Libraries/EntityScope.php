@@ -79,6 +79,21 @@ final class EntityScope
         return self::scope()['active'];
     }
 
+    /**
+     * The user whose eyes the request is being served through — the person signed
+     * in, or whoever they are acting as. Null when nobody is signed in, as in a
+     * console command or the installer.
+     *
+     * Resolved exactly as the entity scope resolves it, so what a register counts
+     * as "waiting for you" and what it lets you see are the same person.
+     */
+    public static function viewerId(): ?int
+    {
+        $signedIn = isset($_SESSION) && ($_SESSION[SignIn::STAGE] ?? null) === SignIn::DONE && isset($_SESSION[SignIn::USER]);
+
+        return $signedIn ? self::actingUserId() : null;
+    }
+
     public static function consolidated(): bool
     {
         return self::scope()['consolidated'];

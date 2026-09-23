@@ -94,7 +94,7 @@ final class ProcurementRepository extends Repository
             $ladders = (new ApprovalPolicy())->standings('requisition', array_column(array_map(
                 static fn ($r) => ['id' => (int) $r['id'], 'type' => 'requisition', 'amount' => (float) $r['estimated_amount']],
                 array_values(array_filter($rows, static fn ($r) => $r['status'] === 'pending_approval'))
-            ), null, 'id'));
+            ), null, 'id'), $this->lookups->viewerId());
 
             return array_map(function ($r) use ($lines, $quotes, $orders, $positions, $trails, $ladders) {
                 $id       = (int) $r['id'];

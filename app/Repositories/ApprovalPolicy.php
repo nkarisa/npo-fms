@@ -35,6 +35,17 @@ final class ApprovalPolicy extends Repository
     /** What a signature is called when no other name was given. */
     public const DEFAULT_LABEL = 'Approved';
 
+    /** Where a notification about a waiting document sends the person who can sign it. */
+    private const LINKS = [
+        'journal'        => '/journals?status=Pending+approval',
+        'bill'           => '/payables?status=Awaiting+approval',
+        'advance'        => '/advances?filter=Awaiting+approval',
+        'requisition'    => '/procurement?tab=Awaiting+approval',
+        'payroll_run'    => '/payroll',
+        'budget_version' => '/budgets',
+        'asset_disposal' => '/assets',
+    ];
+
     private Lookups $lookups;
 
     public function __construct()
@@ -202,8 +213,14 @@ final class ApprovalPolicy extends Repository
     ): ?array {
         $steps = $this->steps($documentType);
         if ($steps === []) {
-            // A document type nobody has written a rule for is not held to one.
-            return null;
+            // A document type nobody has written a rule for is not held to one. A
+            // rule that exists but names no step is a broken policy, not an open
+            // one: it asks for nobody's signature, so nobody may sign.
+            return $this->ruleRow($documentType) === null ? null : [
+                'message' => 'Nothing can be approved against the ' . $documentType . ' rule until it names who signs. '
+                    . 'Set its ladder in Settings → Approvals.',
+                'needsAuthority' => false,
+            ];
         }
 
         $ladder   = $this->ladder($documentType, $amount);
@@ -290,6 +307,11 @@ final class ApprovalPolicy extends Repository
         $progress = $this->progress($objectType, $objectId, $documentType, $amount);
         $open     = $progress['open'];
         if ($open === null) {
+            if ($this->steps($documentType) === [] && $this->ruleRow($documentType) !== null) {
+                throw new RuleViolation('Nothing can be approved against the ' . $documentType . ' rule until it names who signs. '
+                    . 'Set its ladder in Settings → Approvals.');
+            }
+
             // Nothing to collect: a document type with no rule, or already signed off.
             return true;
         }
@@ -308,7 +330,7 @@ final class ApprovalPolicy extends Repository
             'document_type' => $documentType,
             'round'         => $progress['round'],
             'step_no'       => $open['step'],
-            'role'          => $this->signingRole($signatories, $actorId) ?? $this->lookups->roleOf($actorId),
+            'role'          => $this->signingRole($signatories, $actorId, $entityId) ?? $this->lookups->roleOf($actorId),
             'user_id'       => $actorId,
             'decision'      => 'approved',
             'amount'        => $amount,
@@ -317,7 +339,56 @@ final class ApprovalPolicy extends Repository
             'signed_at'     => Clock::timestamp(),
         ]);
 
-        return $this->progress($objectType, $objectId, $documentType, $amount)['complete'];
+        $complete = $this->progress($objectType, $objectId, $documentType, $amount)['complete'];
+        if (!$complete) {
+            $this->tellNextStep($objectType, $objectId, $ref, $documentType, $amount, $actorId, $entityId);
+        }
+
+        return $complete;
+    }
+
+    /**
+     * Tells whoever can give the next signature that it is waiting for them.
+     *
+     * Written from sign(), so every register tells the next role without a line of
+     * its own. A step that goes to an authority outside the system has nobody in
+     * the system to tell: whoever signs next records its reference, so the people
+     * told are the ones who can do that — the step after it, or nobody.
+     */
+    private function tellNextStep(
+        string $objectType,
+        int $objectId,
+        string $ref,
+        string $documentType,
+        float $amount,
+        int $actorId,
+        ?int $entityId
+    ): void {
+        $open = $this->progress($objectType, $objectId, $documentType, $amount)['open'];
+        if ($open === null || $open['role'] === null) {
+            return;
+        }
+
+        $entityId ??= $this->lookups->entityId();
+        $holders    = array_diff($this->lookups->holdersOf($open['role'], $entityId), [$actorId]);
+        if ($holders === []) {
+            return;
+        }
+
+        $rule     = $this->rule($documentType);
+        $standing = $this->progress($objectType, $objectId, $documentType, $amount);
+        $now      = Clock::timestamp();
+        foreach ($holders as $userId) {
+            $this->insert('notifications', [
+                'user_id' => $userId, 'entity_id' => $entityId, 'kind' => 'approval', 'tone' => 'action',
+                'title'   => $ref . ' is waiting for your approval',
+                'body'    => ($rule['label'] ?? 'This') . ' — ' . Prototype::fmt($amount) . '. '
+                    . $this->lookups->shortName($actorId) . ' has signed; yours is signature '
+                    . ($standing['signed'] + 1) . ' of ' . $standing['of'] . '.',
+                'object_type' => $objectType, 'object_id' => $objectId,
+                'link' => self::LINKS[$objectType] ?? null, 'created_at' => $now,
+            ]);
+        }
     }
 
     /**
@@ -382,10 +453,15 @@ final class ApprovalPolicy extends Repository
      * show: the signatures come back in one query, so a register costs the same
      * whether one record is waiting or fifty.
      *
+     * Given an actor, each standing also says whether the signature now wanted is
+     * theirs to give (`mine`) — which is what turns "12 awaiting approval" into
+     * "3 awaiting yours". It answers for the ladder only; whether the person also
+     * prepared the record is its own register's to say.
+     *
      * @param array<int, array{type: string, amount: float}> $documents keyed by record id
-     * @return array<int, array{signed: int, of: int, awaiting: string, note: string, given: list<array>}>
+     * @return array<int, array{signed: int, of: int, awaiting: string, note: string, mine: bool, given: list<array>}>
      */
-    public function standings(string $objectType, array $documents): array
+    public function standings(string $objectType, array $documents, ?int $actorId = null): array
     {
         if ($documents === []) {
             return [];
@@ -394,13 +470,48 @@ final class ApprovalPolicy extends Repository
         $signatures = $this->signaturesFor($objectType);
         $out = [];
         foreach ($documents as $id => $d) {
-            $standing = $this->standing($d['type'], $d['amount'], $signatures[$id] ?? []);
+            $given    = $signatures[$id] ?? [];
+            $standing = $this->standing($d['type'], $d['amount'], $given);
             if ($standing['of'] > 0) {
-                $out[$id] = $this->asLadder($standing);
+                $out[$id] = $this->asLadder($standing) + ['mine' => $this->isTheirs($standing, $given, $d, $actorId)];
             }
         }
 
         return $out;
+    }
+
+    /**
+     * Whether the signature a record is waiting for is this person's to give: they
+     * hold a role that signs the open step, they have not already signed this
+     * round, and the value is inside their role's ceiling.
+     *
+     * Worked out from signatures already read, so a register asks no question of
+     * the database beyond the role lookups, which are cached.
+     */
+    private function isTheirs(array $standing, array $given, array $document, ?int $actorId): bool
+    {
+        $open = $standing['open'];
+        if ($actorId === null || $open === null) {
+            return false;
+        }
+        foreach ($given as $signature) {
+            if ($signature['round'] === $standing['round'] && $signature['user'] === $actorId) {
+                return false;
+            }
+        }
+
+        $signatories = self::signatories(
+            $this->steps($document['type']),
+            $this->ladder($document['type'], $document['amount']),
+            $open
+        );
+        $signingAs = $this->signingRole($signatories, $actorId);
+        if ($signingAs === null) {
+            return false;
+        }
+        $ceiling = $this->ceiling($signingAs, $document['type']);
+
+        return $ceiling === null || $document['amount'] <= $ceiling;
     }
 
     /** What a waiting record shows about its ladder, in a register and in its drawer. */
@@ -523,10 +634,21 @@ final class ApprovalPolicy extends Repository
     }
 
     /** The role the actor would be signing as, or null when they hold none of them. */
-    private function signingRole(array $signatories, int $actorId): ?string
+    /**
+     * The role the actor would be signing as, or null where they hold none of the
+     * roles that sign the open step.
+     *
+     * A role is held **at an entity**: someone who is the Finance Manager of the
+     * Nyanza office is not the Finance Manager of Coast, and cannot sign Coast's
+     * documents. The entity asked about is the record's own where the caller knows
+     * it, else the books being worked in — which is the same thing, because a
+     * record of another entity is not found at all (App\Libraries\EntityScope).
+     */
+    private function signingRole(array $signatories, int $actorId, ?int $entityId = null): ?string
     {
+        $entityId ??= $this->lookups->entityId();
         foreach ($signatories as $role) {
-            if ($this->lookups->holdsRole($actorId, $role)) {
+            if ($this->lookups->holdsRole($actorId, $role, $entityId)) {
                 return $role;
             }
         }

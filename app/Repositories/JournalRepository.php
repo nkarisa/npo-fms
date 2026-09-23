@@ -92,6 +92,7 @@ final class JournalRepository extends Repository
                     'type'      => self::label($j['type']),
                     'period'    => $j['period_name'],
                     'status'    => self::label($j['status']),
+                    'preparedBy' => (int) $j['prepared_by'],
                     'preparer'  => $this->lookups->shortName((int) $j['prepared_by']),
                     'doc'       => $j['document_ref'] ?? '',
                     'docLink'   => $j['source_type'] === null ? ($j['document_ref'] === null ? 'auto' : 'existing:' . $j['document_ref']) : $this->sourceLink($j['source_type'], (int) $j['source_id']),
@@ -795,7 +796,7 @@ final class JournalRepository extends Repository
             ];
         }
 
-        return (new ApprovalPolicy())->standings('journal', $documents);
+        return (new ApprovalPolicy())->standings('journal', $documents, $this->lookups->viewerId());
     }
 
     /**

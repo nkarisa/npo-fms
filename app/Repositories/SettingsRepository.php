@@ -54,6 +54,17 @@ final class SettingsRepository extends Repository
 
     public const QUOTE_THRESHOLD_LABEL = 'Three quotations and a pre-qualified supplier required above';
 
+    /**
+     * How many signatures one ladder may ask for. Long enough for a board's own
+     * policy, short enough that a document cannot be made unapprovable by accident.
+     */
+    public const MAX_LADDER_STEPS = 6;
+
+    /** What a signature is called when the screen gives it no other name. */
+    private const DEFAULT_STEP_LABEL = ApprovalPolicy::DEFAULT_LABEL;
+
+    private const WORDS = [2 => 'two', 3 => 'three', 4 => 'four', 5 => 'five', 6 => 'six'];
+
     /** The rule every approval band carries, and the separations the ledger enforces. */
     public const SOD_RULES = [
         'A journal preparer can never approve their own entry, whatever its value.',
@@ -319,6 +330,42 @@ final class SettingsRepository extends Repository
              LEFT JOIN {roles} e ON e.id = ar.escalation_role_id WHERE ar.entity_id = ? AND ar.document_type IN (' . self::quoted(array_keys(self::APPROVAL_KEYS)) . ') ORDER BY ar.id',
             [$this->ownApprovals() ? $this->current()['id'] : $this->headOffice()['id']]
         ));
+    }
+
+    /**
+     * The ladder of signatures each document type asks for, as the approvals screen
+     * edits it: the steps of the band the entity follows, in order.
+     *
+     * A step names a role, or an authority outside the system that is satisfied by
+     * recording its reference. `above` and `upto` are the band of values it engages
+     * for, and `quorum` how many different holders of the role must sign it.
+     *
+     * @return array<string, list<array{step: int, role: string|null, authority: string|null, label: string, above: float, upto: float|null, quorum: int}>>
+     */
+    public function ladders(): array
+    {
+        $entityId = $this->ownApprovals() ? $this->current()['id'] : $this->headOffice()['id'];
+        $out      = [];
+
+        foreach ($this->rows(
+            'SELECT r.document_type, s.step_no, s.authority, s.label, s.applies_above, s.applies_upto, s.quorum, ro.name AS role
+             FROM {approval_steps} s JOIN {approval_rules} r ON r.id = s.rule_id LEFT JOIN {roles} ro ON ro.id = s.role_id
+             WHERE r.entity_id = ? AND r.document_type IN (' . self::quoted(array_keys(self::APPROVAL_KEYS)) . ')
+             ORDER BY r.id, s.step_no',
+            [$entityId]
+        ) as $s) {
+            $out[self::APPROVAL_KEYS[$s['document_type']]][] = [
+                'step'      => (int) $s['step_no'],
+                'role'      => $s['role'],
+                'authority' => $s['authority'],
+                'label'     => $s['label'],
+                'above'     => self::num($s['applies_above']),
+                'upto'      => $s['applies_upto'] === null ? null : self::num($s['applies_upto']),
+                'quorum'    => max(1, (int) $s['quorum']),
+            ];
+        }
+
+        return $out;
     }
 
     /** Whether the entity being worked in has approval bands of its own, rather than the head office's. */
@@ -601,9 +648,12 @@ final class SettingsRepository extends Repository
         if (!empty($draft['approvalsFollow'])) {
             $from('approvalsFollow');
             $this->planApprovalsFollow($plan);
-        } elseif (isset($draft['approvals'])) {
+        } elseif (isset($draft['approvals']) || isset($draft['ladders'])) {
             $from('approvals');
-            $this->planApprovals((array) $draft['approvals'], $plan);
+            $this->planApprovals((array) ($draft['approvals'] ?? []), $plan);
+            // After the bands: a ladder written step by step is the fuller statement
+            // of the same policy, so it is what stands when both were touched.
+            $this->planLadders((array) ($draft['ladders'] ?? []), $plan);
         }
         if (isset($draft['procurement'])) {
             $from('procurement');
@@ -1162,8 +1212,12 @@ final class SettingsRepository extends Repository
                     $from = $a['threshold'] == 0 ? 'nil' : Prototype::fmt((float) $a['threshold']);
                     $to = $threshold == 0 ? 'nil — every transaction needs sign-off' : Prototype::fmt($threshold);
                     $verb = $threshold > $a['threshold'] ? 'raised' : 'lowered';
-                    $step('Approvals', $this->forEntity($a['label'] . ' threshold ' . $verb . ' from ' . $from . ' to ' . $to),
-                        fn () => $this->db->table('approval_rules')->where('document_type', $type)->where('entity_id', $target)->update(['threshold' => $threshold, 'updated_at' => Clock::timestamp()]));
+                    $step('Approvals', $this->forEntity($a['label'] . ' threshold ' . $verb . ' from ' . $from . ' to ' . $to)
+                        . $this->ladderReset($type, $target), function () use ($type, $target, $threshold) {
+                            $this->db->table('approval_rules')->where('document_type', $type)->where('entity_id', $target)
+                                ->update(['threshold' => $threshold, 'updated_at' => Clock::timestamp()]);
+                            $this->rewriteLadder($type, $target);
+                        });
                 }
             }
 
@@ -1172,8 +1226,12 @@ final class SettingsRepository extends Repository
                     throw new RuleViolation('The ' . $change['approver'] . ' has no approval rights, so cannot approve ' . lcfirst($a['label']) . '. Choose ' . implode(' or ', $approvers) . '.');
                 }
                 $roleId = (int) $this->value('SELECT id FROM {roles} WHERE name = ?', [$change['approver']]);
-                $step('Approvals', $this->forEntity($a['label'] . ' approver changed from ' . $a['approver'] . ' to ' . $change['approver']),
-                    fn () => $this->db->table('approval_rules')->where('document_type', $type)->where('entity_id', $target)->update(['approver_role_id' => $roleId, 'updated_at' => Clock::timestamp()]));
+                $step('Approvals', $this->forEntity($a['label'] . ' approver changed from ' . $a['approver'] . ' to ' . $change['approver'])
+                    . $this->ladderReset($type, $target), function () use ($type, $target, $roleId) {
+                        $this->db->table('approval_rules')->where('document_type', $type)->where('entity_id', $target)
+                            ->update(['approver_role_id' => $roleId, 'updated_at' => Clock::timestamp()]);
+                        $this->rewriteLadder($type, $target);
+                    });
             }
         }
 
@@ -1183,6 +1241,182 @@ final class SettingsRepository extends Repository
         foreach ($steps as [$area, $what, $write]) {
             $plan($area, $what, $write);
         }
+    }
+
+    /**
+     * The ladder an administrator has written for a document type, step by step.
+     *
+     * A ladder is the whole policy for its type: the band header on the same screen
+     * is kept in step with it, so what `rule()` reports and what the messages say
+     * stay true. Everything is checked before anything is written — a ladder that
+     * asks for a quorum nobody can fill would leave documents stuck.
+     */
+    private function planLadders(array $in, callable $plan): void
+    {
+        $approvers = $this->approverRoles();
+        $current   = $this->ladders();
+        $entityId  = (int) ($this->ownApprovals() || $this->atHeadOffice() ? $this->current()['id'] : $this->headOffice()['id']);
+        $target    = (int) $this->current()['id'];
+        $steps     = [];
+
+        foreach ($this->approvals() as $a) {
+            $wanted = $in[$a['key']] ?? null;
+            if (!is_array($wanted)) {
+                continue;
+            }
+            $type   = array_search($a['key'], self::APPROVAL_KEYS, true);
+            $ladder = $this->validLadder($wanted, $a['label'], $approvers);
+
+            if ($ladder === ($current[$a['key']] ?? [])) {
+                continue;
+            }
+            $steps[] = [$this->forEntity($a['label'] . ' now take ' . $this->ladderText($ladder)),
+                fn () => $this->writeLadder($type, $target, $ladder)];
+        }
+
+        if ($steps !== [] && $entityId !== $target) {
+            $plan('Approvals', $this->forEntity('Own approval bands set, starting from the head office\'s'), fn () => $this->copyApprovals($entityId, $target));
+        }
+        foreach ($steps as [$what, $write]) {
+            $plan('Approvals', $what, $write);
+        }
+    }
+
+    /**
+     * One ladder as the screen sent it, checked and put in order, or a refusal
+     * saying what is wrong with it in the words the screen uses.
+     *
+     * @return list<array{step: int, role: string|null, authority: string|null, label: string, above: float, upto: float|null, quorum: int}>
+     */
+    private function validLadder(array $in, string $label, array $approvers): array
+    {
+        $steps = array_values(array_filter($in, 'is_array'));
+        if ($steps === []) {
+            throw new RuleViolation(lcfirst($label) . ' would be approved by nobody. A ladder needs at least one signature.');
+        }
+        if (count($steps) > self::MAX_LADDER_STEPS) {
+            throw new RuleViolation('A ladder takes at most ' . self::MAX_LADDER_STEPS . ' signatures. ' . $label . ' asked for ' . count($steps) . '.');
+        }
+
+        $out = [];
+        foreach ($steps as $i => $step) {
+            $role      = trim((string) ($step['role'] ?? ''));
+            $authority = trim((string) ($step['authority'] ?? ''));
+            $quorum    = max(1, (int) ($step['quorum'] ?? 1));
+            $above     = self::amount($step['above'] ?? 0);
+            $upto      = trim((string) ($step['upto'] ?? '')) === '' ? null : self::amount($step['upto']);
+            $at        = 'Signature ' . ($i + 1) . ' of ' . lcfirst($label);
+
+            if ($role !== '' && $authority !== '') {
+                throw new RuleViolation($at . ' names both the ' . $role . ' and ' . $authority . '. A signature is given by one or the other.');
+            }
+            if ($role === '' && $authority === '') {
+                throw new RuleViolation($at . ' names nobody. Choose a role, or an authority outside the system such as the Board Treasurer.');
+            }
+            if ($role !== '' && !in_array($role, $approvers, true)) {
+                throw new RuleViolation('The ' . $role . ' has no approval rights, so cannot sign ' . lcfirst($label)
+                    . '. Choose ' . implode(' or ', $approvers) . '.');
+            }
+            if ($i === 0 && $role === '') {
+                throw new RuleViolation('The first signature on ' . lcfirst($label) . ' is given inside the system. '
+                    . 'An authority outside it is recorded by whoever signs, so it cannot be the first step.');
+            }
+            if ($upto !== null && $upto <= $above) {
+                throw new RuleViolation($at . ' engages above ' . Prototype::fmt($above) . ' and up to ' . Prototype::fmt($upto)
+                    . ', which is no band at all. The upper figure has to be the larger one.');
+            }
+            if ($authority !== '' && $quorum > 1) {
+                throw new RuleViolation($at . ' goes to ' . $authority . ', which is satisfied by recording its reference — one signature, not ' . $quorum . '.');
+            }
+            if ($quorum > 1) {
+                $holders = count($this->holdersOfRole($role));
+                if ($holders < $quorum) {
+                    throw new RuleViolation($at . ' asks for ' . $quorum . ' different ' . $role . 's, and there '
+                        . ($holders === 1 ? 'is 1' : 'are ' . $holders) . '. Documents would wait for a signature nobody can give.');
+                }
+            }
+
+            $out[] = [
+                'step' => $i + 1, 'role' => $role !== '' ? $role : null, 'authority' => $authority !== '' ? $authority : null,
+                'label' => self::DEFAULT_STEP_LABEL, 'above' => $above, 'upto' => $upto, 'quorum' => $quorum,
+            ];
+
+        }
+
+        return $out;
+    }
+
+    /** Writes a checked ladder, and brings the band header on the same screen into step with it. */
+    private function writeLadder(string $documentType, int $entityId, array $ladder): void
+    {
+        $rule = $this->db->table('approval_rules')->where(['document_type' => $documentType, 'entity_id' => $entityId])->get()->getRowArray();
+        if ($rule === null) {
+            return;
+        }
+        $now    = Clock::timestamp();
+        $roleId = fn (?string $name) => $name === null ? null : (int) $this->value('SELECT id FROM {roles} WHERE name = ?', [$name]);
+
+        $this->db->table('approval_steps')->where('rule_id', (int) $rule['id'])->delete();
+        foreach ($ladder as $step) {
+            $this->insert('approval_steps', [
+                'rule_id' => (int) $rule['id'], 'step_no' => $step['step'], 'role_id' => $roleId($step['role']),
+                'authority' => $step['authority'], 'label' => $step['label'], 'applies_above' => $step['above'],
+                'applies_upto' => $step['upto'], 'quorum' => $step['quorum'], 'created_at' => $now,
+            ]);
+        }
+
+        // The header is what rule() reports and what the refusal messages read from,
+        // so it says what the ladder says: the first signature, the band it holds to
+        // and who or what the value passes to above it.
+        $second = $ladder[1] ?? null;
+        $this->db->table('approval_rules')->where('id', (int) $rule['id'])->update([
+            'threshold'          => $ladder[0]['upto'] ?? 0,
+            'approver_role_id'   => $roleId($ladder[0]['role']),
+            'escalation_role_id' => $second === null ? null : $roleId($second['role']),
+            'escalation_note'    => $second === null ? null : $second['authority'],
+            'updated_at'         => $now,
+        ]);
+    }
+
+    /** "two signatures — the Finance Manager up to 500,000, then the Executive Director". */
+    private function ladderText(array $ladder): string
+    {
+        $named = static function (array $s): string {
+            $who  = $s['role'] ?? $s['authority'];
+            $band = match (true) {
+                $s['above'] > 0 && $s['upto'] !== null => ' from ' . Prototype::fmt($s['above']) . ' to ' . Prototype::fmt($s['upto']),
+                $s['above'] > 0                       => ' above ' . Prototype::fmt($s['above']),
+                $s['upto'] !== null                   => ' up to ' . Prototype::fmt($s['upto']),
+                default                               => '',
+            };
+
+            return 'the ' . $who . $band . ($s['quorum'] > 1 ? ' (' . $s['quorum'] . ' of them)' : '');
+        };
+
+        return (count($ladder) === 1 ? 'one signature' : self::WORDS[count($ladder)] . ' signatures')
+            . ' — ' . implode(', then ', array_map($named, $ladder));
+    }
+
+    /**
+     * A money figure as the approvals screen sends it — "1,200,000", "nil", "" —
+     * as num() renders one, so a ladder read back compares equal to the ladder
+     * saved and an untouched one is not planned as a change.
+     */
+    private static function amount(mixed $value): int|float
+    {
+        $text = preg_replace('/[^0-9.]/', '', (string) $value);
+
+        return $text === '' ? 0 : self::num($text);
+    }
+
+    /** Everyone holding a role anywhere, for checking a quorum can be filled. */
+    private function holdersOfRole(string $role): array
+    {
+        return $this->rows(
+            "SELECT DISTINCT ur.user_id FROM {user_entity_roles} ur JOIN {roles} r ON r.id = ur.role_id
+             JOIN {users} u ON u.id = ur.user_id WHERE r.name = ? AND u.status IN ('active', 'invited')",
+            [$role]
+        );
     }
 
     /** Drops the entity's own approval bands, so that it follows the head office's again. */
@@ -1196,12 +1430,64 @@ final class SettingsRepository extends Repository
             fn () => $this->db->table('approval_rules')->where('entity_id', $entityId)->delete());
     }
 
+    /**
+     * Rewrites a rule's ladder from its header: the one step, or the two banded
+     * ones, that a threshold and an approver describe. This is the same reading of
+     * the old policy the installer, the seed and the upgrade migration all use, so
+     * a band edited here means on the ladder exactly what it says on the screen.
+     */
+    private function rewriteLadder(string $documentType, int $entityId): void
+    {
+        $rule = $this->db->table('approval_rules')->where(['document_type' => $documentType, 'entity_id' => $entityId])->get()->getRowArray();
+        if ($rule === null) {
+            return;
+        }
+
+        $this->db->table('approval_steps')->where('rule_id', (int) $rule['id'])->delete();
+        $now = Clock::timestamp();
+        foreach (ApprovalPolicy::stepsFor(
+            (float) $rule['threshold'],
+            (int) $rule['approver_role_id'],
+            $rule['escalation_role_id'] === null ? null : (int) $rule['escalation_role_id'],
+            $rule['escalation_note']
+        ) as $step) {
+            $this->insert('approval_steps', ['rule_id' => (int) $rule['id'], 'created_at' => $now] + $step);
+        }
+    }
+
+    /**
+     * What a threshold or approver change says when the type carries a ladder
+     * longer than the two steps a band describes: editing the band writes the
+     * band's ladder, so the extra signatures go. Nothing is lost silently.
+     */
+    private function ladderReset(string $documentType, int $entityId): string
+    {
+        $steps = (int) $this->value(
+            'SELECT COUNT(*) FROM {approval_steps} s JOIN {approval_rules} r ON r.id = s.rule_id
+             WHERE r.document_type = ? AND r.entity_id = ?',
+            [$documentType, $entityId]
+        );
+
+        return $steps > 2 ? ' — its ' . $steps . '-signature ladder goes back to the band above' : '';
+    }
+
+    /**
+     * Gives an entity its own copy of another's bands — the rule header and the
+     * ladder of steps under it. A rule copied without its steps would ask for no
+     * signatures at all, so the two always travel together (docs/approvals.md).
+     */
     private function copyApprovals(int $from, int $to): void
     {
         $now = Clock::timestamp();
         foreach ($this->db->table('approval_rules')->where('entity_id', $from)->orderBy('id')->get()->getResultArray() as $r) {
+            $was = (int) $r['id'];
             unset($r['id']);
-            $this->insert('approval_rules', ['entity_id' => $to, 'created_at' => $now, 'updated_at' => null] + $r);
+            $ruleId = $this->insert('approval_rules', ['entity_id' => $to, 'created_at' => $now, 'updated_at' => null] + $r);
+
+            foreach ($this->db->table('approval_steps')->where('rule_id', $was)->orderBy('step_no')->get()->getResultArray() as $step) {
+                unset($step['id']);
+                $this->insert('approval_steps', ['rule_id' => $ruleId, 'created_at' => $now, 'updated_at' => null] + $step);
+            }
         }
     }
 

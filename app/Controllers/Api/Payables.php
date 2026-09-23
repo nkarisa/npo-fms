@@ -127,7 +127,7 @@ class Payables extends BaseApiController
                 ['label' => 'Total outstanding', 'value' => Prototype::fmt(self::net($outstanding)), 'note' => count($outstanding) . ' open bills'],
                 ['label' => 'Overdue', 'value' => Prototype::fmt(self::net($overdue)), 'note' => count(array_unique(array_column($overdue, 'supplier'))) . ' suppliers waiting'],
                 ['label' => 'Due within 7 days', 'value' => Prototype::fmt(self::net($dueWeek)), 'note' => count($dueWeek) . ' bills'],
-                ['label' => 'Awaiting approval', 'value' => Prototype::fmt(self::net($awaiting)), 'note' => count($awaiting) . ($actor['canApprove'] ? ' need your sign-off' : ' need sign-off')],
+                ['label' => 'Awaiting approval', 'value' => Prototype::fmt(self::net($awaiting)), 'note' => self::signOffNote($awaiting, $actor, $this->actorId())],
                 ['label' => 'WHT to remit', 'value' => Prototype::fmt($wht['held']),
                     'note' => $wht['remittedThisMonth'] !== null && $wht['held'] == 0 ? 'remitted ' . $wht['remittedThisMonth'] : 'due to KRA by ' . $wht['dueBy']
                         . ($wht['pending'] > 0 ? ' · ' . Prototype::fmt($wht['pending']) . ' more on bills awaiting approval' : '')],
@@ -181,6 +181,25 @@ class Payables extends BaseApiController
             'authorityNote' => $release !== null && $release['needsAuthority'] ? $release['message'] : '',
             'methodOptions' => $repo->methods(),
         ]);
+    }
+
+    /**
+     * "4 need sign-off · 2 need yours" — the second figure counts only the bills
+     * whose open step this approver can sign and did not capture, so a Finance
+     * Manager is not shown a queue that is the Director's to clear
+     * (docs/approvals.md).
+     *
+     * @param list<array> $awaiting
+     */
+    private static function signOffNote(array $awaiting, array $actor, int $actorId): string
+    {
+        $note = count($awaiting) . ' need sign-off';
+        if (!$actor['canApprove']) {
+            return $note;
+        }
+        $mine = array_filter($awaiting, static fn ($b) => ($b['approval']['mine'] ?? false) && $b['preparedBy'] !== $actorId);
+
+        return $note . ' · ' . (count($mine) === 0 ? 'none are yours' : count($mine) . ' need yours');
     }
 
     /** What bill capture offers: suppliers, spend categories, budget lines and payment methods. */
