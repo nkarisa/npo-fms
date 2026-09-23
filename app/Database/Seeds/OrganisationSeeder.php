@@ -4,6 +4,7 @@ namespace App\Database\Seeds;
 
 use App\Database\Seeds\Support\SeedContext;
 use App\Libraries\Brand;
+use App\Libraries\I18n;
 use App\Libraries\Theme;
 use App\Repositories\SettingsRepository;
 use CodeIgniter\Database\Seeder;
@@ -12,8 +13,8 @@ use CodeIgniter\Database\Seeder;
  * Locales, entities, roles and permissions, users and the approval policy.
  *
  * Sources: LOCALES, ST_ENTITIES, ACTORS, ST_USERS, ST_APPROVALS, ST_TOGGLES,
- * ST_SEGMENTS, and the prototype's settings state (cfg, i18nFormatsLocked), which it
- * holds inline rather than as data.
+ * ST_SEGMENTS, and the prototype's settings state (cfg, i18nFormatsLocked, i18nFallback),
+ * which it holds inline rather than as data.
  *
  * The access model itself — roles, permissions, ceilings — and the currencies and
  * segments come from BaselineSeeder, which runs first; this seeder takes those rows
@@ -30,6 +31,20 @@ class OrganisationSeeder extends Seeder
     public const DEMO_PASSWORD = 'elog-demo-password';
 
     private static ?string $demoHash = null;
+
+    /**
+     * The account the install hands over. It holds BaselineSeeder::ADMIN_ROLE —
+     * every permission there is — at every entity, so it also reaches the
+     * consolidated view, and it is written before the people in ST_USERS so it is
+     * the first user: whoever has just installed a copy of the demonstration
+     * organisation is told to sign in as this one rather than as somebody from the
+     * demonstration staff. It signs in with DEMO_PASSWORD like everyone else.
+     *
+     * It is not an approver. Approval rules name the Finance Manager and the
+     * Executive Director, and whoever prepares an entry cannot approve it whatever
+     * permissions they hold, so the demonstration's own people still approve its work.
+     */
+    private const ADMINISTRATOR = ['name' => 'Administrator', 'email' => 'admin@elog.or.ke', 'initials' => 'AD'];
 
     /** Entity codes, and the word each is referred to by in user access ("Secretariat, Coast"). */
     private const ENTITIES = [
@@ -158,6 +173,10 @@ class OrganisationSeeder extends Seeder
             'label' => "Hold numbers, dates and currency in the organisation's reporting locale (en-KE · KES)",
             'note' => 'Recommended. Finance staff, auditors and funders read the same figure the same way in every language, so a report cannot be misread as a different amount.',
         ]);
+        $ctx->insert('settings', [
+            'entity_id' => $secretariat, 'key' => I18n::FALLBACK_KEY, 'kind' => I18n::FALLBACK_KIND, 'created_at' => $now,
+            'value' => I18n::DEFAULT_FALLBACK, 'label' => I18n::FALLBACK_LABEL, 'note' => I18n::FALLBACK_NOTE,
+        ]);
 
         // The prototype's own wording for the segments, over the baseline's.
         foreach ($ctx->data('ST_SEGMENTS') as $s) {
@@ -169,14 +188,29 @@ class OrganisationSeeder extends Seeder
     }
 
     /**
-     * ST_USERS is the user list; ACTORS adds sign-in detail for the people who can
-     * act. The system user owns records whose author the prototype does not name;
-     * it has no password and is suspended, so it can never sign in.
+     * The administrator, then ST_USERS as the user list, with ACTORS adding sign-in
+     * detail for the people who can act. The system user owns records whose author
+     * the prototype does not name; it has no password and is suspended, so it can
+     * never sign in.
      */
     private function seedUsers(SeedContext $ctx, string $now): void
     {
         $actors = array_column($ctx->data('ACTORS'), null, 'email');
         $allEntities = array_values($ctx->all('entities'));
+
+        $admin = $ctx->insert('users', [
+            'email' => self::ADMINISTRATOR['email'], 'name' => self::ADMINISTRATOR['name'],
+            'short_name' => self::ADMINISTRATOR['name'], 'initials' => self::ADMINISTRATOR['initials'],
+            'locale_id' => $ctx->require('locales', 'en-GB'), 'status' => 'active', 'created_at' => $now,
+            'password_hash' => self::$demoHash ??= password_hash(self::DEMO_PASSWORD, PASSWORD_DEFAULT),
+        ]);
+        $ctx->remember('users', mb_strtolower(self::ADMINISTRATOR['name']), $admin);
+        foreach ($allEntities as $entityId) {
+            $ctx->insert('user_entity_roles', [
+                'user_id' => $admin, 'entity_id' => $entityId,
+                'role_id' => $ctx->require('roles', BaselineSeeder::ADMIN_ROLE), 'created_at' => $now,
+            ]);
+        }
 
         foreach ($ctx->data('ST_USERS') as $u) {
             $actor = $actors[$u['email']] ?? null;

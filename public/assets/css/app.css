@@ -1926,6 +1926,13 @@ select.st-cell { cursor: pointer; }
 .auth-field input { border: 1px solid #DDDAD2; border-radius: 6px; padding: 9px 11px; font-size: 14px; font-family: inherit; color: var(--ink); background: #FFF; }
 .auth-field input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
 .auth-code { font-family: 'IBM Plex Mono', monospace; font-size: 18px !important; letter-spacing: .18em; }
+/* A password field and the control that unmasks it (UI.passwordField). */
+.pw-input { position: relative; display: flex; }
+.pw-input > input { flex: 1; min-width: 0; padding-inline-end: 56px; }
+.pw-toggle { position: absolute; inset-inline-end: 5px; top: 50%; transform: translateY(-50%); background: none; border: 0; border-radius: 4px; padding: 4px 6px; font: inherit; font-size: 10px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); cursor: pointer; }
+.pw-toggle:hover { color: var(--accent-ink); background: var(--accent-haze); }
+.pw-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--accent-ink); }
+.pw-toggle[aria-pressed="true"] { color: var(--accent-ink); }
 .auth-submit { padding: 10px 14px; font-size: 13px; }
 .auth-msg { margin: 0; font-size: 12px; line-height: 1.5; padding: 8px 10px; border-radius: 6px; background: var(--accent-wash); color: var(--accent-ink); }
 .auth-msg.error { background: #FBEFEC; color: var(--urgent); }
@@ -2529,3 +2536,46 @@ select.ss-open { outline: 2px solid var(--accent-line); outline-offset: 1px; }
 .ins-next { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; line-height: 1.55; color: #3A4641; }
 .ins-link { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--accent); overflow-wrap: anywhere; }
 .ins-signin { display: block; text-align: center; text-decoration: none; }
+
+/* ------------------------------------------------------------------ */
+/* Maintenance mode                                                    */
+/*                                                                     */
+/* The bar under the top bar on every page, the page everyone else gets */
+/* while the application is closed, and the section it is switched from. */
+/* Three tones: a window a few days off, one about to start, and the    */
+/* application closed now.                                             */
+
+.mt-bar { display: flex; align-items: flex-start; gap: 9px; padding: 9px 22px; border-bottom: 1px solid #F0DFC8; background: #FBF0E4; color: #8A5B2E; }
+/* The shell draws the bar on every page and hides it when there is nothing to
+   say, so the page script can fill it without a reload. display:flex would
+   otherwise beat the browser's own rule for [hidden]. */
+.mt-bar[hidden] { display: none; }
+.mt-bar.is-soon { border-bottom-color: #EFD4BE; background: #FBEADA; }
+.mt-bar.is-closed { border-bottom-color: #E8C7BE; background: #FAE7E1; color: #8C3B27; }
+.mt-bar-mark { flex: none; font-size: 13px; line-height: 1.45; }
+.mt-bar-text { font-size: 12px; line-height: 1.45; }
+.mt-bar-text strong { font-weight: 600; }
+
+/* The page everyone without the permission sees while it is closed. */
+.mt-page { display: flex; flex-direction: column; gap: 12px; }
+.mt-page-msg { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.mt-page-when { margin: 0; font-size: 12.5px; font-weight: 600; color: #8C3B27; }
+
+/* Settings → Maintenance. */
+.mt-state { border: 1px solid var(--border); border-radius: 9px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; background: var(--accent-haze); }
+.mt-state.is-closed { border-color: #E8C7BE; background: #FAE7E1; }
+.mt-state-head { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; color: var(--ink); }
+.mt-state-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--calm); flex: none; }
+.mt-state.is-closed .mt-state-dot { background: var(--urgent); }
+.mt-state-note { font-size: 12px; color: #55615B; line-height: 1.55; }
+.mt-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.mt-field { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.mt-field input, .mt-field textarea { font: inherit; font-size: 12.5px; letter-spacing: normal; text-transform: none; color: var(--ink); border: 1px solid #DDDAD2; border-radius: 6px; padding: 7px 9px; background: var(--card); }
+.mt-field textarea { min-height: 62px; resize: vertical; }
+.mt-form { display: grid; grid-template-columns: repeat(2, minmax(160px, 1fr)); gap: 12px; }
+.mt-form .mt-field.wide { grid-column: 1 / -1; }
+.mt-win-state { font-size: 10.5px; font-weight: 600; }
+.mt-win-state.Scheduled { color: #8A5B2E; }
+.mt-win-state.Underway { color: var(--urgent); }
+.mt-win-state.Finished { color: var(--faint); }
+.mt-win-state.Cancelled { color: var(--faint); text-decoration: line-through; }

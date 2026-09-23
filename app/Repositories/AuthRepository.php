@@ -14,8 +14,9 @@ use Config\Auth;
  * Signing in: the password, the second factor, and the single-use links and codes
  * sent by email.
  *
- * - A wrong password counts against the account; Config\Auth::$maxFailedSignIns in
- *   a row lock it for $lockMinutes. The refusal is the same whether the email is
+ * - A wrong password counts against the account; as many in a row as the password
+ *   policy allows (Settings → Users, `lockAttempts`) lock it for `lockMinutes`,
+ *   and 0 attempts never locks it. The refusal is the same whether the email is
  *   unknown or the password is wrong, so the form cannot be used to find out who
  *   has an account.
  * - The second factor is an authenticator app (TOTP) or a six-digit code sent by
@@ -40,6 +41,9 @@ final class AuthRepository extends Repository
     private const DUMMY_HASH = '$2y$12$VE9REDUJLmDnVbf6kp1xcOn7gilyFUTQGCXzNjGQPFu5bdJV5hlPW';
 
     private Auth $config;
+
+    /** @var array{attempts: int, minutes: int}|null the lockout rule, once read */
+    private ?array $lockout = null;
 
     public function __construct(?\CodeIgniter\Database\BaseConnection $db = null)
     {
@@ -80,16 +84,19 @@ final class AuthRepository extends Repository
         }
 
         if (!password_verify($password, $user['password_hash'])) {
+            ['attempts' => $attempts, 'minutes' => $minutes] = $this->lockout();
             $failed = (int) $user['failed_sign_ins'] + 1;
-            if ($failed >= $this->config->maxFailedSignIns) {
-                $until = date('Y-m-d H:i:s', time() + $this->config->lockMinutes * 60);
+            if ($attempts > 0 && $failed >= $attempts) {
+                $until = date('Y-m-d H:i:s', time() + $minutes * 60);
                 $this->db->table('users')->where('id', $id)->update(['failed_sign_ins' => 0, 'locked_until' => $until]);
                 $this->log($id, 'auth.locked', 'Locked after ' . $failed . ' wrong passwords', $id, $from);
 
-                throw new RuleViolation('Too many wrong passwords. The account is locked for ' . $this->config->lockMinutes . ' minutes — or reset your password to get in now.');
+                throw new RuleViolation('Too many wrong passwords. The account is locked for ' . PasswordPolicy::lockFor($minutes) . ' — or reset your password to get in now.');
             }
             $this->db->table('users')->where('id', $id)->update(['failed_sign_ins' => $failed]);
-            $this->log($id, 'auth.refused', 'Wrong password (' . $failed . ' of ' . $this->config->maxFailedSignIns . ')', null, $from);
+            // Where nothing locks the account, the count is still kept and logged, so the
+            // audit log shows someone guessing even though no door closed on them.
+            $this->log($id, 'auth.refused', 'Wrong password' . ($attempts > 0 ? ' (' . $failed . ' of ' . $attempts . ')' : ' (' . $failed . ' in a row)'), null, $from);
 
             throw new RuleViolation($refused);
         }
@@ -617,6 +624,17 @@ final class AuthRepository extends Repository
             'object_type' => 'user', 'object_id' => $userId, 'summary' => mb_substr($summary, 0, 255),
             'ip_address' => $from === '' ? null : mb_substr($from, 0, 45),
         ]);
+    }
+
+    /**
+     * How many wrong passwords in a row lock an account and for how long, from the
+     * password policy. Read once per request: a sign-in checks it at most twice.
+     *
+     * @return array{attempts: int, minutes: int}
+     */
+    private function lockout(): array
+    {
+        return $this->lockout ??= PasswordPolicy::lockout(PasswordPolicy::current($this->db));
     }
 
     private function minutesUntil(string $at): string

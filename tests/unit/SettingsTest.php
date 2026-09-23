@@ -1,5 +1,6 @@
 <?php
 
+use App\Database\Migrations\HoldTranslationFallback;
 use App\Database\Seeds\DatabaseSeeder;
 use App\Libraries\Brand;
 use App\Libraries\Navigation;
@@ -48,7 +49,7 @@ final class SettingsTest extends CIUnitTestCase
     {
         $s = $this->api('api/settings');
 
-        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Taxes', 'Terms and reminders', 'Approvals', 'Bank statements', 'Opening balances', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Roles', 'Audit log'], array_column($s['sections'], 'key'));
+        $this->assertSame(['Organisation', 'Ledger', 'Segments', 'Currencies', 'Taxes', 'Terms and reminders', 'Approvals', 'Bank statements', 'Opening balances', 'Integrations', 'Payroll', 'Appearance', 'Language and translation', 'Users', 'Roles', 'Maintenance', 'Audit log'], array_column($s['sections'], 'key'));
         $this->assertTrue($s['canManage']);
         $this->assertSame(['registeredName' => 'Elections Observation Group', 'shortName' => 'ELOG', 'taxPin' => 'P051290384H', 'ngoReg' => 'OP/218/051/2010/0142', 'headOffice' => null], $s['organisation']);
         $this->assertSame(['framework' => 'IFRS', 'currency' => 'KES', 'yearEnd' => '31 December', 'codeLength' => '4 digits'], $s['ledger']);
@@ -64,6 +65,7 @@ final class SettingsTest extends CIUnitTestCase
         $this->assertSame(['Administrator', 'Finance Manager', 'Executive Director'], $s['approverRoles']);
         $this->assertSame('Payment run threshold raised from 1,500,000 to 2,000,000', $s['audit'][0]['what']);
         $this->assertTrue($s['language']['formatsLocked']);
+        $this->assertSame('mark', $s['language']['fallback']);
         $this->assertSame('evergreen', $s['appearance']['theme']);
         $this->assertSame(['accent' => '#0f5c4a', 'rail' => '#0d1b18'], $s['appearance']['custom']);
         $this->assertSame(['evergreen', 'deep-blue', 'indigo', 'burgundy', 'graphite', 'custom'], array_column($s['themes'], 'key'));
@@ -170,7 +172,9 @@ final class SettingsTest extends CIUnitTestCase
         $refused(['ledger' => ['codeLength' => '5 digits']], 'do not have 5-digit codes');
         $refused(['approvals' => ['journal' => ['approver' => 'Senior Accountant']]], 'has no approval rights');
         $refused(['organisation' => ['taxPin' => 'P0512']], 'is not a KRA PIN');
-        $refused(['users' => ['w.kamau@elog.or.ke' => 'Accountant']], 'nobody active who can manage users');
+        // Both of them: the administrator holds every permission, so demoting the
+        // finance manager alone no longer leaves the organisation with nobody.
+        $refused(['users' => ['admin@elog.or.ke' => 'Accountant', 'w.kamau@elog.or.ke' => 'Accountant']], 'nobody active who can manage users');
         $refused(['payroll' => ['grades' => [['grade' => 'G4', 'band' => 'Officer', 'active' => false, 'ben' => []]]]], 'G4 is held by');
         $refused(['payroll' => ['benefits' => [['key' => 'house_allowance', 'name' => 'House allowance', 'basis' => 'pct', 'taxable' => true, 'active' => false]]]], 'House allowance is paid to');
         $refused(['payroll' => ['grades' => [['grade' => 'G9', 'band' => 'Casual', 'ben' => ['house_allowance' => 120]]]]], 'percentage of basic pay');
@@ -238,7 +242,8 @@ final class SettingsTest extends CIUnitTestCase
         $saved = $this->json($save(['minLength' => 14, 'upper' => 1, 'digit' => 2, 'kinds' => 3]));
         $this->assertSame(['Password policy changed to: At least 14 characters · At least 1 capital letter (A–Z) · At least 2 digits (0–9) · '
             . 'At least 3 of: capital letters, small letters, digits, symbols or spaces · At least 5 different characters · '
-            . 'Not your name or email address · Not a password anyone would try first · Never expires'], array_column($saved['changes'], 'what'));
+            . 'Not your name or email address · Not a password anyone would try first · Never expires · '
+            . 'Locked for 15 minutes after 5 wrong passwords'], array_column($saved['changes'], 'what'));
         $this->assertStringContainsString('whole number from 30 to 365', $refused($save(['maxAgeDays' => '7'])));
         $this->assertStringContainsString('from 0 to 24', $refused($save(['history' => '30'])));
         $this->assertSame(14, $saved['passwordPolicy']['policy']['minLength']);
@@ -383,7 +388,7 @@ final class SettingsTest extends CIUnitTestCase
             'ELOG-CST renamed from ELOG Coast Regional Office to ELOG Coast Office',
             'ELOG-RV made live',
             'ELOG Nyanza Regional Office (ELOG-NYZ) added as a branch reporting in USD',
-            '4 people with access to all entities given access to ELOG Nyanza Regional Office',
+            '5 people with access to all entities given access to ELOG Nyanza Regional Office',
         ], array_column($saved['changes'], 'what'));
 
         $added = end($saved['entities']);
@@ -468,11 +473,84 @@ final class SettingsTest extends CIUnitTestCase
         $this->assertSame('A. Hassan invited as Programme Officer — ELOG Coast Regional Office', $invited['audit'][0]['what']);
     }
 
+    /**
+     * How an untranslated string is shown is the organisation's, not each browser's:
+     * it is one setting, saved with the rest, recorded in the audit log, and it
+     * changes what everybody reads — not only the person who switched it.
+     */
+    public function testTheTranslationFallbackIsOneSettingForEverybody(): void
+    {
+        // "Currencies" is in the catalogue with no approved Swahili wording, so it is
+        // the string the fallback is visible on.
+        $swahili = fn () => current(array_filter(
+            $this->api('api/settings', ['X-Locale' => 'sw'])['sections'],
+            static fn ($x) => $x['key'] === 'Currencies'
+        ))['label'];
+
+        $this->assertSame('mark', $this->api('api/settings')['language']['fallback']);
+        $this->assertSame('Currencies EN', $swahili(), 'Marked as untranslated, as the organisation has it');
+
+        $saved = $this->json($this->withBodyFormat('json')->post('api/settings', ['language' => ['fallback' => 'silent']]));
+        $this->assertSame(['Untranslated strings show the English (UK) source, unmarked'], array_column($saved['changes'], 'what'));
+        $this->assertSame('Language', $saved['audit'][0]['area']);
+        $this->assertSame('silent', $saved['language']['fallback']);
+
+        Repository::forget();
+        $this->assertSame('Currencies', $swahili(), 'and everybody reads it unmarked once it is saved');
+
+        // Saving it again is not a change, and a mode nobody offers is refused.
+        $this->assertSame([], $this->json($this->withBodyFormat('json')->post('api/settings', ['language' => ['fallback' => 'silent']]))['changes']);
+        $refused = $this->withBodyFormat('json')->post('api/settings', ['language' => ['fallback' => 'shout']]);
+        $refused->assertStatus(422);
+        $this->assertStringContainsString('Choose how an untranslated string is shown', json_decode($refused->getJSON(), true)['error']);
+
+        // Looking at the section is not changing it: an accountant sees the panel and
+        // raises wording, but the setting stays where the organisation put it.
+        $this->signIn('s.njeri@elog.or.ke');
+        Repository::forget();
+        $this->withBodyFormat('json')->post('api/settings', ['language' => ['fallback' => 'key']])->assertStatus(403);
+        $this->assertSame('silent', $this->api('api/settings')['language']['fallback']);
+    }
+
+    /**
+     * An instance that was running while the fallback was a cookie gets the setting
+     * where the rest of the organisation's are, holding what its users already read.
+     */
+    public function testAnInstanceRunningWithoutTheSettingIsGivenIt(): void
+    {
+        $db = db_connect();
+        $held = fn () => $db->table('settings')->where('key', 'i18nFallback')->get()->getRowArray();
+
+        (new HoldTranslationFallback())->down();
+        Repository::forget();
+        $this->assertNull($held());
+        $this->assertSame('mark', (new SettingsRepository())->fallbackMode(), 'With no row, the recommended setting');
+
+        (new HoldTranslationFallback())->up();
+        Repository::forget();
+        $row = $held();
+        $this->assertSame(['mark', 'language'], [$row['value'], $row['kind']]);
+        $this->assertSame(
+            (int) $db->table('entities')->where('parent_id', null)->orderBy('id')->get()->getRow()->id,
+            (int) $row['entity_id'],
+            'on the head office, with the organisation\'s other settings'
+        );
+
+        // Running it again over an instance that has the row leaves it as it stands.
+        $this->json($this->withBodyFormat('json')->post('api/settings', ['language' => ['fallback' => 'key']]));
+        (new HoldTranslationFallback())->up();
+        Repository::forget();
+        $this->assertSame('key', (new SettingsRepository())->fallbackMode());
+    }
+
     // ------------------------------------------------------------------
 
-    private function api(string $url): array
+    /** @param array<string, string> $headers the language a request is read in, where it matters */
+    private function api(string $url, array $headers = []): array
     {
-        return json_decode($this->get($url)->getJSON(), true);
+        // withHeaders() replaces what a request carries, so the header the page scripts
+        // send — and writes are refused without — goes back with every call.
+        return json_decode($this->withHeaders(['X-Requested-With' => 'phpunit'] + $headers)->get($url)->getJSON(), true);
     }
 
     /** A one-pixel PNG on disk, standing in for an uploaded logo. */

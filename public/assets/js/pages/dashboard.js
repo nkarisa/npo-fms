@@ -2,6 +2,20 @@
   const app = document.getElementById('app');
   const data = await UI.fetchJSON('/api/dashboard');
 
+  // ---- Closed for maintenance, or a window coming ----
+  //
+  // Said at the top of the overview as well as in the shell bar, because this is
+  // the page people open first.
+  if (data.maintenance) {
+    const bar = document.createElement('div');
+    bar.className = 'mt-state ' + (data.maintenance.tone === 'closed' ? 'is-closed' : '');
+    bar.style.marginBottom = '18px';
+    bar.innerHTML = `
+      <div class="mt-state-head"><span class="mt-state-dot"></span>${UI.esc(data.maintenance.title)}</div>
+      <div class="mt-state-note">${UI.esc(data.maintenance.note)}</div>`;
+    app.appendChild(bar);
+  }
+
   // ---- Page head ----
 
   UI.pageHead(app, {

@@ -123,6 +123,11 @@ final class RolesTest extends CIUnitTestCase
         $fm = $this->role($this->api('get', 'api/roles'), 'Finance Manager');
         $kamau = $this->userId('w.kamau@elog.or.ke');
 
+        // The seeded administrator can manage users too, so it is demoted first:
+        // allowed, because the finance manager is still there to undo it. What
+        // follows is the last person, and every way of removing them is refused.
+        $this->api('post', 'api/users/' . $this->userId('admin@elog.or.ke') . '/access', ['access' => [['role' => 'Accountant']]]);
+
         // Taking users.manage from the role the last holders hold would be refused too,
         // but whoever tries holds it (see testNobodyChangesARoleTheyHold).
         $taken = array_values(array_diff($fm['permissions'], ['users.manage']));

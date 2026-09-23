@@ -49,6 +49,15 @@ class I18n
 
     public const DEFAULT_FALLBACK = 'mark';
 
+    /** The setting on the head office that holds the fallback the organisation reads in. */
+    public const FALLBACK_KEY = 'i18nFallback';
+
+    public const FALLBACK_KIND = 'language';
+
+    public const FALLBACK_LABEL = 'What a reader sees when a string has no approved translation';
+
+    public const FALLBACK_NOTE = 'Recommended: the English source, marked as untranslated. The reader knows the wording is not yet approved in their language and can raise it with the reviewer.';
+
     /** Appended to an untranslated string under the "mark" fallback. */
     public const UNTRANSLATED_MARK = 'EN';
 
@@ -62,7 +71,7 @@ class I18n
     public function __construct(?string $locale = null, ?string $fallback = null)
     {
         $this->locale   = self::isKnown($locale) ? $locale : self::SOURCE_LOCALE;
-        $this->fallback = in_array($fallback, array_column(self::FALLBACKS, 'key'), true) ? $fallback : self::DEFAULT_FALLBACK;
+        $this->fallback = self::isFallback($fallback) ? $fallback : self::DEFAULT_FALLBACK;
     }
 
     /**
@@ -74,6 +83,9 @@ class I18n
      * ("en-US", "en") is the English source — so an English browser that also
      * lists French reads English. Anything unrecognised falls back to the source
      * rather than erroring: a bad locale should never cost someone their ledger.
+     *
+     * The language is the reader's; how an untranslated string is presented is not
+     * — that is the organisation's setting, the same for everybody (see fallback()).
      */
     public static function forRequest(\CodeIgniter\HTTP\RequestInterface $request): self
     {
@@ -82,11 +94,11 @@ class I18n
 
         foreach ([$get, $request->getHeaderLine('X-Locale') ?: null, $cookie] as $candidate) {
             if (is_string($candidate) && self::isKnown($candidate)) {
-                return new self($candidate, self::requestedFallback($request));
+                return new self($candidate, self::fallback());
             }
         }
 
-        return new self(self::negotiate($request->getHeaderLine('Accept-Language')) ?? self::SOURCE_LOCALE, self::requestedFallback($request));
+        return new self(self::negotiate($request->getHeaderLine('Accept-Language')) ?? self::SOURCE_LOCALE, self::fallback());
     }
 
     /** The first browser language we publish, in the order the browser lists them. */
@@ -114,14 +126,24 @@ class I18n
         return null;
     }
 
-    private static function requestedFallback(\CodeIgniter\HTTP\RequestInterface $request): ?string
+    /**
+     * How untranslated wording is presented, as the organisation has set it in
+     * Settings → Language and translation.
+     *
+     * It is one setting for everybody rather than a preference each browser keeps:
+     * whether a reader can tell that a label has not yet been approved in their
+     * language is a decision about the organisation's wording, so it is made once,
+     * by whoever may change the settings, and recorded in the audit log like any
+     * other. An instance that has not been installed reads the default.
+     */
+    public static function fallback(): string
     {
-        if (!$request instanceof \CodeIgniter\HTTP\IncomingRequest) {
-            return null;
-        }
-        $mode = $request->getGet('fallback') ?: $request->getCookie('elog_i18n_fallback');
+        return (new \App\Repositories\SettingsRepository())->fallbackMode();
+    }
 
-        return is_string($mode) ? $mode : null;
+    public static function isFallback(?string $mode): bool
+    {
+        return $mode !== null && in_array($mode, array_column(self::FALLBACKS, 'key'), true);
     }
 
     // ---- Locales ----

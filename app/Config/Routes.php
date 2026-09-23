@@ -281,6 +281,12 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('settings/conversion/preview', 'Api\Conversion::preview');
     $routes->post('settings/conversion/load', 'Api\Conversion::load');
     $routes->post('settings/conversion/discard', 'Api\Conversion::discard');
+    // Maintenance mode. Read by anyone who can see Settings, changed only by a
+    // holder of settings.maintenance, and never through the settings draft.
+    $routes->get('maintenance', 'Api\Maintenance::index');
+    $routes->post('maintenance', 'Api\Maintenance::set');
+    $routes->post('maintenance/windows', 'Api\Maintenance::schedule');
+    $routes->post('maintenance/windows/(:num)/cancel', 'Api\Maintenance::cancel/$1');
     $routes->get('mpesa', 'Api\Mpesa::index');
     $routes->post('mpesa', 'Api\Mpesa::save');
     $routes->post('mpesa/check', 'Api\Mpesa::check');

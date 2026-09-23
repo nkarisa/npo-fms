@@ -85,7 +85,7 @@
         theme: d.appearance.theme, appName: d.appearance.appName, appTagline: d.appearance.appTagline,
         custom: { ...d.appearance.custom },
       }),
-      language: () => ({ formatsLocked: d.language.formatsLocked }),
+      language: () => ({ formatsLocked: d.language.formatsLocked, fallback: d.language.fallback }),
       passwordPolicy: () => ({ ...d.passwordPolicy.policy }),
     };
     const shown = new Set(d.sections.map(s => s.key));
@@ -202,7 +202,7 @@
       Organisation: organisation, Ledger: ledger, Segments: segments, Currencies: currencies, Taxes: taxes, 'Terms and reminders': terms, Approvals: approvals,
       'Bank statements': bankStatements, 'Opening balances': openingBalances, Integrations: integrations,
       Payroll: payroll, Appearance: appearance,
-      'Language and translation': language, Users: users, Roles: roles, 'Audit log': audit,
+      'Language and translation': language, Users: users, Roles: roles, Maintenance: maintenance, 'Audit log': audit,
     };
     (renderers[view.section] || organisation)(main);
     if (!data.canManageUsers) main.querySelectorAll('[data-manage-users]').forEach(el => { el.disabled = true; });
@@ -222,7 +222,14 @@
     try {
       // The date a tax change takes effect goes with it; on its own it changes nothing.
       const res = await UI.postJSON('/api/settings', draft.taxes ? { ...draft, taxes: { ...draft.taxes, from: view.taxFrom } } : draft);
+      // Every label on the page was rendered under the old fallback, the sidebar and
+      // the top bar included, so the page comes again rather than half of it changing.
+      if (data.language && res.language.fallback !== data.language.fallback) {
+        location.reload();
+        return;
+      }
       data = res;
+      i18n = null;
       draft = toDraft(data);
       view.taxFrom = data.taxes?.today;
       render();
@@ -610,6 +617,11 @@
     Conversion.mount(main.querySelector('#st-conversion'));
   }
 
+  function maintenance(main) {
+    main.innerHTML = `<div class="st-body wide">${head('Maintenance', 'Closing the application while it is worked on, and the periods that closure is planned for. Changes in this section take effect the moment they are made — they are never left sitting in an unsaved draft.')}<div id="st-maintenance"></div></div>`;
+    MaintenanceMode.mount(main.querySelector('#st-maintenance'));
+  }
+
   function integrations(main) {
     main.innerHTML = `<div class="st-body wide">${head('Integrations', 'Services outside the ledger that money and mail move through. Changes in this section are saved as you make them, and credentials are never shown again once entered.')}<div id="st-mpesa"></div><div id="st-mail"></div></div>`;
     Mpesa.mount(main.querySelector('#st-mpesa'));
@@ -898,7 +910,25 @@
         ${check('personal', 'The person\'s own name or email address', 'Any part of either of four letters or more.')}
         ${check('common', 'Passwords anyone would try first', 'password, 12345678, qwerty… — also with digits or symbols added on the end.')}
       </div></div>
+      ${head('Locking after wrong passwords', 'What happens when someone keeps guessing. Wrong passwords in a row count against the account; enough of them lock it, and the right password waits out the lock. Resetting the password unlocks it straight away, and a sign-in that works clears the count.')}
+      <div class="st-table"><div style="min-width:460px;">
+        <div class="st-tr st-th" style="${cols}"><div>Rule</div><div class="end">Number</div></div>
+        ${row('lockAttempts', 'Wrong passwords before locking', `In a row, counted per account. 0 never locks; otherwise ${pp.ranges.lockAttempts[0]} to ${pp.ranges.lockAttempts[1]}.`, pp.ranges.lockAttempts)}
+        ${row('lockMinutes', 'Minutes the account stays locked', `From the ${p.lockAttempts || pp.ranges.lockAttempts[0]}th wrong password. ${pp.ranges.lockMinutes[0]} to ${pp.ranges.lockMinutes[1]} (a day).`, pp.ranges.lockMinutes)}
+      </div></div>
+      <div class="st-note">${p.lockAttempts > 0
+        ? `${p.lockAttempts} wrong passwords in a row lock the account for ${lockWords(p.lockMinutes)}. Everyone locked out stays locked until it runs out, or until they reset their password.`
+        : 'Accounts are never locked for wrong passwords. Guessing is still counted and recorded in the audit log, and saving this releases anyone locked out now.'}</div>
       <div class="pp-summary"><strong>A new password needs:</strong> ${esc(policyWords(p, pp.kinds))}.</div>`;
+  }
+
+  /** "15 minutes", "1 hour", "2 hours 30 minutes" — as App\Libraries\PasswordPolicy::lockFor does. */
+  function lockWords(minutes) {
+    const n = Number(minutes) || 0;
+    if (n < 60) return `${n} minutes`;
+    const hours = Math.floor(n / 60);
+    const rest = n % 60;
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'}${rest > 0 ? ` ${rest} minutes` : ''}`;
   }
 
   /** The policy in a sentence, from the draft, so it reads right before it is saved. */
@@ -912,6 +942,7 @@
     if (p.common) words.push('not a password anyone would try first');
     if (p.history > 0) words.push(p.history === 1 ? 'not the current password' : `not one of the last ${p.history}`);
     words.push(p.maxAgeDays > 0 ? `changed every ${p.maxAgeDays} days` : 'never expires');
+    words.push(p.lockAttempts > 0 ? `locked for ${lockWords(p.lockMinutes)} after ${p.lockAttempts} wrong passwords` : 'never locked for wrong passwords');
     return words.join(' · ');
   }
 
@@ -1167,6 +1198,9 @@
     const covColour = (pct) => pct >= 95 ? 'var(--calm-ink)' : pct >= 80 ? '#8A6A2E' : '#A45B3E';
     const open = i18n.requests.filter(q => q.open).length;
     const locked = draft.language.formatsLocked;
+    // The organisation's, not this browser's: one answer for everybody, saved with
+    // the rest of the settings and recorded in the audit log.
+    const fallback = draft.language.fallback;
 
     main.innerHTML = `
       <div class="st-body wider">
@@ -1189,8 +1223,8 @@
           <div class="st-kicker">Fallback behaviour</div>
           <div class="st-note">What a user sees when a string has no approved translation in ${esc(current.native)}.</div>
           ${i18n.fallbacks.map(o => `
-            <label class="st-check ${o.on ? 'on' : ''}">
-              <input type="radio" name="st-fallback" data-free data-act-change="fallback" value="${esc(o.key)}" ${o.on ? 'checked' : ''}>
+            <label class="st-check ${o.key === fallback ? 'on' : ''}">
+              <input type="radio" name="st-fallback" data-bind="language.fallback" value="${esc(o.key)}" ${o.key === fallback ? 'checked' : ''}>
               <span><span class="st-check-label">${esc(o.label)}</span><span class="st-check-note">${esc(o.note)}</span><span class="st-check-example mono">${esc(o.example)}</span></span>
             </label>`).join('')}
           <div class="st-amber">${esc(isSource ? 'English (UK) is the source language. Every string here is the wording other languages are translated from.' : `${current.native} is ${current.coverage}% translated by ${current.reviewer}. The strings below are still waiting on an approved translation and currently fall back to English:`)}</div>
@@ -1267,16 +1301,11 @@
         </div>
       </div>`;
 
-    if (!canEdit('Language and translation')) main.querySelector('input[data-bind="language.formatsLocked"]').disabled = true;
-    main.querySelectorAll('input[data-act-change="fallback"]').forEach(r => r.addEventListener('change', () => {
-      if (dirty()) {
-        UI.toast('Save or discard your changes before switching how untranslated text is shown.');
-        r.checked = false;
-        return;
-      }
-      setCookie('elog_i18n_fallback', r.value);
-      location.reload();
-    }));
+    // The section is served to anyone who may look — raising wording is theirs —
+    // so the two settings in it are disabled by hand rather than by renderSection().
+    if (!canEdit('Language and translation')) {
+      main.querySelectorAll('input[data-bind^="language."]').forEach(el => { el.disabled = true; });
+    }
   }
 
   /** A suggestion for an untranslated label, or a named request to unlock a regulated term. */
@@ -1320,7 +1349,7 @@
 
   async function onAction(e) {
     const btn = e.target.closest('[data-act]');
-    if (!btn || btn.disabled || btn.dataset.actChange) return;
+    if (!btn || btn.disabled) return;
     const act = btn.dataset.act;
     const id = btn.dataset.id;
 
@@ -2811,6 +2840,185 @@ const Conversion = (() => {
       render();
       UI.toast(data.message);
     } catch (err) {
+      UI.toast(err.message);
+    }
+  }
+
+  return { mount };
+})();
+
+/**
+ * Settings → Maintenance: closing the application, and booking the periods it is
+ * planned to be closed for.
+ *
+ * Nothing here is drafted. Closing the application is not a change that should be
+ * able to sit unsaved in a browser next to an edit to the chart of accounts, so
+ * each action is one call and the panel redraws from what the server answers with.
+ * The section is listed only for a holder of the permission; everybody else hears
+ * about a closure from the notification and the bar across the top of the page.
+ */
+const MaintenanceMode = (() => {
+  const esc = UI.esc;
+  let root = null;
+  let data = null;
+  // Kept between visits to another section, so a half-typed booking is not lost.
+  let form = { starts: '', ends: '', reason: '', message: '', closing: false };
+
+  async function mount(container) {
+    root = container;
+    root.innerHTML = '<div class="coa-empty">Loading…</div>';
+    try {
+      data = await UI.fetchJSON('/api/maintenance');
+    } catch (err) {
+      root.innerHTML = `<div class="coa-empty">${esc(err.message)}</div>`;
+      return;
+    }
+    if (!form.starts) defaults();
+    render();
+  }
+
+  /** A window starting at the next whole hour, two hours long — the usual shape. */
+  function defaults() {
+    const at = new Date(data.now);
+    at.setMinutes(0, 0, 0);
+    at.setHours(at.getHours() + 1);
+    const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    form.starts = local(at);
+    at.setHours(at.getHours() + 2);
+    form.ends = local(at);
+  }
+
+  function render() {
+    if (!root || !root.isConnected) return;
+    const s = data.state;
+    const can = data.canManage;
+    // Soonest first for what is still to come, latest first for what has run.
+    const upcoming = data.windows.filter(w => w.state === 'Scheduled' || w.state === 'Under way').reverse();
+    const past = data.windows.filter(w => w.state === 'Finished' || w.state === 'Cancelled');
+
+    root.innerHTML = `
+      <div class="sf-cards">
+        <div class="mt-state ${s.on ? 'is-closed' : ''}">
+          <div class="mt-state-head"><span class="mt-state-dot"></span>${s.on ? 'Closed for maintenance' : 'Open — everyone can sign in'}</div>
+          ${s.on ? `
+            <div class="mt-state-note">${esc(s.message)}</div>
+            <div class="mt-state-note">
+              ${s.switched ? `Closed by hand${s.by ? ' by ' + esc(s.by) : ''}${s.since ? ' at ' + esc(stamp(s.since)) : ''}. It stays closed until somebody opens it again.`
+                : `Inside the window booked${s.by ? ' by ' + esc(s.by) : ''}. It opens again by itself at ${esc(stamp(s.until))}.`}
+              Only a role with ${esc(data.permission)} can sign in${data.keepers.length ? ' — ' + esc(data.keepers.join(', ')) : ''}.
+            </div>`
+            : '<div class="mt-state-note">Nothing is closed. Everyone with an account can sign in and work as usual.</div>'}
+          ${can ? closer(s) : `<div class="mt-state-note">${esc(data.role || 'Your role')} can read this. Closing the application needs a role with ${esc(data.permission)}.</div>`}
+        </div>
+
+        ${can ? `
+        <div class="sf-section">Plan a maintenance period</div>
+        <p class="bu-intro" style="margin-top:-6px;">Booking one tells everybody now, carries it on every page for the ${data.limits.warnDays} days before it starts, and closes the application by itself while it runs — nobody has to be at a keyboard to close it. Up to ${data.limits.maxHours} hours at a time.</p>
+        <div class="mt-form">
+          <label class="mt-field">Starts<input type="datetime-local" data-k="starts" value="${esc(form.starts)}"></label>
+          <label class="mt-field">Ends<input type="datetime-local" data-k="ends" value="${esc(form.ends)}"></label>
+          <label class="mt-field wide">What the maintenance is for<textarea data-k="reason" maxlength="${data.limits.maxReason}" placeholder="Upgrading the database. Approvals and payments will be unavailable.">${esc(form.reason)}</textarea></label>
+        </div>
+        <div class="mt-actions"><button type="button" class="btn btn-primary" data-act="book">Book it and notify everyone</button></div>` : ''}
+
+        <div class="sf-section">Booked</div>
+        ${table(upcoming, can, 'Nothing is booked.')}
+
+        ${past.length ? `<div class="sf-section">Already run</div>${table(past, false, '')}` : ''}
+      </div>`;
+
+    wire();
+  }
+
+  /** The switch itself: closing it asks for the message everyone else will read. */
+  function closer(s) {
+    if (s.on && !s.switched) {
+      return `<div class="mt-actions"><button type="button" class="btn" data-act="cancel" data-id="${s.window.id}">End the maintenance now</button></div>`;
+    }
+    if (s.on) {
+      return `<div class="mt-actions"><button type="button" class="btn btn-primary" data-act="open">Open the application</button></div>`;
+    }
+    if (!form.closing) {
+      return '<div class="mt-actions"><button type="button" class="btn" data-act="close-start">Close the application now</button></div>';
+    }
+    return `
+      <label class="mt-field" style="margin-top:4px;">What everyone else is told
+        <textarea data-k="message" maxlength="${data.limits.maxReason}" placeholder="We are upgrading the database and will be back by 19:00.">${esc(form.message)}</textarea></label>
+      <div class="mt-actions">
+        <button type="button" class="btn" data-act="close-stop">Cancel</button>
+        <button type="button" class="btn btn-primary" data-act="close">Close it now</button>
+      </div>
+      <div class="mt-state-note">Everybody without ${esc(data.permission)} is turned away at their next request, and cannot sign in until you open it again. Nothing is done to the ledger.</div>`;
+  }
+
+  function table(rows, can, empty) {
+    if (!rows.length) return empty ? `<div class="coa-empty">${esc(empty)}</div>` : '';
+    const cols = 'grid-template-columns:minmax(190px,1fr) 100px minmax(200px,1.4fr) 110px 92px;';
+    return `
+      <div class="st-table"><div style="min-width:720px;">
+        <div class="st-tr st-th" style="${cols}"><div>When</div><div>Lasts</div><div>What for</div><div>Booked by</div><div></div></div>
+        ${rows.map(w => `
+          <div class="st-tr" style="${cols}min-height:44px;">
+            <div class="st-stack"><span>${esc(w.when)}</span><span class="mt-win-state ${esc(w.state.replace(' ', ''))}">${esc(w.state)}${w.state === 'Scheduled' ? ' · ' + esc(w.relative) : ''}${w.state === 'Cancelled' && w.cancelledBy ? ' by ' + esc(w.cancelledBy) : ''}</span></div>
+            <div class="st-muted">${esc(w.lasts)}</div>
+            <div style="padding-block:6px;">${esc(w.reason)}</div>
+            <div class="st-ellipsis">${esc(w.by)}</div>
+            <div class="st-rowacts">${can ? `<button type="button" class="btn" data-act="cancel" data-id="${w.id}">${w.state === 'Under way' ? 'End now' : 'Cancel'}</button>` : ''}</div>
+          </div>`).join('')}
+      </div></div>`;
+  }
+
+  /**
+   * The bar under the top bar, which the server drew with the page. Repainted
+   * here rather than by reloading, so what was just switched is on the screen at
+   * once and the message saying so is not thrown away with the page.
+   */
+  function paintBar(banner) {
+    const bar = document.getElementById('mt-bar');
+    if (!bar) return;
+    bar.hidden = banner === null;
+    if (banner === null) return;
+    bar.className = 'mt-bar is-' + banner.tone;
+    document.getElementById('mt-bar-title').textContent = banner.title;
+    document.getElementById('mt-bar-note').textContent = banner.note;
+  }
+
+  /** "Fri 26 Sep, 18:00" from what the server holds. */
+  const stamp = (at) => (at ? new Date(at.replace(' ', 'T')).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+
+  function wire() {
+    root.querySelectorAll('[data-k]').forEach(el => el.addEventListener('input', () => { form[el.dataset.k] = el.value; }));
+    root.querySelectorAll('[data-act]').forEach(el => el.addEventListener('click', () => act(el.dataset.act, el.dataset.id, el)));
+  }
+
+  async function act(what, id, button) {
+    if (what === 'close-start' || what === 'close-stop') {
+      form.closing = what === 'close-start';
+      render();
+      return;
+    }
+    if (what === 'cancel' && !window.confirm('Cancel that maintenance window? Everyone who was told about it is told it is off.')) return;
+
+    const call = {
+      close: () => UI.postJSON('/api/maintenance', { on: true, message: form.message }),
+      open: () => UI.postJSON('/api/maintenance', { on: false }),
+      book: () => UI.postJSON('/api/maintenance/windows', { starts: form.starts, ends: form.ends, reason: form.reason }),
+      cancel: () => UI.postJSON(`/api/maintenance/windows/${encodeURIComponent(id)}/cancel`, {}),
+    }[what];
+    if (!call) return;
+
+    button.disabled = true;
+    try {
+      const res = await call();
+      data = res;
+      // A booked window's times would clash with themselves if left in the form.
+      if (what === 'book') { form.reason = ''; defaults(); }
+      if (what === 'close') { form.message = ''; form.closing = false; }
+      render();
+      paintBar(res.banner);
+      UI.toast(res.message);
+    } catch (err) {
+      button.disabled = false;
       UI.toast(err.message);
     }
   }

@@ -6,6 +6,7 @@ use App\Libraries\PasswordPolicy;
 use App\Libraries\SignIn;
 use App\Libraries\Totp;
 use App\Repositories\Repository;
+use App\Repositories\SettingsRepository;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
 use CodeIgniter\Test\FeatureTestTrait;
@@ -95,6 +96,32 @@ final class AuthTest extends CIUnitTestCase
         // Even the right password waits out the lock.
         $this->assertStringContainsString('locked', $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => OrganisationSeeder::DEMO_PASSWORD], 422)['error']);
         $this->seeInDatabase('audit_events', ['action' => 'auth.locked', 'object_type' => 'user']);
+    }
+
+    public function testHowManyWrongPasswordsLockAnAccountAndForHowLongIsSetInSettings(): void
+    {
+        $this->policy(['lockAttempts' => 3, 'lockMinutes' => 90]);
+
+        $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => 'not the password'], 422);
+        $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => 'still wrong'], 422);
+        $locked = $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => 'wrong again'], 422);
+        $this->assertStringContainsString('locked for 1 hour 30 minutes', $locked['error']);
+        // Even the right password waits out the lock.
+        $this->assertStringContainsString('locked', $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => OrganisationSeeder::DEMO_PASSWORD], 422)['error']);
+
+        // Turning locking off releases whoever is locked out now...
+        $this->policy(['lockAttempts' => 0]);
+        $this->seeInDatabase('users', ['email' => self::FM, 'locked_until' => null, 'failed_sign_ins' => 0]);
+
+        // ...and stops the count closing the door on anyone else, though it is still kept.
+        for ($i = 0; $i < 4; $i++) {
+            $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => 'not the password'], 422);
+        }
+        $this->seeInDatabase('users', ['email' => self::FM, 'failed_sign_ins' => 4, 'locked_until' => null]);
+        $in = $this->send('post', 'api/auth/login', ['email' => self::FM, 'password' => OrganisationSeeder::DEMO_PASSWORD]);
+        $this->assertNotSame('signedOut', $in['stage']);
+        // A sign-in that works clears the count.
+        $this->seeInDatabase('users', ['email' => self::FM, 'failed_sign_ins' => 0]);
     }
 
     // ------------------------------------------------------------------
@@ -421,6 +448,14 @@ final class AuthTest extends CIUnitTestCase
     }
 
     /** A request, carrying the session on from the last one. Returns the decoded body. */
+    /** Saves a change to the password policy, the way Settings → Users does. */
+    private function policy(array $change): void
+    {
+        $settings = new SettingsRepository();
+        $settings->save(['passwordPolicy' => $change + PasswordPolicy::current()], 1);
+        Repository::forget();
+    }
+
     private function send(string $method, string $url, array $body = [], int $status = 200): array
     {
         $this->withSession($this->session);

@@ -37,12 +37,13 @@ final class SettingsAccessTest extends CIUnitTestCase
     public function testEachRoleSeesTheSectionsItsPermissionsShow(): void
     {
         $s = $this->api('get', 'api/settings');
-        $this->assertCount(16, $s['sections'], 'The Finance Manager sees every section');
+        $this->assertCount(17, $s['sections'], 'The Finance Manager sees every section');
         $this->assertSame(['Audit log'], array_column(array_filter($s['sections'], static fn ($x) => !$x['canEdit']), 'key'), 'and changes all but the log');
 
         $this->signIn('s.njeri@elog.or.ke');
         $s = $this->api('get', 'api/settings');
-        $this->assertSame(self::EVERYDAY, array_column($s['sections'], 'key'), 'An accountant sees the everyday sections');
+        $this->assertSame(self::EVERYDAY, array_column($s['sections'], 'key'),
+            'An accountant sees the everyday sections, and not the ones with a permission of their own');
         $this->assertSame([], array_filter(array_column($s['sections'], 'canEdit')), 'and changes none of them');
         foreach (['users', 'roleDetail', 'permissionCatalogue', 'audit', 'benefits', 'grades', 'payAccounts'] as $key) {
             $this->assertArrayNotHasKey($key, $s, $key . ' belongs to a section the accountant cannot see, so it is not served');

@@ -1,9 +1,11 @@
 /**
  * Every request to this site says it came from the application's own pages
  * (X-Requested-With), which the server requires of any change — a form on another
- * site cannot add the header. And a request refused because the session has ended
- * goes back to the sign-in page, then returns here. Done once, around fetch, so
- * uploads and downloads written with fetch directly get both too.
+ * site cannot add the header. A request refused because the session has ended
+ * goes back to the sign-in page, then returns here, and one refused because the
+ * application has been closed for maintenance goes to the page that says so.
+ * Done once, around fetch, so uploads and downloads written with fetch directly
+ * get all of it too.
  */
 (() => {
   const nativeFetch = window.fetch.bind(window);
@@ -15,6 +17,14 @@
     const res = await nativeFetch(input, { ...init, headers });
     if (res.status === 401 && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth')) {
       location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+    }
+    // The application was closed for maintenance while this page was open. The
+    // page itself is now the maintenance notice, so go and read it rather than
+    // leaving somebody typing into a screen that can no longer save anything.
+    // Not the sign-in endpoints: those answer 503 to say why a sign-in is being
+    // refused, and the sign-in screen shows that itself.
+    if (res.status === 503 && res.headers.get('X-Maintenance') && url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/auth')) {
+      location.reload();
     }
     return res;
   };
@@ -968,6 +978,46 @@ const UI = (() => {
   }
 
   /**
+   * A password field with a control that unmasks what has been typed, for the
+   * sign-in and new-password screens. Masking is what a password field is for, so
+   * it starts masked and the control says what it will do — someone unmasks to
+   * check a long passphrase they typed, on their own screen, and the next screen
+   * starts masked again: nothing is remembered.
+   *
+   * `label` is the caption; `attrs` is the input's own attributes, so the caller
+   * keeps its name, autocomplete and any minlength. Wire it with
+   * wirePasswordToggles() once the markup is in the page.
+   */
+  function passwordField(label, attrs) {
+    return `<label class="auth-field"><span>${esc(label)}</span>
+      <span class="pw-input">
+        <input type="password" ${attrs}>
+        <button type="button" class="pw-toggle" data-pw-toggle aria-pressed="false" aria-label="Show the password">Show</button>
+      </span>
+    </label>`;
+  }
+
+  /** Makes every passwordField() in `scope` unmask and mask again. */
+  function wirePasswordToggles(scope) {
+    (scope || document).querySelectorAll('[data-pw-toggle]').forEach((btn) => {
+      if (btn.dataset.wired) return;
+      btn.dataset.wired = '1';
+      btn.addEventListener('click', () => {
+        const input = btn.parentElement.querySelector('input');
+        if (!input) return;
+        const show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        btn.textContent = show ? 'Hide' : 'Show';
+        btn.setAttribute('aria-pressed', String(show));
+        btn.setAttribute('aria-label', show ? 'Hide the password' : 'Show the password');
+        // Back where they were typing, at the end of what they have typed.
+        input.focus();
+        try { input.setSelectionRange(input.value.length, input.value.length); } catch (_) { /* not a field that has a caret */ }
+      });
+    });
+  }
+
+  /**
    * Hands a newly chosen password to the browser's password manager, where it can
    * take it (Chrome, Edge), so the next sign-in fills the new password instead of
    * the one it replaced. A page that saves by fetch never navigates, and without
@@ -982,5 +1032,5 @@ const UI = (() => {
     }
   }
 
-  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill, docList, docPicker, docPanel, passwordRules, tickPasswordRules, rememberPassword };
+  return { fmtMoney, brand, download, fetchJSON, postJSON, toast, statGrid, tabs, table, esc, badge, bar, pageHead, drawer, closeDrawer, openNewJournalDrawer, openJournal, statusPill, docList, docPicker, docPanel, passwordRules, tickPasswordRules, passwordField, wirePasswordToggles, rememberPassword };
 })();

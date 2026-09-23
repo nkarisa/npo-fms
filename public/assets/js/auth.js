@@ -32,11 +32,25 @@
 
   function paint(html) {
     root.innerHTML = html;
+    UI.wirePasswordToggles(root);
     const first = root.querySelector('input:not([type=checkbox]):not([readonly])');
     if (first) first.focus();
   }
 
   const note = (text, tone) => (text ? `<p class="auth-msg ${tone || ''}" role="${tone === 'error' ? 'alert' : 'status'}">${esc(text)}</p>` : '');
+
+  /**
+   * The application closed for maintenance, or a window coming — on every
+   * /api/auth response, so somebody is told before they type a password that will
+   * not let them in, and the people who can sign in know why they are alone.
+   */
+  const maintenance = () => {
+    const m = state && state.maintenance;
+    return m ? `<div class="mt-state ${m.tone === 'closed' ? 'is-closed' : ''}" style="margin-bottom:14px;">
+      <div class="mt-state-head"><span class="mt-state-dot"></span>${esc(m.title)}</div>
+      <div class="mt-state-note">${esc(m.note)}</div>
+    </div>` : '';
+  };
 
   function showError(err) {
     const el = root.querySelector('.auth-msg-slot');
@@ -72,10 +86,11 @@
 
   function signInForm(message) {
     paint(`
+      ${maintenance()}
       <h1 class="auth-title">Sign in</h1>
       <form class="auth-form" id="f-login" novalidate>
         <label class="auth-field"><span>Email</span><input name="email" type="email" autocomplete="username" required maxlength="190"></label>
-        <label class="auth-field"><span>Password</span><input name="password" type="password" autocomplete="current-password" required></label>
+        ${UI.passwordField('Password', 'name="password" autocomplete="current-password" required')}
         <div class="auth-msg-slot">${note(message)}</div>
         <button type="submit" class="btn btn-primary auth-submit">Sign in</button>
       </form>
@@ -238,9 +253,9 @@
       <p class="auth-note">${esc(message || 'Your password has expired. Choose a new one to carry on.')} Passwords here last ${esc(state.passwordPolicy?.maxAgeDays || '')} days.</p>
       <form class="auth-form" id="f-renew" novalidate>
         <input type="email" autocomplete="username" value="${esc(email)}" hidden readonly>
-        <label class="auth-field"><span>New password</span><input name="password" type="password" autocomplete="new-password" required></label>
+        ${UI.passwordField('New password', 'name="password" autocomplete="new-password" required')}
         ${UI.passwordRules(state.passwordRules)}
-        <label class="auth-field"><span>Type it again</span><input name="again" type="password" autocomplete="new-password" required></label>
+        ${UI.passwordField('Type it again', 'name="again" autocomplete="new-password" required')}
         <div class="auth-msg-slot"></div>
         <button type="submit" class="btn btn-primary auth-submit">Save and carry on</button>
       </form>
@@ -283,9 +298,9 @@
       <p class="auth-note">${purpose === 'invite' ? 'Choose a password for ' : 'For '}<strong>${esc(link.email)}</strong>. A few unrelated words make a password that is long and easy to remember.</p>
       <form class="auth-form" id="f-link" novalidate>
         <input type="email" autocomplete="username" value="${esc(link.email)}" hidden readonly>
-        <label class="auth-field"><span>New password</span><input name="password" type="password" autocomplete="new-password" required minlength="${min}"></label>
+        ${UI.passwordField('New password', `name="password" autocomplete="new-password" required minlength="${min}"`)}
         ${UI.passwordRules(rules)}
-        <label class="auth-field"><span>Type it again</span><input name="again" type="password" autocomplete="new-password" required></label>
+        ${UI.passwordField('Type it again', 'name="again" autocomplete="new-password" required')}
         <div class="auth-msg-slot"></div>
         <button type="submit" class="btn btn-primary auth-submit">${purpose === 'invite' ? 'Set up my account' : 'Save the new password'}</button>
       </form>`);

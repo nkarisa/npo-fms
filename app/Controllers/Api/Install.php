@@ -481,10 +481,12 @@ class Install extends BaseController
 
     private function finishDemo(BaseConnection $db): array
     {
+        $t    = static fn (string $table) => $db->prefixTable($table);
         $head = $db->table('entities')->select('name')->where('parent_id', null)->orderBy('id')->get(1)->getRowArray();
         $who  = $db->query(
-            "SELECT u.name, u.email FROM users u JOIN user_entity_roles ur ON ur.user_id = u.id
-             JOIN role_permissions rp ON rp.role_id = ur.role_id JOIN permissions p ON p.id = rp.permission_id
+            'SELECT u.name, u.email FROM ' . $t('users') . ' u JOIN ' . $t('user_entity_roles') . ' ur ON ur.user_id = u.id'
+            . ' JOIN ' . $t('role_permissions') . ' rp ON rp.role_id = ur.role_id'
+            . ' JOIN ' . $t('permissions') . " p ON p.id = rp.permission_id
              WHERE u.status = 'active' AND p.key = 'settings.organisation' ORDER BY u.id LIMIT 1"
         )->getRowArray();
 

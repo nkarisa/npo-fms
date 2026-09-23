@@ -4,6 +4,7 @@ namespace App\Controllers\Api;
 
 use App\Libraries\Clock;
 use App\Libraries\Ledger;
+use App\Libraries\Maintenance;
 use App\Libraries\Prototype;
 use App\Repositories\BankRepository;
 use App\Repositories\FundRepository;
@@ -15,6 +16,9 @@ class Dashboard extends BaseApiController
     public function index()
     {
         return $this->json([
+            // Closed for maintenance, or a window coming: said here as well as in the
+            // shell, because the overview is where people look first thing.
+            'maintenance'  => Maintenance::banner(),
             'date'         => Clock::today()->format('l, j F Y') . ' · ' . date('F', strtotime('1 ' . Ledger::currentPeriod())) . ' open',
             'subtitle'     => 'One reconciling book. What follows is drawn from the ledger as it stands this morning — nothing here is entered twice or kept on a side spreadsheet.',
             'stats'        => $this->stats(),

@@ -150,6 +150,7 @@ is asked to set up a second step. To skip that on a laptop, set
 
 | Person | Email | Role | Useful for |
 |---|---|---|---|
+| Administrator | admin@elog.or.ke | Administrator | Every permission at every entity — what the install hands over |
 | Wanjiru Kamau | w.kamau@elog.or.ke | Finance Manager | Settings, approving, closing periods — the default |
 | Michael Otieno | m.otieno@elog.or.ke | Senior Accountant | Preparing journals and payroll |
 | Sarah Njeri | s.njeri@elog.or.ke | Accountant | Preparing |
@@ -449,7 +450,7 @@ All optional. Set them in `.env` as `auth.<name>`:
 | `auth.mfaMethods` | `totp, email` | Which second steps are offered |
 | `auth.issuer` | the short name | The name shown against the account in authenticator apps |
 | `auth.minPasswordLength` | `12` | Passwords containing the person's email name, the handful anyone tries first, and ones of fewer than five different characters are refused whatever their length |
-| `auth.maxFailedSignIns` / `auth.lockMinutes` | `5` / `15` | Wrong passwords before an account is locked, and for how long |
+| `auth.maxFailedSignIns` / `auth.lockMinutes` | `5` / `15` | Wrong passwords before an account is locked, and for how long, until a password policy is saved in Settings → Users |
 | `auth.idleMinutes` | `30` | Idle time before someone must sign in again |
 | `auth.inviteHours` / `auth.resetHours` | `168` / `1` | How long invitation and password-reset links work |
 | `auth.actAs` | `false` | Training only: the **Act as** menu. See [Who to sign in as](#who-to-sign-in-as) |
@@ -499,6 +500,13 @@ Sign-in comes with a migration. Run `php spark migrate` after updating. Existing
 users have no password yet, so give each a link: `php spark user:link <email>`,
 or, once one person is in, **Email a link to set a password** under Settings → Users → Manage. The migration
 also gives the new `users.manage` permission to every role that could change settings.
+
+Maintenance mode comes with one too. Its migration adds the
+`settings.maintenance` permission — which closes the application to everyone but
+its holders — and gives it to every role that already manages users, so an
+instance is never left with an application it cannot close and nobody able to
+grant the right to close it. Hand it out from Settings → Roles, and to more than
+one person, so a closure can always be undone.
 
 ## Supporting documents
 

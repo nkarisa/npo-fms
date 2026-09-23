@@ -42,8 +42,12 @@ final class EntityScope
         'audit_events',
     ];
 
-    /** Tables whose rows may carry no entity and are then read in every scope. */
-    private const NULL_ALLOWED = ['audit_events'];
+    /**
+     * Tables whose rows may carry no entity and are then read in every scope. A
+     * notification about the application itself — maintenance is coming — belongs
+     * to no entity's books and is read whichever entity its reader is working in.
+     */
+    private const NULL_ALLOWED = ['audit_events', 'notifications'];
 
     /** @var array{key: string, scope: array}|null */
     private static ?array $resolved = null;

@@ -399,6 +399,7 @@ final class Installer
         $row('formatsLocked', 'language', '1',
             "Hold numbers, dates and currency in the organisation's reporting locale",
             'Recommended. Finance staff, auditors and funders read the same figure the same way in every language, so a report cannot be misread as a different amount.');
+        $row(I18n::FALLBACK_KEY, I18n::FALLBACK_KIND, I18n::DEFAULT_FALLBACK, I18n::FALLBACK_LABEL, I18n::FALLBACK_NOTE);
     }
 
     /** The approval policy the instance starts with. */

@@ -49,7 +49,9 @@ page is rendered in your browser and shows the same building blocks throughout:
 
 1. Open the application's address in your browser (for example
    `http://localhost:8090/`). You are taken to **Sign in**.
-2. Enter your email and password and choose **Sign in**.
+2. Enter your email and password and choose **Sign in**. **Show** at the end of the
+   password box reveals what you have typed, in case a long password went in wrong;
+   **Hide** masks it again, and the next screen always starts masked.
 3. Give your **second step**: the six-digit code your authenticator app shows, or
    the code just emailed to you.
 4. The application opens on the **Dashboard** (Finance overview), or on the page
@@ -57,7 +59,8 @@ page is rendered in your browser and shows the same building blocks throughout:
 
 **Your first time.** Your invitation email has a link. Open it, choose a password
 of at least 12 characters (a few unrelated words are easy to remember), then set
-up a second step:
+up a second step. The checklist under the box ticks the rules off as you type, and
+**Show** reveals what you have typed so you can check it before saving:
 
 - **Authenticator app** (recommended). Install Google Authenticator, Microsoft
   Authenticator, Okta Verify or similar on your phone, add an account, scan the
@@ -77,7 +80,7 @@ not shown again.
 | Forgot your password | **Forgot your password?** on the sign-in page emails a link that works for an hour |
 | Lost your phone | **Use a recovery code** on the second-step screen, then set up the app again under **My account** |
 | Lost your phone and your recovery codes | Ask whoever manages users to **Reset second step** for you |
-| *Too many wrong passwords* | The account is locked for 15 minutes. Wait, or reset your password |
+| *Too many wrong passwords* | The account is locked for a while — the message says how long. Wait it out, or reset your password, which unlocks it straight away |
 | Signed out while working | You're signed out after 30 minutes without using the application. Sign in again and you return to the same page |
 
 ### My account
@@ -720,9 +723,11 @@ box. Nobody else sees them.
 
 The rest of Settings works the same way, one duty at a time: `settings.view` shows
 the everyday sections read only, and `settings.organisation`, `settings.ledger`,
-`settings.approvals`, `settings.banking`, `settings.integrations` and
-`settings.payroll` each change their own part. Payroll settings are also shown to
-anyone with `payroll.view`, and the audit log to anyone with `audit.view`. Someone
+`settings.approvals`, `settings.banking`, `settings.integrations`,
+`settings.payroll` and `settings.maintenance` each change their own part. Payroll settings are also shown to
+anyone with `payroll.view`, and the audit log to anyone with `audit.view`; the
+Maintenance section, like Users and Roles, is shown only to the permission that
+changes it. Someone
 who can see no part of Settings does not have it in their menu at all.
 
 ### 1. How access works
@@ -771,14 +776,37 @@ You cannot change or delete a role you hold yourself, at any entity — otherwis
 whoever manages roles could widen their own permissions. Its card is marked
 **Yours** and opens read only; ask someone else who manages users to make the change.
 
-### 5. Safeguards
+### 5. The password policy
+
+**Settings → Users**, below the list of people. It sets what a new password has to
+be — its length, the kinds of character it must mix, whether it may carry the
+person's own name or be one anyone would try first, how many earlier passwords it
+may not repeat, and after how many days it has to be changed. The sentence at the
+foot of the section reads the whole policy back to you before you save it.
+
+The rules apply to the next password each person chooses, from an invitation, a
+reset link or **My account** — tightening them never locks anyone out of an account
+they can already get into.
+
+**Locking after wrong passwords** is the one rule about guessing rather than about
+the password itself. Wrong passwords in a row are counted per account; enough of
+them lock it for the minutes you set, and even the right password then waits the
+lock out. Resetting the password unlocks the account straight away, and a sign-in
+that works clears the count. Set the attempts to **0** to stop locking altogether:
+wrong passwords are still counted and still recorded in the audit log, and saving
+that releases anyone locked out at the time.
+
+Save it with **Save changes**, like the rest of Settings. The change goes into the
+audit log in words.
+
+### 6. Safeguards
 
 - There must always be someone active who can manage users. A change that would
   leave nobody is refused, and so is suspending yourself.
 - Everyone must hold at least one role.
 - Every change is in **Settings → Audit log**: who changed what, when.
 
-### 6. Quick reference
+### 7. Quick reference
 
 | Task | How |
 |---|---|
@@ -789,6 +817,87 @@ whoever manages roles could widen their own permissions. Its card is marked
 | Someone lost their phone and codes | Users → **Manage** → **Reset second step** |
 | Create a role | Roles → **New role** → name, permissions → **Add role** |
 | Change what a role can do | Roles → **Edit** on its card → tick or untick permissions → **Save role** |
+| Lock accounts after wrong passwords | Users → **Locking after wrong passwords** → set the attempts and minutes → **Save changes** |
+| Stop locking accounts | Users → **Locking after wrong passwords** → set the attempts to **0** → **Save changes** |
+
+---
+
+## Closing the application for maintenance
+
+**Settings → Maintenance.** The page belongs to the `settings.maintenance`
+permission: a role that holds it reads and uses the page, and nobody else is shown
+the section at all — being able to see the rest of Settings is not enough. That
+permission is also the key to the door: while the application is closed, the people
+who hold it are the only ones who can sign in. Give it out as carefully as
+`users.manage`, and to more than one person, so a closure can always be undone.
+
+Everybody else does not need the page. They are told about a closure where it
+matters to them: a notification when one is booked, a bar across the top of every
+page as it approaches, and the maintenance screen itself while it runs.
+
+Nothing on this page touches the ledger. Maintenance mode stops people reaching
+the application; it does not change a single figure in the books, and nobody loses
+work they had saved.
+
+### 1. Closing it now
+
+1. **Settings → Maintenance → Close the application now.**
+2. Write what everybody else will be told — *"We are upgrading the database and
+   will be back by 19:00."* It is the only thing they are going to read, so give
+   them the reason and, if you know it, the time.
+3. **Close it now.**
+
+From that moment everybody else — signed in already or signing in now — gets a
+plain **Closed for maintenance** page carrying your message, instead of the
+application. Their sessions are left alone: when you open it again they carry on
+from where they were. You and the other holders of the permission work as usual,
+with a red bar at the top of every page reminding you the application is shut to
+everyone else.
+
+**Open the application** puts everybody back in. A closure switched by hand stays
+until somebody opens it — it does not time out.
+
+### 2. Planning one in advance
+
+A **maintenance window** is a period booked ahead of time. Booking one tells
+everybody straight away, carries the notice on every page for the seven days
+before it starts, and closes the application by itself while it runs — nobody has
+to be at a keyboard at midnight to close it, or first thing in the morning to open
+it again.
+
+1. **Settings → Maintenance**, under *Plan a maintenance period*.
+2. Choose when it **starts** and **ends**, and say what the maintenance is for.
+3. **Book it and notify everyone.**
+
+A window starts in the future, runs at least five minutes and at most 72 hours,
+and cannot overlap one already booked — book a longer stretch as two windows.
+
+### 3. Calling one off, or ending one early
+
+**Cancel** on a booked window calls it off; **End now** on one that is running
+opens the application at once. Everybody who was told about it is told it is off.
+Windows are never deleted: cancelled ones stay on the list, so what was announced
+and what actually happened are both on the record.
+
+### 4. What everybody else sees
+
+- A notification in the bell the moment a window is booked, and another if it is
+  cancelled.
+- An amber bar on every page for the seven days before it starts, saying when and
+  for how long.
+- While it is closed: the **Closed for maintenance** page with your message and,
+  for a booked window, the time it is expected back.
+
+### 5. Quick reference
+
+| Task | How |
+|---|---|
+| Close the application now | Maintenance → **Close the application now** → message → **Close it now** |
+| Open it again | Maintenance → **Open the application** |
+| Book a period in advance | Maintenance → starts, ends, what for → **Book it and notify everyone** |
+| Call a booked period off | Maintenance → **Cancel** on its row |
+| End one that is running | Maintenance → **End the maintenance now** |
+| See what was closed and when | Settings → **Audit log**, area *Maintenance* |
 
 ---
 

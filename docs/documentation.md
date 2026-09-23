@@ -934,6 +934,13 @@ warning appears if you try to leave with unsaved changes.
 - **Language and translation** — interface languages and coverage, fallback
   behaviour, raising wording for review, approving/declining translation requests,
   the locked reporting locale and terminology.
+  - The language itself is each reader's, chosen in the top bar and kept in their
+    browser. **Fallback behaviour** — whether a string with no approved translation
+    shows the English source silently, shows it marked `EN`, or shows the string key
+    — is the organisation's, not the browser's: one answer for everybody, saved with
+    the rest of the draft, needing `settings.organisation`, and recorded in the audit
+    log. It is set once so that two people reading the same screen agree on which
+    wording their reviewer has actually approved.
 - **Users** — everyone with access: their roles (as chips), entity access, last
   sign-in, status and whether they have a second step. **Invite user** takes a
   name, an email, one or more roles and the entities; the person is emailed a
@@ -950,6 +957,29 @@ warning appears if you try to leave with unsaved changes.
   translation lock uses it. Any change that would leave nobody active who can
   manage users is refused. Changes apply at once to everyone holding the role and
   go in the audit log.
+- **Maintenance** — closing the application while it is worked on, and the
+  periods that closure is planned for. The section is shown only to a role holding
+  `settings.maintenance` — `settings.view` does not reach it — and that permission
+  is also the key to the door: while the application is closed, its holders are the
+  only people who can sign in or stay signed in, so it is given out as carefully as
+  `users.manage`. Everybody else hears about a closure where it matters to them, in
+  the notification sent when one is booked and the bar across the top of every page.
+  - *Closing it now*: a message is asked for, because it is the only thing
+    everybody else is going to read. From then on every other person is shown a
+    plain "Closed for maintenance" page instead of the application, whether they
+    were signed in already or are signing in now, and their work is where they
+    left it when it opens again. It stays closed until somebody opens it.
+  - *Planning one*: a window is a period booked in advance — when it starts, when
+    it ends, and what the maintenance is for. Booking one notifies everybody at
+    once, puts the window on every page for the seven days before it starts, and
+    closes the application by itself while it runs, opening it again at the end,
+    so nobody has to be at a keyboard at midnight. A window runs at most 72 hours
+    and cannot overlap another. Windows are never deleted: one is cancelled — or
+    ended early while it is running — and what was announced and what happened
+    both stay on the record, with everybody told of the cancellation too.
+  - Nothing here is drafted, and nothing here touches the ledger. Maintenance mode
+    stops people reaching the application; it does not change what the books say.
+    Every switch, booking and cancellation is in the audit log.
 - **Audit log** — a read-only, searchable log of configuration changes, retained
   seven years and not editable from within the application.
 
@@ -960,7 +990,8 @@ and check its connection; open funds and cash accounts; carry opening balances f
 a legacy system and discard a conversion that has not yet been approved; add and
 amend entities; name the
 application, upload a logo and choose the interface theme; manage users and
-languages. Saving is restricted to the Finance Manager.
+languages; close the application for maintenance and book the periods it is
+planned to be closed for. Saving is restricted to the Finance Manager.
 
 ---
 

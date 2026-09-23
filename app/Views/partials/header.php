@@ -10,6 +10,7 @@
 use App\Libraries\Brand;
 use App\Libraries\EntityScope;
 use App\Libraries\I18n;
+use App\Libraries\Maintenance;
 use App\Libraries\Navigation;
 use App\Libraries\SettingsAccess;
 use App\Libraries\Theme;
@@ -32,6 +33,10 @@ $brand = Brand::current();
 // palette is built rather than one here and another in the settings preview.
 $style = $theme === Theme::CUSTOM ? Theme::customStyle(Theme::currentCustom()) : '';
 $entities = Navigation::entities();
+// Closed for maintenance, or a window coming: on every page, drawn with the page
+// rather than fetched after it, so nobody starts work in the seconds before a
+// script could have told them the application is about to close.
+$maintenance = Maintenance::banner();
 // Settings is offered only to someone with a section of it to see.
 try {
     $hidden = SettingsAccess::current()->any() ? [] : ['settings'];
@@ -134,4 +139,8 @@ try {
 
       </div>
     </header>
+    <div class="mt-bar <?= $maintenance === null ? '' : 'is-' . esc($maintenance['tone'], 'attr') ?>" id="mt-bar" role="status" <?= $maintenance === null ? 'hidden' : '' ?>>
+      <span class="mt-bar-mark" aria-hidden="true">⏻</span>
+      <span class="mt-bar-text"><strong id="mt-bar-title"><?= esc($maintenance['title'] ?? '') ?></strong> <span id="mt-bar-note"><?= esc($maintenance['note'] ?? '') ?></span></span>
+    </div>
     <div class="content" id="page-content">
