@@ -201,7 +201,9 @@ class OrganisationSeeder extends Seeder
         $admin = $ctx->insert('users', [
             'email' => self::ADMINISTRATOR['email'], 'name' => self::ADMINISTRATOR['name'],
             'short_name' => self::ADMINISTRATOR['name'], 'initials' => self::ADMINISTRATOR['initials'],
-            'locale_id' => $ctx->require('locales', 'en-GB'), 'status' => 'active', 'created_at' => $now,
+            // No locale_id: the interface language is each reader's own, recorded only
+            // once they pick one in the top bar. Until then the browser's language answers.
+            'status' => 'active', 'created_at' => $now,
             'password_hash' => self::$demoHash ??= password_hash(self::DEMO_PASSWORD, PASSWORD_DEFAULT),
         ]);
         $ctx->remember('users', mb_strtolower(self::ADMINISTRATOR['name']), $admin);
@@ -224,7 +226,7 @@ class OrganisationSeeder extends Seeder
 
             $id = $ctx->insert('users', [
                 'email' => $u['email'], 'name' => $u['name'], 'short_name' => $short, 'initials' => $initials,
-                'locale_id' => $ctx->require('locales', 'en-GB'), 'status' => strtolower($u['status']),
+                'status' => strtolower($u['status']),
                 'last_sign_in_at' => $signedInAt, 'last_sign_in_from' => $from, 'created_at' => $now,
                 // Invited people have not chosen a password yet. Hashed once: the tests seed for every test.
                 'password_hash' => strtolower($u['status']) === 'invited' ? null : (self::$demoHash ??= password_hash(self::DEMO_PASSWORD, PASSWORD_DEFAULT)),

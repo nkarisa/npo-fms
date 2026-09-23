@@ -109,9 +109,16 @@
         <a class="tb-menu-link" href="/settings?section=Language+and+translation">⚙ Language and translation settings</a>
       </div>`;
 
-    menu.querySelectorAll('.tb-lang-item').forEach((btn) => btn.addEventListener('click', () => {
-      // The API reads this cookie, and the shell sets lang/dir from it, so a
-      // reload renders every endpoint and the layout direction in the new language.
+    menu.querySelectorAll('.tb-lang-item').forEach((btn) => btn.addEventListener('click', async () => {
+      // Held against the account, so the choice follows the person to any machine
+      // they sign in at and leaves everyone else's language alone. The cookie is
+      // kept in step only so the sign-in screen reads the same way.
+      try {
+        await UI.postJSON('/api/i18n/locale', { locale: btn.dataset.code });
+      } catch (err) {
+        UI.toast(err.message);
+        return;
+      }
       setCookie('elog_locale', btn.dataset.code);
       window.location.reload();
     }));

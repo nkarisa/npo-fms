@@ -42,6 +42,44 @@ class I18n extends BaseApiController
         ]);
     }
 
+    /**
+     * Records the language the signed-in user reads in — the top bar's switcher.
+     * Body: {locale: a published locale's code}.
+     *
+     * Held against the user, not the browser: switching here changes nothing for
+     * anybody else, including a colleague who signs in at the same machine
+     * afterwards. It is a reading preference and carries no authority, so it needs
+     * no permission beyond being signed in, and it moves no figure — amounts,
+     * dates and account codes stay in the reporting locale either way.
+     */
+    public function choose()
+    {
+        $code = trim((string) (($this->request->getJSON(true) ?? [])['locale'] ?? ''));
+        if (!I18nLib::isKnown($code)) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'error' => $code === '' ? 'Name the language to read in.' : '"' . $code . '" is not a language this instance publishes.',
+            ]);
+        }
+
+        $id = \App\Libraries\SignIn::userId();
+        if ($id === null) {
+            return $this->denied('Sign in to choose the language you read in.');
+        }
+
+        try {
+            (new \App\Repositories\UserRepository())->chooseLocale($id, $code);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        // Re-read so the response describes the language actually stored.
+        $this->i18n = new I18nLib($code, I18nLib::fallback());
+
+        return $this->json([
+            'note' => 'Saved against your account. You will read in this language on any machine you sign in at, and nobody else\'s language changes.',
+        ]);
+    }
+
     private function localeRow(array $l): array
     {
         $missing = I18nLib::missing($l['code']);

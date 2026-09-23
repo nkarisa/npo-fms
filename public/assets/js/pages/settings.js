@@ -1378,6 +1378,12 @@
         UI.toast('Save or discard your changes before previewing another language.');
         return;
       }
+      try {
+        await UI.postJSON('/api/i18n/locale', { locale: id });
+      } catch (err) {
+        UI.toast(err.message);
+        return;
+      }
       setCookie('elog_locale', id);
       location.reload();
       return;

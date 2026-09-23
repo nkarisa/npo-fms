@@ -275,6 +275,51 @@ final class I18nTest extends CIUnitTestCase
         }
     }
 
+    /**
+     * The point of the whole arrangement: language is one person's preference, not
+     * the machine's. Two people at the same workstation each read in their own.
+     */
+    public function testTheLanguageAUserChoosesIsTheirsAloneAndFollowsThem(): void
+    {
+        $lookups = new \App\Repositories\Lookups();
+        $me      = 'w.kamau@elog.or.ke';
+        $someone = 'm.otieno@elog.or.ke';
+
+        try {
+            $this->signIn($me);
+            $chosen = json_decode($this->withBodyFormat('json')->post('api/i18n/locale', ['locale' => 'fr'])->getJSON(), true);
+            $this->assertSame('fr', $chosen['locale']['code']);
+
+            // Read back on a request carrying no cookie and an English browser: the
+            // choice is held against the account, so it follows them to any machine.
+            $this->signIn($me);
+            $mine = json_decode($this->withHeaders(['Accept-Language' => 'en-GB,en;q=0.9'])->get('api/me')->getJSON(), true);
+            $this->assertSame('fr', $mine['locale']['code']);
+            $this->assertStringContainsString('<html lang="fr"', $this->get('settings')->getBody());
+
+            // Nobody else moved. The next person to sign in at this machine reads in
+            // their own language — here, the one their browser asks for.
+            $this->signIn($someone);
+            $theirs = json_decode($this->withHeaders(['Accept-Language' => 'en-GB,en;q=0.9'])->get('api/me')->getJSON(), true);
+            $this->assertSame('en-GB', $theirs['locale']['code']);
+            $this->assertNull((new \App\Repositories\UserRepository())->localeOf((int) $lookups->userId($someone)));
+        } finally {
+            // The books are seeded once for the class, so put the choice back.
+            db_connect()->table('users')->where('id', $lookups->userId($me))->update(['locale_id' => null]);
+            Repository::forget();
+            $this->signIn();
+        }
+    }
+
+    /** A language the instance does not publish is refused rather than stored. */
+    public function testAnUnknownLanguageCannotBeChosen(): void
+    {
+        $refused = $this->withBodyFormat('json')->post('api/i18n/locale', ['locale' => 'xx']);
+
+        $refused->assertStatus(422);
+        $this->assertStringContainsString('not a language this instance publishes', $refused->getJSON());
+    }
+
     public function testCoverageAreasAreCompleteForTheSourceLanguage(): void
     {
         foreach (I18n::coverageAreas(I18n::SOURCE_LOCALE) as $area) {

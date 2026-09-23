@@ -733,7 +733,9 @@ final class SettingsRepository extends Repository
         $this->transaction(function () use ($name, $email, $short, $initials, $chosen, $plan, $role, $entities, $actorId, $now) {
             $userId = $this->insert('users', [
                 'email' => $email, 'name' => $name, 'short_name' => mb_substr($short, 0, 60), 'initials' => $initials,
-                'locale_id' => $this->value("SELECT id FROM {locales} WHERE code = 'en-GB'"), 'status' => 'invited', 'invited_at' => $now, 'created_at' => $now,
+                // No language chosen for them: an invited user reads in their browser's
+                // language until they pick one for themselves in the top bar.
+                'status' => 'invited', 'invited_at' => $now, 'created_at' => $now,
             ]);
             (new RoleRepository($this->db))->writeAccess($userId, $plan);
             $this->logChange('Users', $short . ' invited as ' . $role . ($entities === 'all' ? ' across all entities' : ' — ' . implode(', ', array_column($chosen, 'name'))), $actorId);
