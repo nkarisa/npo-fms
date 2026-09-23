@@ -3,6 +3,7 @@
 namespace App\Libraries;
 
 use App\Database\Seeds\BaselineSeeder;
+use App\Repositories\ApprovalPolicy;
 use App\Repositories\AuthRepository;
 use App\Repositories\Repository;
 use App\Repositories\RuleViolation;
@@ -409,12 +410,18 @@ final class Installer
             // "Board Treasurer" and "Funder consent above 10%" are authorities outside
             // the system, not roles: they are satisfied by recording their reference.
             $escalationId = $escalation === null ? null : $this->findRole($escalation);
-            $this->insert('approval_rules', [
+            $approverId   = $this->roleId($approver);
+            $ruleId = $this->insert('approval_rules', [
                 'entity_id' => $entityId, 'document_type' => $type, 'label' => $label, 'threshold' => $threshold,
-                'approver_role_id' => $this->roleId($approver), 'escalation_role_id' => $escalationId,
+                'approver_role_id' => $approverId, 'escalation_role_id' => $escalationId,
                 // An escalation naming no role is an authority outside the system.
                 'escalation_note' => $escalationId === null ? $escalation : null, 'created_at' => $now,
             ]);
+
+            // The signatures that rule asks for, said as a ladder (docs/approvals.md).
+            foreach (ApprovalPolicy::stepsFor((float) $threshold, $approverId, $escalationId, $escalationId === null ? $escalation : null) as $step) {
+                $this->insert('approval_steps', ['rule_id' => $ruleId, 'created_at' => $now] + $step);
+            }
         }
     }
 

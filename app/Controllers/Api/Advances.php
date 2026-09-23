@@ -113,6 +113,7 @@ class Advances extends BaseApiController
                 'open'        => $out > 0,
                 'bucket'      => self::bucket($a),
                 'age'         => $out <= 0 ? '—' : ($a['dueIn'] >= 0 ? 'in ' . $a['dueIn'] . 'd' : -$a['dueIn'] . 'd overdue'),
+                'approval'    => $a['approval'] ?? null,
             ];
         }, array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE));
 

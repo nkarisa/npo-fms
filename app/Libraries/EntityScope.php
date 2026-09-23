@@ -33,7 +33,7 @@ final class EntityScope
      * every entity shares. Line tables follow the document they belong to.
      */
     public const TABLES = [
-        'advances', 'asset_additions', 'assets', 'bank_accounts', 'bills', 'budget_versions',
+        'advances', 'approval_signatures', 'asset_additions', 'assets', 'bank_accounts', 'bills', 'budget_versions',
         'cashflow_forecasts', 'conversion_batches', 'depreciation_runs', 'donor_reports', 'fiscal_years',
         'fund_transfers', 'goods_received_notes', 'grants', 'invoices', 'journals', 'legacy_balances', 'locations', 'notifications',
         'payment_runs', 'payments', 'payroll_runs', 'periods', 'purchase_orders', 'receipts', 'receivable_allowances',

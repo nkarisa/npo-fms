@@ -179,7 +179,8 @@ final class RoleRepository extends Repository
         if ($role['holders'] !== []) {
             throw new RuleViolation(count($role['holders']) . (count($role['holders']) === 1 ? ' person holds ' : ' people hold ') . $role['name'] . ' (' . implode(', ', $role['holders']) . '). Give them another role first.');
         }
-        $rules = (int) $this->value('SELECT COUNT(*) FROM {approval_rules} WHERE approver_role_id = ? OR escalation_role_id = ?', [$roleId, $roleId]);
+        $rules = (int) $this->value('SELECT COUNT(*) FROM {approval_rules} WHERE approver_role_id = ? OR escalation_role_id = ?', [$roleId, $roleId])
+            + (int) $this->value('SELECT COUNT(*) FROM {approval_steps} WHERE role_id = ?', [$roleId]);
         if ($rules > 0) {
             throw new RuleViolation($role['name'] . ' approves or is escalated to in Settings → Approvals. Name another role there first.');
         }

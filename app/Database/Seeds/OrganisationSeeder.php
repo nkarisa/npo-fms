@@ -6,6 +6,7 @@ use App\Database\Seeds\Support\SeedContext;
 use App\Libraries\Brand;
 use App\Libraries\I18n;
 use App\Libraries\Theme;
+use App\Repositories\ApprovalPolicy;
 use App\Repositories\SettingsRepository;
 use CodeIgniter\Database\Seeder;
 
@@ -124,12 +125,14 @@ class OrganisationSeeder extends Seeder
 
         foreach ($ctx->data('ST_APPROVALS') as $a) {
             $escalationRole = $ctx->lookup('roles', $a['escalation']);
-            $ctx->insert('approval_rules', [
+            $approverRole   = $ctx->require('roles', $a['approver']);
+            $ruleId = $ctx->insert('approval_rules', [
                 'entity_id' => $secretariat, 'document_type' => self::DOCUMENT_TYPES[$a['key']], 'label' => $a['label'],
-                'threshold' => $a['threshold'], 'approver_role_id' => $ctx->require('roles', $a['approver']),
+                'threshold' => $a['threshold'], 'approver_role_id' => $approverRole,
                 'escalation_role_id' => $escalationRole, 'escalation_note' => $escalationRole === null ? $a['escalation'] : null,
                 'created_at' => $now,
             ]);
+            $this->seedLadder($ctx, $ruleId, (float) $a['threshold'], (int) $approverRole, $escalationRole, $a['escalation'], $now);
         }
 
         // Two approvals the prototype states in prose rather than in ST_APPROVALS:
@@ -137,12 +140,14 @@ class OrganisationSeeder extends Seeder
         // and an advance above the finance manager's 200,000 limit goes to them
         // too. Kept here as data, like the rest of the policy.
         foreach (self::UNLISTED_APPROVALS as [$type, $label, $threshold, $approver, $escalation]) {
-            $ctx->insert('approval_rules', [
+            $approverRole   = $ctx->require('roles', $approver);
+            $escalationRole = $escalation === null ? null : $ctx->require('roles', $escalation);
+            $ruleId = $ctx->insert('approval_rules', [
                 'entity_id' => $secretariat, 'document_type' => $type, 'label' => $label, 'threshold' => $threshold,
-                'approver_role_id' => $ctx->require('roles', $approver),
-                'escalation_role_id' => $escalation === null ? null : $ctx->require('roles', $escalation),
+                'approver_role_id' => $approverRole, 'escalation_role_id' => $escalationRole,
                 'escalation_note' => null, 'created_at' => $now,
             ]);
+            $this->seedLadder($ctx, $ruleId, (float) $threshold, (int) $approverRole, $escalationRole, null, $now);
         }
 
         foreach ($ctx->data('ST_TOGGLES') as $t) {
@@ -193,6 +198,21 @@ class OrganisationSeeder extends Seeder
      * the prototype does not name; it has no password and is suspended, so it can
      * never sign in.
      */
+    /**
+     * The signatures a rule asks for, said as a ladder: the approver, and the
+     * escalation above the threshold where there is one (docs/approvals.md).
+     * The installer and the ladder migration write the same steps from the same
+     * description, so a demonstration database and a real one agree.
+     */
+    private function seedLadder(SeedContext $ctx, int $ruleId, float $threshold, int $approverRole,
+        ?int $escalationRole, ?string $escalationNote, string $now): void
+    {
+        $note = $escalationRole === null ? $escalationNote : null;
+        foreach (ApprovalPolicy::stepsFor($threshold, $approverRole, $escalationRole, $note) as $step) {
+            $ctx->insert('approval_steps', ['rule_id' => $ruleId, 'created_at' => $now] + $step);
+        }
+    }
+
     private function seedUsers(SeedContext $ctx, string $now): void
     {
         $actors = array_column($ctx->data('ACTORS'), null, 'email');

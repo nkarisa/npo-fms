@@ -135,6 +135,41 @@ final class Lookups extends Repository
     }
 
     /**
+     * Whether a user holds a role, at the entity being worked in unless another is
+     * named — or at any entity they hold one at when `$entityId` is null.
+     *
+     * A person can hold several roles (docs/authentication.md), so what they may
+     * do is asked of the set, not of whichever one roleOf() happens to name first.
+     */
+    public function holdsRole(int $userId, string $role, ?int $entityId = null): bool
+    {
+        $key = "holds:{$userId}:{$role}:" . ($entityId ?? 'any');
+
+        return $this->cached($key, fn () => (int) $this->value(
+            'SELECT COUNT(*) FROM {user_entity_roles} ur JOIN {roles} r ON r.id = ur.role_id
+             WHERE ur.user_id = ? AND r.name = ?' . ($entityId === null ? '' : ' AND ur.entity_id = ?'),
+            $entityId === null ? [$userId, $role] : [$userId, $role, $entityId]
+        ) > 0);
+    }
+
+    /**
+     * Every active holder of a role — at the entity being worked in unless another
+     * is named. Who a document waiting on that step is put in front of.
+     *
+     * @return list<int>
+     */
+    public function holdersOf(string $role, ?int $entityId = null): array
+    {
+        $entityId ??= $this->entityId();
+
+        return $this->cached("holders:{$role}:{$entityId}", fn () => array_map('intval', array_column($this->rows(
+            "SELECT DISTINCT u.id FROM {users} u JOIN {user_entity_roles} ur ON ur.user_id = u.id JOIN {roles} r ON r.id = ur.role_id
+             WHERE r.name = ? AND ur.entity_id = ? AND u.status = 'active' ORDER BY u.id",
+            [$role, $entityId]
+        ), 'id')));
+    }
+
+    /**
      * The first active user holding a role, e.g. who a journal is submitted to:
      * someone holding it at the entity being worked in, before anyone elsewhere.
      */

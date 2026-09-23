@@ -186,7 +186,10 @@
           <div class="coa-amount" style="color:#28352F;">${fmt(b.gross)}</div>
           <div class="coa-amount" style="font-size:11.5px;color:#8B948F;">${fmt(b.wht)}</div>
           <div class="coa-amount" style="font-weight:600;color:#16211E;">${fmt(b.net)}</div>
-          <div>${pill(b.status)}</div>
+          <div>
+            ${pill(b.status)}
+            ${b.approval && b.approval.of > 1 ? `<div class="jr-ladder" title="${esc(b.approval.note)}">${b.approval.signed}/${b.approval.of} · ${esc(b.approval.awaiting)}</div>` : ''}
+          </div>
           <div class="ap-age ${b.overdue ? 'late' : ''}">${esc(b.age)}</div>
         </div>`).join('')}
       ${data.rows.length === 0 ? '<div class="coa-empty">No bills match this view.</div>' : ''}`;
@@ -421,6 +424,7 @@
       ].filter(Boolean);
 
       el.querySelector('#apd-body').innerHTML = `
+        ${b.approval ? `<div class="jd-ladder"><span class="jd-caps">Approval</span><span>${esc(b.approval.note)}</span></div>` : ''}
         ${b.overdue ? `<div class="ap-late">Overdue by ${esc(b.overdueBy)}. Supplier payment terms are ${esc(b.terms)}.</div>` : ''}
         ${b.status === 'Rejected' && b.rejectedReason ? `<div class="ap-reject-note">Rejected — ${esc(b.rejectedReason)}</div>` : ''}
         ${b.supplierReason ? `<div class="ap-over"><span>Captured without a current supplier pre-qualification — ${esc(b.supplierReason)}. ${esc(b.supplier)} is now ${esc(b.supplierStanding.toLowerCase())} on the register.</span></div>` : ''}

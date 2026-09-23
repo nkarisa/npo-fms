@@ -89,6 +89,7 @@ class Payables extends BaseApiController
             'gross' => $b['gross'], 'wht' => $b['wht'], 'net' => $b['net'], 'status' => $b['status'],
             'age' => $b['status'] === 'Paid' ? '—' : ($b['dueIn'] > 0 ? 'in ' . $b['dueIn'] . 'd' : ($b['dueIn'] === 0 ? 'today' : abs($b['dueIn']) . 'd late')),
             'overdue' => self::overdue($b),
+            'approval' => $b['approval'] ?? null,
         ], array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE));
 
         $outstanding = array_values(array_filter($all, [self::class, 'isOpen']));
@@ -152,7 +153,9 @@ class Payables extends BaseApiController
         // What the approval rules say about this approver and this bill's value. A bill
         // paid on its own is a payment run of its net amount.
         $policy = new ApprovalPolicy();
-        $approval = $awaiting && $actor['canApprove'] && !$mine ? $policy->refusal('bill', (float) $b['gross'], $actorId, $b['no']) : null;
+        $approval = $awaiting && $actor['canApprove'] && !$mine
+            ? $policy->refusal('bill', (float) $b['gross'], $actorId, $b['no'], null, 'bill', (int) $b['id'])
+            : null;
         $release  = $payable && $actor['canApprove'] && !$mine ? $policy->refusal('payment_run', (float) $b['net'], $actorId, $b['no']) : null;
 
         return $this->json([

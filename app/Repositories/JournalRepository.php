@@ -77,8 +77,14 @@ final class JournalRepository extends Repository
 
             $trails = $this->trails('journal');
             $attachments = $this->attachments();
+            $rows = $this->rows(
+                'SELECT j.*, p.name AS period_name, r.reference AS reverses_ref
+                 FROM {journals} j JOIN {periods} p ON p.id = j.period_id LEFT JOIN {journals} r ON r.id = j.reverses_journal_id
+                 WHERE ' . self::REGISTER . ' ORDER BY j.journal_date DESC, j.reference DESC'
+            );
+            $ladders = $this->approvalStandings($rows, $lines);
 
-            return array_map(function ($j) use ($lines, $trails, $attachments) {
+            return array_map(function ($j) use ($lines, $trails, $attachments, $ladders) {
                 $journal = [
                     'ref'       => $j['reference'],
                     'date'      => self::dmy($j['journal_date']),
@@ -96,14 +102,12 @@ final class JournalRepository extends Repository
                     'lines'     => $lines[(int) $j['id']] ?? [],
                     'attachments' => $attachments[(int) $j['id']] ?? [],
                     'trail'     => $trails[(int) $j['id']] ?? [],
+                    // Where it stands on its ladder while it waits; null otherwise.
+                    'approval'  => $ladders[(int) $j['id']] ?? null,
                 ];
 
                 return $j['reverses_ref'] !== null ? $journal + ['reversalOf' => $j['reverses_ref']] : $journal;
-            }, $this->rows(
-                'SELECT j.*, p.name AS period_name, r.reference AS reverses_ref
-                 FROM {journals} j JOIN {periods} p ON p.id = j.period_id LEFT JOIN {journals} r ON r.id = j.reverses_journal_id
-                 WHERE ' . self::REGISTER . ' ORDER BY j.journal_date DESC, j.reference DESC'
-            ));
+            }, $rows);
         });
     }
 
@@ -168,7 +172,7 @@ final class JournalRepository extends Repository
 
                 if ($j['status'] === 'Pending approval') {
                     $this->db->table('journals')->where('id', $id)->update(['status' => 'pending_approval', 'submitted_at' => Clock::timestamp()]);
-                    $approver = $this->lookups->holderOf($this->approverRole());
+                    $approver = $this->lookups->holderOf($this->firstApprover($source['type'] ?? null));
                     $this->audit('journal', $id, $ref, 'Submitted for approval to ' . $this->lookups->shortName($approver, 'the approver'), $actorId);
                 }
 
@@ -385,7 +389,7 @@ final class JournalRepository extends Repository
             }
             $this->audit('journal', $id, $reversal, 'Reversing entry raised against ' . $ref . ' by ' . $who, $actorId);
             $this->db->table('journals')->where('id', $id)->update(['status' => 'pending_approval', 'submitted_at' => $now]);
-            $this->audit('journal', $id, $reversal, 'Submitted for approval to ' . $this->lookups->shortName($this->lookups->holderOf($this->approverRole()), 'the approver'), $actorId);
+            $this->audit('journal', $id, $reversal, 'Submitted for approval to ' . $this->lookups->shortName($this->lookups->holderOf($this->firstApprover()), 'the approver'), $actorId);
 
             return $reversal;
         });
@@ -465,7 +469,13 @@ final class JournalRepository extends Repository
         return $row;
     }
 
-    /** Approves and posts. The actor must not be the preparer; the database enforces the rest. */
+    /**
+     * Records the actor's signature on an entry awaiting approval.
+     *
+     * An entry posts on the last signature its ladder asks for; until then it
+     * stays where it is, waiting for the next role (docs/approvals.md). The actor
+     * must not be the preparer and cannot sign twice; the database enforces the rest.
+     */
     public function approve(string $ref, int $actorId): array
     {
         $journal = $this->header($ref);
@@ -475,7 +485,12 @@ final class JournalRepository extends Repository
         if ((int) $journal['prepared_by'] === $actorId) {
             throw new RuleViolation($this->lookups->shortName($actorId) . ' prepared ' . $ref . ' and cannot also approve it. It needs a second approver.');
         }
-        (new ApprovalPolicy())->check(self::approvalType($journal['source_type']), $this->approvalAmount($journal), $actorId, $ref);
+
+        $policy = new ApprovalPolicy();
+        $type   = self::approvalType($journal['source_type']);
+        $amount = $this->approvalAmount($journal);
+        $policy->check($type, $amount, $actorId, $ref, null, 'journal', (int) $journal['id']);
+
         if ($journal['reverses_journal_id'] !== null) {
             $original = $this->row('SELECT reference, status FROM {journals} WHERE id = ?', [$journal['reverses_journal_id']]);
             if ($original['status'] !== 'posted') {
@@ -483,12 +498,25 @@ final class JournalRepository extends Repository
             }
         }
 
-        $this->transaction(function () use ($journal, $ref, $actorId) {
+        $this->transaction(function () use ($journal, $ref, $actorId, $policy, $type, $amount) {
+            $id   = (int) $journal['id'];
+            $who  = $this->lookups->shortName($actorId);
+            $step = $policy->progress('journal', $id, $type, $amount)['open'];
+
+            if (!$policy->sign('journal', $id, $ref, $type, $amount, $actorId, null, '', (int) $journal['entity_id'])) {
+                // Signed, but the ladder is not finished. Nothing posts yet: the
+                // entry waits in the register for the role that signs next.
+                $this->audit('journal', $id, $ref, ($step['label'] ?? ApprovalPolicy::DEFAULT_LABEL) . ' by ' . $who
+                    . $policy->awaitingNote('journal', $id, $type, $amount), $actorId);
+
+                return;
+            }
+
             $now = Clock::timestamp();
             $this->db->table('journals')->where('id', $journal['id'])->update([
                 'status' => 'posted', 'approved_by' => $actorId, 'approved_at' => $now, 'posted_at' => $now, 'updated_at' => $now,
             ]);
-            $this->audit('journal', (int) $journal['id'], $ref, 'Approved and posted by ' . $this->lookups->shortName($actorId), $actorId);
+            $this->audit('journal', (int) $journal['id'], $ref, 'Approved and posted by ' . $who, $actorId);
 
             if ($journal['reverses_journal_id'] !== null) {
                 $original = $this->row('SELECT id, reference FROM {journals} WHERE id = ?', [$journal['reverses_journal_id']]);
@@ -545,7 +573,7 @@ final class JournalRepository extends Repository
         return $this->transaction(function () use ($h, $lines, $preparedBy, $raisedNote) {
             [$id, $ref] = $this->raiseFromSource($h, $lines, $preparedBy, $raisedNote);
             $this->db->table('journals')->where('id', $id)->update(['status' => 'pending_approval', 'submitted_at' => Clock::timestamp()]);
-            $approver = (new ApprovalPolicy())->rule(self::approvalType($h['sourceType']))['approver'] ?? $this->approverRole();
+            $approver = $this->firstApprover($h['sourceType']);
             $this->audit('journal', $id, $ref, 'Submitted for approval to ' . $this->lookups->shortName($this->lookups->holderOf($approver), 'the approver'), $preparedBy);
 
             return [$id, $ref];
@@ -636,10 +664,16 @@ final class JournalRepository extends Repository
         }
 
         $this->transaction(function () use ($journal, $ref, $actorId, $reason) {
-            $this->db->table('journals')->where('id', $journal['id'])->update([
+            $id = (int) $journal['id'];
+            $this->db->table('journals')->where('id', $id)->update([
                 'status' => 'draft', 'rejected_reason' => $reason !== '' ? $reason : null, 'updated_at' => Clock::timestamp(),
             ]);
-            $this->audit('journal', (int) $journal['id'], $ref, 'Rejected by ' . $this->lookups->shortName($actorId) . ($reason !== '' ? ': ' . $reason : ''), $actorId);
+            // The return closes the round: signatures already given stand in the
+            // record, but a resubmitted entry is signed again from the first step,
+            // because what was signed is not what is being submitted now.
+            (new ApprovalPolicy())->returnToPreparer('journal', $id, $ref, self::approvalType($journal['source_type']),
+                $this->approvalAmount($journal), $actorId, $reason, (int) $journal['entity_id']);
+            $this->audit('journal', $id, $ref, 'Rejected by ' . $this->lookups->shortName($actorId) . ($reason !== '' ? ': ' . $reason : ''), $actorId);
         });
 
         return $this->find($ref);
@@ -729,6 +763,51 @@ final class JournalRepository extends Repository
         }
 
         return $journal;
+    }
+
+    /**
+     * Where each entry awaiting approval stands on its ladder, keyed by journal id.
+     *
+     * Worked out for the whole register at once — the signatures in one query and
+     * the amounts from the lines already loaded — so a page of the register costs
+     * the same whether one entry is waiting or fifty.
+     *
+     * @return array<int, array{signed: int, of: int, awaiting: string, note: string, given: list<array>}>
+     */
+    private function approvalStandings(array $rows, array $lines): array
+    {
+        $pending = array_filter($rows, static fn ($j) => $j['status'] === 'pending_approval');
+        if ($pending === []) {
+            return [];
+        }
+
+        // A transfer is signed off for the amount moved, not its doubled debits.
+        $moved = array_column($this->rows(
+            "SELECT j.id, t.amount FROM {journals} j JOIN {fund_transfers} t ON t.id = j.source_id WHERE j.source_type = 'fund_transfer'"
+        ), 'amount', 'id');
+
+        $documents = [];
+        foreach ($pending as $j) {
+            $id = (int) $j['id'];
+            $documents[$id] = [
+                'type'   => self::approvalType($j['source_type']),
+                'amount' => (float) ($moved[$id] ?? array_sum(array_column($lines[$id] ?? [], 'dr'))),
+            ];
+        }
+
+        return (new ApprovalPolicy())->standings('journal', $documents);
+    }
+
+    /**
+     * The role an entry's first signature comes from: who its history says it has
+     * gone to. A ladder with more than one step names the first of them; the rest
+     * are asked for as each is reached (docs/approvals.md).
+     */
+    private function firstApprover(?string $sourceType = null): string
+    {
+        $steps = (new ApprovalPolicy())->steps(self::approvalType($sourceType));
+
+        return $steps === [] ? $this->approverRole() : ($steps[0]['role'] ?? $steps[0]['authority']);
     }
 
     private function approverRole(): string

@@ -522,7 +522,8 @@ final class BudgetRepository extends Repository
             return ['message' => 'The person who prepared this cannot also approve it. It needs a second approver.', 'needsAuthority' => false];
         }
         if ($version['isRevision']) {
-            return (new ApprovalPolicy())->refusal('budget_revision', $this->moved($version), $actorId, $version['label'], $authorityRef);
+            return (new ApprovalPolicy())->refusal('budget_revision', $this->moved($version), $actorId, $version['label'],
+                $authorityRef, 'budget_version', (int) $v['id']);
         }
         if (!$mayAuthorise) {
             return ['message' => "A year's budget is approved by the Executive Director, who authorises the year's books.", 'needsAuthority' => false];
@@ -549,7 +550,26 @@ final class BudgetRepository extends Repository
             throw $refusal['needsAuthority'] ? new AuthorityRequired($refusal['message']) : new RuleViolation($refusal['message']);
         }
 
-        $this->transaction(function () use ($v, $actorId, $authorityRef) {
+        // A revision climbs the budget revision ladder; a year's budget is authorised
+        // by whoever authorises the year's books, which is not a ladder at all.
+        $policy = new ApprovalPolicy();
+        $moved  = $version['isRevision'] ? $this->moved($version) : 0.0;
+
+        $this->transaction(function () use ($v, $version, $actorId, $authorityRef, $policy, $moved) {
+            $id = (int) $v['id'];
+            if ($version['isRevision']) {
+                $step = $policy->progress('budget_version', $id, 'budget_revision', $moved)['open'];
+                if (!$policy->sign('budget_version', $id, $v['name'], 'budget_revision', $moved, $actorId, $authorityRef, '', (int) $v['entity_id'])) {
+                    // Signed, but the ladder is not finished: the revision stays
+                    // submitted and supersedes nothing until the last role signs.
+                    $this->audit('budget_version', $id, $v['name'], ($step['label'] ?? ApprovalPolicy::DEFAULT_LABEL) . ' by '
+                        . $this->lookups->shortName($actorId) . $policy->awaitingNote('budget_version', $id, 'budget_revision', $moved),
+                        $actorId, 'history', (int) $v['entity_id']);
+
+                    return;
+                }
+            }
+
             $now = Clock::timestamp();
             $this->db->table('budget_versions')
                 ->where(['entity_id' => $v['entity_id'], 'fiscal_year_id' => $v['fiscal_year_id'], 'status' => 'approved'])
@@ -575,15 +595,20 @@ final class BudgetRepository extends Repository
         if (trim($note) === '') {
             throw new RuleViolation('Say why it is being sent back, so the preparer knows what to change.');
         }
-        $refusal = $this->approvalRefusal($this->version($key), $actorId, $mayAuthorise, 'n/a');
+        $version = $this->version($key);
+        $refusal = $this->approvalRefusal($version, $actorId, $mayAuthorise, 'n/a');
         if ($refusal !== null) {
             throw new RuleViolation($refusal['message']);
         }
 
-        $this->transaction(function () use ($v, $actorId, $note) {
+        $this->transaction(function () use ($v, $version, $actorId, $note) {
             $this->db->table('budget_versions')->where('id', $v['id'])->update([
                 'status' => 'draft', 'returned_note' => trim($note), 'submitted_by' => null, 'submitted_at' => null, 'updated_at' => Clock::timestamp(),
             ]);
+            if ($version['isRevision']) {
+                (new ApprovalPolicy())->returnToPreparer('budget_version', (int) $v['id'], $v['name'], 'budget_revision',
+                    $this->moved($version), $actorId, trim($note), (int) $v['entity_id']);
+            }
             $this->audit('budget_version', (int) $v['id'], $v['name'], 'Sent back: ' . trim($note), $actorId, 'history', (int) $v['entity_id']);
         });
 

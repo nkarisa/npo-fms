@@ -562,7 +562,10 @@ const UI = (() => {
 
   function renderJournalTrail() {
     const trail = jd.journal ? jd.journal.trail || [] : [];
+    // Where it stands on its ladder, for an entry still collecting signatures.
+    const ladder = jd.journal ? jd.journal.approval : null;
     journalDrawer.querySelector('#jd-trail').innerHTML = trail.length ? `
+      ${ladder ? `<div class="jd-ladder"><span class="jd-caps">Approval</span><span>${esc(ladder.note)}</span></div>` : ''}
       <div class="jd-caps">Audit trail</div>
       ${trail.map(t => `<div style="display:flex;gap:10px;font-size:12px;color:#3E4A44;"><span style="color:#A3ABA7;font-family:'IBM Plex Mono',monospace;font-size:11px;min-width:78px;">${esc(t.when)}</span>${esc(t.what)}</div>`).join('')}` : '';
   }

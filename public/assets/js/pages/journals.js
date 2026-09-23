@@ -119,7 +119,10 @@
           </div>
           <div class="coa-amount" style="font-size:11.5px;color:#6E7873;">${j.lines}</div>
           <div class="coa-amount" style="color:#28352F;">${esc(j.amount)}</div>
-          <div>${UI.statusPill(j.status)}</div>
+          <div>
+            ${UI.statusPill(j.status)}
+            ${j.approval && j.approval.of > 1 ? `<div class="jr-ladder" title="${esc(j.approval.note)}">${j.approval.signed}/${j.approval.of} · ${esc(j.approval.awaiting)}</div>` : ''}
+          </div>
           <div class="coa-cell" style="color:#6E7873;">${esc(j.preparer)}</div>
         </div>`).join('')}
       ${data.rows.length === 0 ? '<div class="coa-empty">No journals match this filter.</div>' : ''}`;

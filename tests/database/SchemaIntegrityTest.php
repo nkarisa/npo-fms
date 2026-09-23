@@ -214,6 +214,43 @@ final class SchemaIntegrityTest extends CIUnitTestCase
         ]), 'verification_results_note_check');
     }
 
+    // ---- The approval ladder ----
+
+    public function testOnePersonSignsOnceARound(): void
+    {
+        $this->signature();
+
+        // Segregation of duties across a ladder: not a second step, not a second
+        // signature at the same one.
+        $this->assertRefused(fn () => $this->signature(['step_no' => 2]), 'unique');
+
+        // A new round is a different document to them, and signed afresh.
+        $this->seeInDatabase('approval_signatures', ['id' => $this->signature(['round' => 2]), 'round' => 2]);
+    }
+
+    public function testAStepNamesEitherARoleOrAnAuthorityOutsideTheSystem(): void
+    {
+        $this->assertRefused(fn () => $this->insert('approval_steps', [
+            'rule_id' => $this->approvalRule(), 'step_no' => 3, 'label' => 'Approved',
+        ]), 'approval_steps_who_check');
+    }
+
+    public function testAStepsBandCannotEndBeforeItBegins(): void
+    {
+        $this->assertRefused(fn () => $this->insert('approval_steps', [
+            'rule_id' => $this->approvalRule(), 'step_no' => 4, 'label' => 'Countersigned', 'authority' => 'Board minute',
+            'applies_above' => 500000, 'applies_upto' => 100000,
+        ]), 'approval_steps_band_check');
+    }
+
+    public function testAQuorumIsAtLeastOneSignature(): void
+    {
+        $this->assertRefused(fn () => $this->insert('approval_steps', [
+            'rule_id' => $this->approvalRule(), 'step_no' => 5, 'label' => 'Approved',
+            'role_id' => $this->ids['role'], 'quorum' => 0,
+        ]), 'approval_steps_quorum_check');
+    }
+
     // ---- Audit ----
 
     public function testTheAuditTrailIsAppendOnly(): void
@@ -305,6 +342,30 @@ final class SchemaIntegrityTest extends CIUnitTestCase
         $this->ids['general_fund_account'] = $this->insert('accounts', ['code' => '3100', 'name' => 'General fund', 'type' => 'equity', 'level' => 1]);
         $this->ids['grant_income']         = $this->insert('accounts', ['code' => '4110', 'name' => 'Grant income', 'type' => 'income', 'level' => 1]);
         $this->ids['programme_costs']      = $this->insert('accounts', ['code' => '5110', 'name' => 'Programme costs', 'type' => 'expense', 'level' => 1]);
+    }
+
+    /** A role and a journal approval rule under it, made once for the ladder tests. */
+    private function approvalRule(): int
+    {
+        if (!isset($this->ids['rule'])) {
+            $this->ids['role'] = $this->insert('roles', ['name' => 'Finance Manager']);
+            $this->ids['rule'] = $this->insert('approval_rules', [
+                'entity_id' => $this->ids['entity'], 'document_type' => 'journal', 'label' => 'Journal entries',
+                'threshold' => 500000, 'approver_role_id' => $this->ids['role'],
+            ]);
+        }
+
+        return $this->ids['rule'];
+    }
+
+    private function signature(array $overrides = []): int
+    {
+        return $this->insert('approval_signatures', $overrides + [
+            'entity_id' => $this->ids['entity'], 'object_type' => 'journal', 'object_id' => 1, 'object_ref' => 'JV-T-1',
+            'document_type' => 'journal', 'round' => 1, 'step_no' => 1, 'role' => 'Finance Manager',
+            'user_id' => $this->ids['approver'], 'decision' => 'approved', 'amount' => 1000,
+            'signed_at' => '2026-08-31 10:00:00',
+        ]);
     }
 
     private function insert(string $table, array $row): int

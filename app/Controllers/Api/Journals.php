@@ -117,6 +117,8 @@ class Journals extends BaseApiController
                 'lines'     => count($j['lines']),
                 'amount'    => Prototype::fmt($sumDr($j['lines'])),
                 'preparer'  => $j['preparer'],
+                // Where it stands on its ladder while it waits (docs/approvals.md).
+                'approval'  => $j['approval'] ?? null,
             ];
         }, array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE));
 

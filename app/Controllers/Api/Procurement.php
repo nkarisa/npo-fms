@@ -110,6 +110,7 @@ class Procurement extends BaseApiController
                 'no' => $p['no'], 'title' => $p['title'], 'requester' => $p['requester'], 'program' => $p['program'], 'grant' => $p['grant'],
                 'fund' => $p['fund'], 'raised' => $p['raised'], 'needBy' => $p['needBy'], 'amount' => $p['amount'],
                 'available' => Repo::available($p), 'overBudget' => self::budgetCheckPending($p), 'status' => $p['status'],
+                'approval' => $p['approval'] ?? null,
             ], array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE)),
             'filtered' => count($filtered),
             'page'     => $page,

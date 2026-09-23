@@ -85,8 +85,18 @@ final class ProcurementRepository extends Repository
 
             $positions = (new PayablesRepository())->budgetPositions();
             $trails    = $this->trails('requisition');
+            $rows      = $this->rows(
+                'SELECT r.*, a.code AS account_code, a.name AS account_name FROM {requisitions} r JOIN {accounts} a ON a.id = r.account_id
+                 ORDER BY r.raised_on DESC, r.reference DESC'
+            );
+            // How far up its ladder each requisition awaiting approval has come, for
+            // the whole register in one query (docs/approvals.md).
+            $ladders = (new ApprovalPolicy())->standings('requisition', array_column(array_map(
+                static fn ($r) => ['id' => (int) $r['id'], 'type' => 'requisition', 'amount' => (float) $r['estimated_amount']],
+                array_values(array_filter($rows, static fn ($r) => $r['status'] === 'pending_approval'))
+            ), null, 'id'));
 
-            return array_map(function ($r) use ($lines, $quotes, $orders, $positions, $trails) {
+            return array_map(function ($r) use ($lines, $quotes, $orders, $positions, $trails, $ladders) {
                 $id       = (int) $r['id'];
                 $po       = $orders[$id] ?? null;
                 $position = $positions[$r['account_id'] . ':' . $r['fund_id'] . ':' . $r['programme_id']] ?? ['budget' => 0.0, 'actual' => 0.0, 'committed' => 0.0];
@@ -117,6 +127,7 @@ final class ProcurementRepository extends Repository
                     'lines'       => $lines[$id] ?? [],
                     'quotes'      => $quotes[$id] ?? [],
                     'trail'       => $trails[$id] ?? [],
+                    'approval'    => $ladders[$id] ?? null,
                 ];
 
                 if ($po !== null) {
@@ -135,10 +146,7 @@ final class ProcurementRepository extends Repository
                 }
 
                 return $req;
-            }, $this->rows(
-                'SELECT r.*, a.code AS account_code, a.name AS account_name FROM {requisitions} r JOIN {accounts} a ON a.id = r.account_id
-                 ORDER BY r.raised_on DESC, r.reference DESC'
-            ));
+            }, $rows);
         });
     }
 
@@ -441,6 +449,18 @@ final class ProcurementRepository extends Repository
         return $this->find($no);
     }
 
+    /**
+     * The role a requisition's first signature comes from. With no requisition rule
+     * defined, as an instance starts, that is the Finance Manager as it always was;
+     * a rule an administrator writes names the first step instead (docs/approvals.md).
+     */
+    private function firstApprover(): string
+    {
+        $steps = (new ApprovalPolicy())->steps('requisition');
+
+        return $steps === [] ? 'Finance Manager' : ($steps[0]['role'] ?? $steps[0]['authority']);
+    }
+
     /** Sends a draft for approval. */
     public function submit(string $no, int $actorId): array
     {
@@ -451,8 +471,9 @@ final class ProcurementRepository extends Repository
 
         $this->transaction(function () use ($req, $actorId) {
             $this->db->table('requisitions')->where('id', $req['id'])->update(['status' => 'pending_approval', 'updated_at' => Clock::timestamp()]);
-            $approver = $this->lookups->holderOf('Finance Manager');
-            $this->audit('requisition', (int) $req['id'], $req['reference'], 'Submitted for approval to ' . $this->lookups->shortName($approver, 'the Finance Manager')
+            $role = $this->firstApprover();
+            $approver = $this->lookups->holderOf($role);
+            $this->audit('requisition', (int) $req['id'], $req['reference'], 'Submitted for approval to ' . $this->lookups->shortName($approver, 'the ' . $role)
                 . ' by ' . $this->lookups->shortName($actorId), $actorId);
         });
 
@@ -479,11 +500,28 @@ final class ProcurementRepository extends Repository
                 . Prototype::fmt($current['amount'] - self::available($current)) . '. Raise a budget revision or reallocate before approving.');
         }
 
-        $this->transaction(function () use ($req, $actorId) {
+        $policy = new ApprovalPolicy();
+        $amount = (float) $current['amount'];
+        $id     = (int) $req['id'];
+        $policy->check('requisition', $amount, $actorId, $no, null, 'requisition', $id);
+
+        $this->transaction(function () use ($req, $actorId, $policy, $amount, $id, $no) {
+            $who  = $this->lookups->shortName($actorId);
+            $step = $policy->progress('requisition', $id, 'requisition', $amount)['open'];
+
+            if (!$policy->sign('requisition', $id, $no, 'requisition', $amount, $actorId, null, '', (int) $req['entity_id'])) {
+                // Signed, but the ladder is not finished: no RFQ can be issued and no
+                // order raised until the role that signs next has signed.
+                $this->audit('requisition', $id, $req['reference'], ($step['label'] ?? ApprovalPolicy::DEFAULT_LABEL) . ' by ' . $who
+                    . $policy->awaitingNote('requisition', $id, 'requisition', $amount), $actorId);
+
+                return;
+            }
+
             $this->db->table('requisitions')->where('id', $req['id'])->update([
                 'status' => 'approved', 'approved_by' => $actorId, 'approved_at' => Clock::timestamp(), 'updated_at' => Clock::timestamp(),
             ]);
-            $this->audit('requisition', (int) $req['id'], $req['reference'], 'Approved by ' . $this->lookups->shortName($actorId) . ' within the available budget', $actorId);
+            $this->audit('requisition', $id, $req['reference'], 'Approved by ' . $who . ' within the available budget', $actorId);
         });
 
         return $this->find($no);
@@ -503,10 +541,13 @@ final class ProcurementRepository extends Repository
             throw new RuleViolation('Say why the requisition is rejected — the requester needs to know what to change.');
         }
 
-        $this->transaction(function () use ($req, $reason, $actorId) {
+        $amount = (float) $this->find($no)['amount'];
+        $this->transaction(function () use ($req, $reason, $actorId, $amount, $no) {
             $this->db->table('requisitions')->where('id', $req['id'])->update([
                 'status' => 'rejected', 'approved_by' => $actorId, 'approved_at' => Clock::timestamp(), 'rejected_reason' => trim($reason), 'updated_at' => Clock::timestamp(),
             ]);
+            (new ApprovalPolicy())->returnToPreparer('requisition', (int) $req['id'], $no, 'requisition',
+                $amount, $actorId, trim($reason), (int) $req['entity_id']);
             $this->audit('requisition', (int) $req['id'], $req['reference'], mb_substr('Rejected by ' . $this->lookups->shortName($actorId) . ' — ' . trim($reason), 0, 255), $actorId);
         });
 

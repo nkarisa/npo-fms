@@ -559,14 +559,29 @@ final class PayrollRepository extends Repository
         if ((int) $run['prepared_by'] === $actorId) {
             throw new RuleViolation('The person who prepared a payroll run cannot approve it. It needs a second approver.');
         }
-        $cost = (float) $run['gross'] + (float) $run['employer_cost'];
-        (new ApprovalPolicy())->check('payroll_run', $cost, $actorId, $run['reference'] ?? $period['name'], $authorityRef);
+        $cost   = (float) $run['gross'] + (float) $run['employer_cost'];
+        $id     = (int) $run['id'];
+        $ref    = $run['reference'] ?? $period['name'];
+        $policy = new ApprovalPolicy();
+        $policy->check('payroll_run', $cost, $actorId, $ref, $authorityRef, 'payroll_run', $id);
 
-        $this->transaction(function () use ($run, $actorId, $period) {
+        $this->transaction(function () use ($run, $actorId, $authorityRef, $period, $policy, $cost, $id, $ref) {
+            $who  = $this->lookups->shortName($actorId);
+            $step = $policy->progress('payroll_run', $id, 'payroll_run', $cost)['open'];
+
+            if (!$policy->sign('payroll_run', $id, $ref, 'payroll_run', $cost, $actorId, $authorityRef)) {
+                // Signed, but the ladder is not finished: the run stays awaiting
+                // approval and cannot be posted until the last role has signed.
+                $this->audit('payroll_run', $id, $run['reference'], ($step['label'] ?? ApprovalPolicy::DEFAULT_LABEL) . ' by ' . $who
+                    . $policy->awaitingNote('payroll_run', $id, 'payroll_run', $cost), $actorId, 'history');
+
+                return;
+            }
+
             $this->db->table('payroll_runs')->where('id', $run['id'])->update([
                 'status' => 'approved', 'approved_by' => $actorId, 'approved_at' => Clock::timestamp(), 'updated_at' => Clock::timestamp(),
             ]);
-            $this->audit('payroll_run', (int) $run['id'], $run['reference'], 'Approved by ' . $this->lookups->shortName($actorId)
+            $this->audit('payroll_run', $id, $run['reference'], 'Approved by ' . $who
                 . ' — the ' . $period['name'] . ' run can now be posted', $actorId, 'history');
         });
 
