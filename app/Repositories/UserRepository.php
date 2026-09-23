@@ -4,11 +4,10 @@ namespace App\Repositories;
 
 use App\Libraries\Clock;
 use App\Libraries\EntityScope;
-use App\Libraries\Prototype;
 
 /**
  * The people who can act in the books, as the user menu and "Act as" show them:
- * role, the entities they reach, what they may do and the most they may approve.
+ * role, the entities they reach and what they may do.
  */
 final class UserRepository extends Repository
 {
@@ -23,10 +22,10 @@ final class UserRepository extends Repository
     /**
      * Active users with a role, in the order they were set up.
      *
-     * Role, permissions and approval limit are those held at the entity being
-     * worked in (App\Libraries\EntityScope): an Accountant at one branch and a
-     * Programme Officer at another can do at each only what that role allows. In
-     * the consolidated view, which only reads, they are everything held anywhere.
+     * Role and permissions are those held at the entity being worked in
+     * (App\Libraries\EntityScope): an Accountant at one branch and a Programme
+     * Officer at another can do at each only what that role allows. In the
+     * consolidated view, which only reads, they are everything held anywhere.
      */
     public function actors(): array
     {
@@ -75,7 +74,6 @@ final class UserRepository extends Repository
                         in_array('ledger.view', $permissions, true) => 'Read only — no preparation or approval',
                         default                    => 'Raise requisitions only',
                     },
-                    'limit'      => $this->limitOf($id, $at),
                     'lastSignIn' => $this->lastSignIn($u),
                     // When someone joined is not recorded.
                     'since'      => '—',
@@ -140,22 +138,6 @@ final class UserRepository extends Repository
         }
 
         return null;
-    }
-
-    private function limitOf(int $userId, ?int $entityId): string
-    {
-        $limit = $this->row(
-            'SELECT al.ceiling FROM {user_entity_roles} ur JOIN {approval_limits} al ON al.role_id = ur.role_id
-             WHERE ur.user_id = ? AND al.document_type IS NULL' . ($entityId === null ? '' : ' AND ur.entity_id = ?')
-            . ' ORDER BY al.ceiling IS NULL DESC, al.ceiling DESC LIMIT 1',
-            $entityId === null ? [$userId] : [$userId, $entityId]
-        );
-
-        return match (true) {
-            $limit === null            => '—',
-            $limit['ceiling'] === null => 'No ceiling',
-            default                    => 'KES ' . Prototype::fmt((float) $limit['ceiling']) . ' per transaction',
-        };
     }
 
     /** "Today, 09:12 · Nairobi", "Yesterday, 17:20", "2 days ago", "18 Aug". */

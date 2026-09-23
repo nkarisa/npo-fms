@@ -144,7 +144,10 @@
             <div class="jr-date" style="font-size:11px;">${esc(p.needBy)}</div>
             <div class="coa-amount" style="color:#16211E;">${fmt(p.amount)}</div>
             <div class="coa-amount" style="${p.overBudget ? 'color:#A6412F;font-weight:600;' : 'color:#6E7873;'}">${fmt(p.available)}</div>
-            <div>${pill(p.status)}</div>
+            <div>
+              ${pill(p.status)}
+              ${p.approval && p.approval.of > 1 ? `<div class="jr-ladder" title="${esc(p.approval.note)}">${p.approval.signed}/${p.approval.of} · ${esc(p.approval.awaiting)}</div>` : ''}
+            </div>
           </div>`).join('')}
         ${empty('No requisitions match this view.')}`;
     } else if (state.view === 'Purchase orders') {
@@ -318,6 +321,7 @@
 
       const row = (label, value) => `<div class="ar-kv"><span>${esc(label)}</span><span>${value}</span></div>`;
       el.querySelector('#pqd-body').innerHTML = `
+        ${r.approval ? `<div class="jd-ladder"><span class="jd-caps">Approval</span><span>${esc(r.approval.note)}</span></div>` : ''}
         ${r.overBudget ? `<div class="pq-alert">
           <span class="pq-alert-mark">!</span>
           <span>The requisition exceeds what is left on budget line ${esc(r.code)} (${fmt(r.available)} available). A budget revision is needed before this can be approved.</span>

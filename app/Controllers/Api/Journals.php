@@ -117,10 +117,18 @@ class Journals extends BaseApiController
                 'lines'     => count($j['lines']),
                 'amount'    => Prototype::fmt($sumDr($j['lines'])),
                 'preparer'  => $j['preparer'],
+                // Where it stands on its ladder while it waits (docs/approvals.md).
+                'approval'  => $j['approval'] ?? null,
             ];
         }, array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE));
 
         $countBy = fn ($s) => count(array_filter($all, fn ($j) => $j['status'] === $s));
+        // Of those waiting, the ones this approver can sign and did not prepare.
+        $actorId = $this->actorId();
+        $mine    = !$this->actor()['canApprove'] ? null : count(array_filter(
+            $all,
+            static fn ($j) => $j['status'] === 'Pending approval' && ($j['approval']['mine'] ?? false) && (int) $j['preparedBy'] !== $actorId
+        ));
         $unbalancedDrafts = count(array_filter($all, fn ($j) => $j['status'] === 'Draft' && $sumDr($j['lines']) !== $sumCr($j['lines'])));
 
         $pending = array_filter(array_column(array_filter($all, fn ($j) => $j['status'] === 'Pending approval'), 'submittedAt'));
@@ -137,9 +145,13 @@ class Journals extends BaseApiController
             'pages'       => $pages,
             'pageSize'    => self::PAGE_SIZE,
             'typeOptions' => array_merge(['All types'], JournalRepository::types()),
+            'awaitingMe'  => $mine ?? 0,
             'tabs'        => array_map(fn ($s) => ['label' => $s, 'count' => $s === 'All' ? count($all) : $countBy($s)], self::STATUSES),
             'hint'        => $unbalancedDrafts > 0 ? $unbalancedDrafts . ' draft out of balance' : 'All drafts balance',
-            'footer'      => count($filtered) . ' of ' . count($all) . ' journals · ' . $countBy('Pending approval') . ' awaiting your approval',
+            // "6 awaiting approval · 2 awaiting yours" — the second figure counts the
+            // entries whose open step this approver can sign (docs/approvals.md).
+            'footer'      => count($filtered) . ' of ' . count($all) . ' journals · ' . $countBy('Pending approval') . ' awaiting approval'
+                . ($mine === null ? '' : ' · ' . $mine . ' awaiting yours'),
             'policy'      => ($rule = (new ApprovalPolicy())->rule('journal')) === null ? 'Two-person rule enforced'
                 : 'Approval threshold KES ' . Prototype::fmt($rule['threshold']) . ' · above it the ' . ($rule['escalation'] ?? $rule['authority'] ?? $rule['approver']) . ' approves · two-person rule enforced',
             'stats' => [

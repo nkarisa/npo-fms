@@ -122,10 +122,10 @@ characters). Being idle for 30 minutes signs you out.
 
 **Purpose:** your own sign-in settings, and what your roles let you do.
 
-**On screen:** *You* (name, email, last sign-in and where from, what you can do,
-approval limit); *Roles* (each role you hold and at which entities, then every
-permission they give you together); *Second sign-in step* (on or off, the method,
-recovery codes left); *Password*; and *Recent sign-in activity*.
+**On screen:** *You* (name, email, last sign-in and where from, what you can do);
+*Roles* (each role you hold and at which entities, then every permission they
+give you together); *Second sign-in step* (on or off, the method, recovery codes
+left); *Password*; and *Recent sign-in activity*.
 
 **What you can do:** change your password (needs the current one); set up, switch
 or remove your second step; make a new set of recovery codes, which cancels the
@@ -834,7 +834,10 @@ warning appears if you try to leave with unsaved changes.
   surrender date before an advance can be recovered from pay (14), and how far
   ahead a supplier shows as expiring (30), a donor report is flagged (45) and a
   tranche shows as due (30). A bill or claim already raised keeps its due date.
-- **Approvals** — thresholds and approvers per transaction type, with a
+- **Approvals** — thresholds and approvers per transaction type, each opening out
+  into the **ladder of signatures** that type collects: a row per signature naming
+  who signs it, the band of values it engages for, and how many of them must sign
+  (how a document climbs one is in [approvals.md](approvals.md)). Also a
   segregation-of-duties note, and the **procurement threshold** (KES 500,000 to
   start): above it a purchase needs three quotations before its purchase order,
   and a bill captured straight into Payables is paid only to a pre-qualified

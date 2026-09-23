@@ -175,7 +175,7 @@ const UI = (() => {
     const status = jdStatus();
     const mine = !journal || journal.preparer === form.preparer;
     return {
-      save: !jdLocked() && form.canPrepare,
+      save: !jdLocked() && status !== 'Pending approval' && form.canPrepare,
       submit: status === 'Draft' && form.canPrepare,
       post: status === 'Pending approval' && form.canApprove && !mine,
       discard: !!journal && status === 'Draft' && form.canPrepare,
@@ -515,9 +515,6 @@ const UI = (() => {
   function renderJournalFiles() {
     const { ed } = jd;
     const editable = jdCan().save;
-    // What went for approval stays in front of the approver until the entry is taken
-    // back to draft (JournalRepository::update refuses the removal too).
-    const submitted = jdStatus() === 'Pending approval';
     const size = (b) => b < 1024000 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1048576).toFixed(1)} MB`;
     const kept = ed.attachments.filter(a => !ed.removed.includes(a.id));
     const ref = jd.journal ? encodeURIComponent(jd.journal.ref) : '';
@@ -525,7 +522,7 @@ const UI = (() => {
       <a class="jd-file" href="/api/journals/${ref}/attachments/${a.id}" style="text-decoration:none;color:inherit;">
         <span class="jd-file-name">${esc(a.name)}</span>
         <span class="jd-file-size">${esc(a.size)}</span>
-        ${editable && !submitted ? `<button type="button" class="jd-remove" data-kept="${a.id}" aria-label="Remove ${esc(a.name)}">✕</button>` : ''}
+        ${editable ? `<button type="button" class="jd-remove" data-kept="${a.id}" aria-label="Remove ${esc(a.name)}">✕</button>` : ''}
       </a>`).join('') + ed.files.map((f, i) => `
       <div class="jd-file">
         <span class="jd-file-name">${esc(f.name)}</span>
@@ -536,10 +533,9 @@ const UI = (() => {
     journalDrawer.querySelector('#jd-attach-label').textContent = count ? '+ Attach another document' : '+ Attach the supporting document';
     const note = journalDrawer.querySelector('#jd-files-note');
     const needed = jdDocumentNeeded();
-    note.hidden = count > 0 && !(editable && submitted && kept.length);
+    note.hidden = count > 0;
     note.classList.toggle('warn', editable && !!needed && !count);
-    note.textContent = editable && submitted && kept.length ? 'The documents it was submitted with stay while it awaits approval. Save it as a draft to remove one.'
-      : !editable ? 'No supporting document is attached.'
+    note.textContent = !editable ? 'No supporting document is attached.'
       : needed || 'The reference points at the record; the audit file wants the document itself — invoice, board minute or funder letter.';
   }
 
@@ -562,7 +558,10 @@ const UI = (() => {
 
   function renderJournalTrail() {
     const trail = jd.journal ? jd.journal.trail || [] : [];
+    // Where it stands on its ladder, for an entry still collecting signatures.
+    const ladder = jd.journal ? jd.journal.approval : null;
     journalDrawer.querySelector('#jd-trail').innerHTML = trail.length ? `
+      ${ladder ? `<div class="jd-ladder"><span class="jd-caps">Approval</span><span>${esc(ladder.note)}</span></div>` : ''}
       <div class="jd-caps">Audit trail</div>
       ${trail.map(t => `<div style="display:flex;gap:10px;font-size:12px;color:#3E4A44;"><span style="color:#A3ABA7;font-family:'IBM Plex Mono',monospace;font-size:11px;min-width:78px;">${esc(t.when)}</span>${esc(t.what)}</div>`).join('')}` : '';
   }
@@ -655,14 +654,20 @@ const UI = (() => {
   }
 
   function approveJournal() {
-    const { journal, form } = jd;
+    const { journal } = jd;
     if (jd.dirty) {
       showJournalError('Approval posts the entry as it was submitted. Close without saving, or save the changes and have them approved again.');
       return;
     }
     return journalAction(async () => {
       const data = await postJSON(`/api/journals/${encodeURIComponent(journal.ref)}/approve`);
-      return { journal: data.journal, message: `${journal.ref} · approved and posted by ${form.preparer}.` };
+      // A signature that did not finish the ladder posts nothing: say what it did
+      // and who the entry is waiting for (docs/approvals.md).
+      const ladder = data.journal.approval;
+      return {
+        journal: data.journal,
+        message: ladder ? `${journal.ref} · signed — ${ladder.note}.` : `${journal.ref} · approved and posted.`,
+      };
     });
   }
 

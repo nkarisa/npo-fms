@@ -694,7 +694,7 @@ final class InstallTest extends CIUnitTestCase
         $out = [];
         foreach (['roles', 'permissions', 'role_permissions', 'currencies', 'segments', 'document_types', 'counties',
             'phasing_profiles', 'budget_rules', 'pay_components', 'pay_grades', 'pay_grade_benefits', 'statutory_rates',
-            'period_close_checks', 'approval_limits', 'locales'] as $table) {
+            'period_close_checks', 'locales'] as $table) {
             $out[$table] = $db->table($table)->countAllResults();
         }
 

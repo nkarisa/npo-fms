@@ -33,7 +33,7 @@ final class EntityScope
      * every entity shares. Line tables follow the document they belong to.
      */
     public const TABLES = [
-        'advances', 'asset_additions', 'assets', 'bank_accounts', 'bills', 'budget_versions',
+        'advances', 'approval_signatures', 'asset_additions', 'assets', 'bank_accounts', 'bills', 'budget_versions',
         'cashflow_forecasts', 'conversion_batches', 'depreciation_runs', 'donor_reports', 'fiscal_years',
         'fund_transfers', 'goods_received_notes', 'grants', 'invoices', 'journals', 'legacy_balances', 'locations', 'notifications',
         'payment_runs', 'payments', 'payroll_runs', 'periods', 'purchase_orders', 'receipts', 'receivable_allowances',
@@ -77,6 +77,21 @@ final class EntityScope
     public static function activeId(): ?int
     {
         return self::scope()['active'];
+    }
+
+    /**
+     * The user whose eyes the request is being served through — the person signed
+     * in, or whoever they are acting as. Null when nobody is signed in, as in a
+     * console command or the installer.
+     *
+     * Resolved exactly as the entity scope resolves it, so what a register counts
+     * as "waiting for you" and what it lets you see are the same person.
+     */
+    public static function viewerId(): ?int
+    {
+        $signedIn = isset($_SESSION) && ($_SESSION[SignIn::STAGE] ?? null) === SignIn::DONE && isset($_SESSION[SignIn::USER]);
+
+        return $signedIn ? self::actingUserId() : null;
     }
 
     public static function consolidated(): bool

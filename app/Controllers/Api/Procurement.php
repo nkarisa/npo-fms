@@ -70,7 +70,10 @@ class Procurement extends BaseApiController
             'threshold' => Repo::quoteThreshold(),
             'stats' => [
                 ['label' => 'Open requisitions', 'value' => (string) count($open), 'note' => 'Across ' . count(array_unique(array_column($open, 'program'))) . ' programmes'],
-                ['label' => $actor['canApprove'] ? 'Awaiting my approval' : 'Awaiting approval', 'value' => (string) count(array_filter($all, static fn ($p) => $p['status'] === 'Awaiting approval')),
+                ['label' => $actor['canApprove'] ? 'Awaiting my approval' : 'Awaiting approval',
+                    // An approver is shown what is theirs to sign, not everything waiting.
+                    'value' => (string) count(array_filter($all, fn ($p) => $p['status'] === 'Awaiting approval'
+                        && (!$actor['canApprove'] || (($p['approval']['mine'] ?? false) && $p['requestedBy'] !== $this->actorId())))),
                     'note' => 'Budget checked before approval'],
                 ['label' => 'Value in progress', 'value' => Prototype::fmt(array_sum(array_column($open, 'amount'))), 'note' => 'Not yet invoiced'],
                 ['label' => 'Committed on POs', 'value' => Prototype::fmt(array_sum(array_map(static fn ($p) => ($p['poStatus'] ?? '') === 'open' ? $p['amount'] : 0, $all))),
@@ -110,6 +113,7 @@ class Procurement extends BaseApiController
                 'no' => $p['no'], 'title' => $p['title'], 'requester' => $p['requester'], 'program' => $p['program'], 'grant' => $p['grant'],
                 'fund' => $p['fund'], 'raised' => $p['raised'], 'needBy' => $p['needBy'], 'amount' => $p['amount'],
                 'available' => Repo::available($p), 'overBudget' => self::budgetCheckPending($p), 'status' => $p['status'],
+                'approval' => $p['approval'] ?? null,
             ], array_slice($filtered, ($page - 1) * self::PAGE_SIZE, self::PAGE_SIZE)),
             'filtered' => count($filtered),
             'page'     => $page,

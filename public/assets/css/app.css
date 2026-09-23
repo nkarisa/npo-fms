@@ -582,6 +582,11 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .jd-panel { position: relative; width: 920px; max-width: 100%; height: min(860px, 100%); background: #FFF; border: 1px solid #E4E2DB; border-radius: 11px; overflow: hidden; box-shadow: 0 24px 60px rgba(13,27,24,.24); display: flex; flex-direction: column; animation: jdIn 180ms cubic-bezier(.2,.7,.3,1); }
 .jd-head { flex: 0 0 auto; padding: 18px 24px 14px; border-bottom: 1px solid #EEEDE8; display: flex; align-items: flex-start; gap: 14px; }
 .jd-caps { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: #8B948F; }
+
+/* Where a document stands on its approval ladder (docs/approvals.md): in the
+   register beneath its status, and above the audit trail in the drawer. */
+.jd-ladder { display: flex; align-items: baseline; gap: 8px; margin-block-end: 10px; font-size: 12px; color: #3E4A44; }
+.jr-ladder { margin-block-start: 3px; font-size: 10.5px; color: #8A5B2E; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .jd-narration { border: none; outline: none; font-size: 17px; font-weight: 600; letter-spacing: -.015em; padding: 2px 0; width: 100%; border-bottom: 1px solid transparent; font-family: inherit; }
 .jd-narration:focus { border-bottom-color: var(--accent); }
 .jd-x { border: none; background: transparent; color: #8B948F; font-size: 16px; cursor: pointer; line-height: 1; padding-top: 4px; }
@@ -1187,6 +1192,15 @@ td.num, th.num { text-align: right; font-family: 'IBM Plex Mono', monospace; fon
 .st-tr.st-th > div { padding: 7px 12px; }
 .st-tr.off { opacity: .55; }
 .st-tr.current { background: var(--accent-haze); }
+/* The ladder of signatures under an approval band, when it is opened out. */
+.st-ladder-btn { border: 1px solid #E3E1DB; background: #FFF; border-radius: 6px; padding: 4px 9px; font: inherit; font-size: 11px; color: #4A5551; cursor: pointer; white-space: nowrap; }
+.st-ladder-btn:hover { border-color: #CFD5D1; }
+.st-ladder-btn.on { background: var(--accent-haze); border-color: var(--accent); color: #28352F; }
+.st-ladder { background: #FBFAF7; border-bottom: 1px solid #F4F2EE; padding: 2px 0 0 0; }
+.st-ladder .st-tr { border-bottom-color: #F0EEE9; }
+.st-ladder-step > div { padding: 6px 12px; }
+.st-ladder-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 12px 11px; }
+
 .st-stack { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .st-sub { font-size: 10.5px; color: #9AA39E; }
 .st-muted { color: #6E7873; font-size: 11.5px; }

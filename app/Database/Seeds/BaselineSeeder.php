@@ -53,14 +53,14 @@ class BaselineSeeder extends Seeder
      * APPROVAL_RULES and App\Repositories\ApprovalPolicy), which matches on the
      * role's name rather than on what it permits, so this role approves nothing
      * until it is named there. It is offered as an approver because it holds
-     * journal.approve, and it carries no ceiling (see CEILINGS).
+     * journal.approve.
      */
     public const ADMIN_ROLE = 'Administrator';
 
     public const PERMISSIONS = [
         'ledger.view'           => 'View the ledger, reports and supporting records',
         'journal.prepare'       => 'Prepare and submit journals and documents',
-        'journal.approve'       => 'Approve documents within the role\'s ceiling',
+        'journal.approve'       => 'Approve documents within the ladder\'s bands',
         'journal.post'          => 'Post approved journals to the ledger',
         'requisition.raise'     => 'Raise purchase requisitions',
         'payroll.view'          => 'View payroll records (personal data; every read is logged)',
@@ -95,8 +95,6 @@ class BaselineSeeder extends Seeder
         'Auditor (read only)' => ['ledger.view', 'settings.view', 'audit.view'],
     ];
 
-    /** What a role may approve in one transaction. Null is no ceiling. */
-    public const CEILINGS = [self::ADMIN_ROLE => null, 'Finance Manager' => 5000000, 'Executive Director' => null];
 
     /** [code, name, indicative rate to the base currency, active]. Rates are indicative and edited in Settings. */
     public const CURRENCIES = [
@@ -281,13 +279,6 @@ class BaselineSeeder extends Seeder
                 ]);
             }
         }
-        foreach (self::CEILINGS as $role => $ceiling) {
-            $roleId = $this->idOf('roles', ['name' => $role]);
-            $this->ensure('approval_limits', ['role_id' => $roleId, 'document_type' => null], [
-                'role_id' => $roleId, 'document_type' => null, 'ceiling' => $ceiling, 'created_at' => $now,
-            ]);
-        }
-
         foreach (self::CURRENCIES as [$code, $name, $rate, $active]) {
             $this->ensure('currencies', ['code' => $code], [
                 'code' => $code, 'name' => $name, 'indicative_rate' => $rate, 'is_active' => (int) $active, 'created_at' => $now,

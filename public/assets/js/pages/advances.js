@@ -148,7 +148,10 @@
       <div class="adv-mono ${r.open ? (r.overdue ? 'late' : 'open') : 'nil'}">${UI.esc(r.outstanding)}</div>
       <div class="adv-plain">${UI.esc(r.dueDate)}</div>
       <div class="adv-age-cell ${r.open ? AGE_CLASS[r.bucket] || 'd0' : 'nil'}">${UI.esc(r.age)}</div>
-      <div><span class="adv-pill ${r.status.toLowerCase()}">${UI.esc(r.status)}</span></div>`;
+      <div>
+        <span class="adv-pill ${r.status.toLowerCase()}">${UI.esc(r.status)}</span>
+        ${r.approval && r.approval.of > 1 ? `<div class="jr-ladder" title="${UI.esc(r.approval.note)}">${r.approval.signed}/${r.approval.of} · ${UI.esc(r.approval.awaiting)}</div>` : ''}
+      </div>`;
     div.addEventListener('click', () => openDetail(r.ref));
     return div;
   }
@@ -245,6 +248,7 @@
       </div>
       <div class="adv-body">
         <div class="adv-purpose">${UI.esc(d.purpose)}</div>
+        ${d.approval ? `<div class="jd-ladder"><span class="jd-caps">Approval</span><span>${UI.esc(d.approval.note)}</span></div>` : ''}
         ${flags}
         <div class="adv-facts">
           ${d.facts.map((f) => `<div class="adv-fact"><span>${UI.esc(f.label)}</span><span>${UI.esc(f.value)}</span></div>`).join('')}

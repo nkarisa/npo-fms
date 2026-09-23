@@ -269,6 +269,10 @@ class Assets extends BaseApiController
             return $this->refused($e);
         }
 
+        if (($d['awaiting'] ?? null) !== null) {
+            return $this->json($this->register() + ['message' => $d['awaiting'] . ' — ' . $tag . ' stays on the register until then.']);
+        }
+
         return $this->json($this->register() + [
             'message' => $d['journal'] . ' posted — ' . $tag . ' derecognised at cost of ' . Prototype::fmt($d['cost']) . ' with ' . Prototype::fmt($d['accum'])
                 . ' of depreciation released, and a ' . ($d['result'] >= 0

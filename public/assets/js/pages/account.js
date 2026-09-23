@@ -40,7 +40,6 @@
               <div>
                 <div class="acct-row"><span>Last signed in</span><span>${esc(me.lastSignIn)}</span></div>
                 <div class="acct-row"><span>What you can do</span><span>${esc(me.rights)}</span></div>
-                <div class="acct-row"><span>Approval limit</span><span>${esc(me.limit)}</span></div>
               </div>
             </div>
           </div>

@@ -62,7 +62,7 @@ final class SettingsAccess
         'organisation' => 'Organisation', 'entities' => 'Organisation',
         'ledger' => 'Ledger', 'toggles' => 'Ledger', 'postingAccounts' => 'Ledger', 'postingAccountsFollow' => 'Ledger', 'assetClasses' => 'Ledger',
         'segments' => 'Segments', 'currencies' => 'Currencies', 'taxes' => 'Taxes', 'days' => 'Terms and reminders',
-        'approvals' => 'Approvals', 'approvalsFollow' => 'Approvals', 'procurement' => 'Approvals',
+        'approvals' => 'Approvals', 'ladders' => 'Approvals', 'approvalsFollow' => 'Approvals', 'procurement' => 'Approvals',
         'payroll' => 'Payroll', 'payAccounts' => 'Payroll',
         'appearance' => 'Appearance', 'language' => 'Language and translation', 'users' => 'Users', 'passwordPolicy' => 'Users',
     ];

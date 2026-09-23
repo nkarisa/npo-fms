@@ -220,7 +220,7 @@ organisation at all.
 
 **What it seeds**
 
-- The roles, the permissions each holds, and the approval ceilings
+- The roles and the permissions each holds
 - The coding segments every posting carries (fund, programme, restriction, grant,
   funder, county)
 - The document series journals are numbered in (`PV`, `RC`, `JV`, `PR`, `BK`,

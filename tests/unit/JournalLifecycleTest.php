@@ -302,7 +302,7 @@ final class JournalLifecycleTest extends CIUnitTestCase
         }
     }
 
-    public function testADocumentStaysWithAnEntryUntilItIsTakenBackFromApproval(): void
+    public function testAnEntryAwaitingApprovalCannotBeChangedUntilItIsReturned(): void
     {
         $repo = new JournalRepository();
         $achieng = $this->user('J. Achieng');
@@ -314,23 +314,20 @@ final class JournalLifecycleTest extends CIUnitTestCase
         $sent = $repo->create($entry('Pending approval'), $achieng, [$this->documentFile('engagement-letter.pdf'), $this->documentFile('fee-note.pdf')]);
         [$letter, $note] = array_column($sent['attachments'], 'id');
 
-        // Awaiting approval: neither an edit that stays submitted nor one that saves a draft removes it.
+        // Awaiting approval: nobody, preparer included, can change it — not even to drop a document.
         foreach (['Pending approval', 'Draft'] as $status) {
             try {
                 $repo->update($sent['ref'], $entry($status), $achieng, [], [$letter]);
-                $this->fail('A document was removed from an entry awaiting approval.');
+                $this->fail('An entry awaiting approval was changed before it was returned.');
             } catch (RuleViolation $e) {
-                $this->assertStringContainsString('awaiting approval, and the documents it was submitted with stay with it', $e->getMessage());
+                $this->assertStringContainsString('is pending approval and can no longer be changed', $e->getMessage());
             }
         }
         $this->assertSame(['Pending approval', 2], [$repo->find($sent['ref'])['status'], count($repo->find($sent['ref'])['attachments'])]);
 
-        // Taken back to draft by its preparer, it can drop one.
-        $this->assertSame('Draft', $repo->update($sent['ref'], $entry('Draft'), $achieng)['status']);
-        $this->assertSame(['fee-note.pdf'], array_column($repo->update($sent['ref'], $entry('Pending approval'), $achieng, [], [$letter])['attachments'], 'name'));
-
-        // Returned to draft by the approver, likewise.
+        // Returned to draft by the approver, it can be edited again, documents included.
         $repo->reject($sent['ref'], $this->user('W. Kamau'), 'Attach the signed letter instead');
+        $this->assertSame(['fee-note.pdf'], array_column($repo->update($sent['ref'], $entry('Draft'), $achieng, [], [$letter])['attachments'], 'name'));
         $this->assertSame([], $repo->update($sent['ref'], $entry('Draft'), $achieng, [], [$note])['attachments']);
     }
 

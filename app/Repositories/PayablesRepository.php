@@ -58,8 +58,22 @@ final class PayablesRepository extends Repository
             $banks   = array_column($this->lookups->bankAccounts(), null, 'id');
             $trails  = $this->trails('bill');
             $documents = (new AttachmentRepository())->byObject('bill');
+            $rows      = $this->rows(
+                'SELECT b.*, s.name AS supplier_name, s.kra_pin, s.category, s.status AS supplier_status, s.prequalified_until, j.reference AS journal_ref,
+                        r.reference AS run_ref, r.run_date, r.status AS run_status, w.reference AS remittance_ref
+                 FROM {bills} b JOIN {suppliers} s ON s.id = b.supplier_id
+                 LEFT JOIN {journals} j ON j.id = b.journal_id LEFT JOIN {payment_runs} r ON r.id = b.payment_run_id
+                 LEFT JOIN {wht_remittances} w ON w.id = b.wht_remittance_id
+                 ORDER BY b.invoice_date, b.reference'
+            );
+            // How far up its ladder each waiting bill has come, for the whole
+            // register in one query (docs/approvals.md).
+            $ladders = (new ApprovalPolicy())->standings('bill', array_column(array_map(
+                static fn ($b) => ['id' => (int) $b['id'], 'type' => 'bill', 'amount' => (float) $b['total']],
+                array_values(array_filter($rows, static fn ($b) => $b['status'] === 'pending_approval'))
+            ), null, 'id'), $this->lookups->viewerId());
 
-            return array_map(function ($b) use ($lines, $budgets, $banks, $trails, $documents) {
+            return array_map(function ($b) use ($lines, $budgets, $banks, $trails, $documents, $ladders) {
                 $billLines = $lines[(int) $b['id']] ?? [];
                 $first     = $billLines[0] ?? null;
                 $position  = $first === null ? null : ($budgets[$first['account_id'] . ':' . $first['fund_id'] . ':' . $first['programme_id']] ?? null);
@@ -67,6 +81,7 @@ final class PayablesRepository extends Repository
                 $wht       = (float) $b['wht_amount'];
 
                 return [
+                    'id'        => (int) $b['id'],
                     'no'        => $b['reference'],
                     'supplier'  => $b['supplier_name'],
                     'pin'       => $b['kra_pin'] ?? '—',
@@ -104,15 +119,9 @@ final class PayablesRepository extends Repository
                     ], $billLines),
                     'trail'     => $trails[(int) $b['id']] ?? [],
                     'documents' => $documents[(int) $b['id']] ?? [],
+                    'approval'  => $ladders[(int) $b['id']] ?? null,
                 ];
-            }, $this->rows(
-                'SELECT b.*, s.name AS supplier_name, s.kra_pin, s.category, s.status AS supplier_status, s.prequalified_until, j.reference AS journal_ref,
-                        r.reference AS run_ref, r.run_date, r.status AS run_status, w.reference AS remittance_ref
-                 FROM {bills} b JOIN {suppliers} s ON s.id = b.supplier_id
-                 LEFT JOIN {journals} j ON j.id = b.journal_id LEFT JOIN {payment_runs} r ON r.id = b.payment_run_id
-                 LEFT JOIN {wht_remittances} w ON w.id = b.wht_remittance_id
-                 ORDER BY b.invoice_date, b.reference'
-            ));
+            }, $rows);
         });
     }
 
@@ -555,12 +564,25 @@ final class PayablesRepository extends Repository
                 return $who . ' captured ' . $b['reference'] . ' and cannot also approve it. It needs a second approver.';
             }
 
-            return $policy->refusal('bill', (float) $b['total'], $actorId, $b['reference'])['message'] ?? null;
+            return $policy->refusal('bill', (float) $b['total'], $actorId, $b['reference'], null, 'bill', (int) $b['id'])['message'] ?? null;
         });
 
-        $this->transaction(function () use ($bills, $actorId, $who) {
+        $this->transaction(function () use ($bills, $actorId, $who, $policy) {
             $journals = new JournalRepository();
             foreach ($bills as $b) {
+                $id     = (int) $b['id'];
+                $amount = (float) $b['total'];
+                $step   = $policy->progress('bill', $id, 'bill', $amount)['open'];
+
+                if (!$policy->sign('bill', $id, $b['reference'], 'bill', $amount, $actorId, null, '', (int) $b['entity_id'])) {
+                    // Signed, but the ladder is not finished. The bill stays where it
+                    // is, waiting for the role that signs next; nothing posts yet.
+                    $this->audit('bill', $id, $b['reference'], ($step['label'] ?? ApprovalPolicy::DEFAULT_LABEL) . ' by ' . $who
+                        . $policy->awaitingNote('bill', $id, 'bill', $amount), $actorId, 'history', (int) $b['entity_id']);
+
+                    continue;
+                }
+
                 $now = Clock::timestamp();
                 $lines = $this->rows('SELECT * FROM {bill_lines} WHERE bill_id = ? ORDER BY line_no', [$b['id']]);
                 $date = $this->openDate($b['invoice_date']);
@@ -618,6 +640,8 @@ final class PayablesRepository extends Repository
             $this->db->table('bills')->where('id', $b['id'])->update([
                 'status' => 'rejected', 'rejected_reason' => trim($reason), 'updated_at' => Clock::timestamp(),
             ]);
+            (new ApprovalPolicy())->returnToPreparer('bill', (int) $b['id'], $b['reference'], 'bill',
+                (float) $b['total'], $actorId, trim($reason), (int) $b['entity_id']);
             $this->audit('bill', (int) $b['id'], $b['reference'], 'Rejected by ' . $this->lookups->shortName($actorId) . ' — ' . trim($reason), $actorId, 'history', (int) $b['entity_id']);
         });
 
@@ -693,7 +717,9 @@ final class PayablesRepository extends Repository
         $authorityRef = trim((string) $authorityRef) ?: null;
         foreach ($byBank as $bankId => $group) {
             $total = array_sum(array_map(static fn ($b) => (float) $b['total'] - (float) $b['wht_amount'], $group));
-            $policy->check('payment_run', $total, $actorId, count($byBank) === 1 ? 'This payment run' : 'The ' . $banks[$bankId]['short_name'] . ' run', $authorityRef);
+            $what  = count($byBank) === 1 ? 'This payment run' : 'The ' . $banks[$bankId]['short_name'] . ' run';
+            $policy->check('payment_run', $total, $actorId, $what, $authorityRef);
+            self::oneSignatureOnly($policy, $total, $what);
         }
 
         $runs = $this->transaction(function () use ($byBank, $banks, $actorId, $who, $policy, $authorityRef) {
@@ -712,6 +738,9 @@ final class PayablesRepository extends Repository
                     'total' => $total, 'status' => 'paid', 'prepared_by' => $actorId, 'paid_at' => $now, 'created_at' => $now,
                     'authority_ref' => $policy->needsAuthority('payment_run', $total) ? $authorityRef : null,
                 ]);
+                // The release is a signature like any other, so it stands in the same
+                // record as the rest and a run can be asked who released it.
+                $policy->sign('payment_run', $runId, $ref, 'payment_run', $total, $actorId, $authorityRef);
 
                 $posting = [];
                 foreach ($group as $b) {
@@ -808,6 +837,7 @@ final class PayablesRepository extends Repository
         $policy = new ApprovalPolicy();
         $authorityRef = trim((string) $authorityRef) ?: null;
         $policy->check('payment_run', $amount, $actorId, 'The withholding tax remittance', $authorityRef);
+        self::oneSignatureOnly($policy, $amount, 'The withholding tax remittance');
 
         return $this->transaction(function () use ($period, $bills, $amount, $bank, $actorId, $who, $policy, $authorityRef) {
             $now = Clock::timestamp();
@@ -818,6 +848,7 @@ final class PayablesRepository extends Repository
                 'bank_account_id' => $bank['id'], 'amount' => $amount, 'remitted_by' => $actorId, 'created_at' => $now,
                 'authority_ref' => $policy->needsAuthority('payment_run', $amount) ? $authorityRef : null,
             ]);
+            $policy->sign('wht_remittance', $id, $ref, 'payment_run', $amount, $actorId, $authorityRef);
 
             $groups = [];
             foreach ($bills as $b) {
@@ -850,6 +881,23 @@ final class PayablesRepository extends Repository
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    /**
+     * Releasing money is a single act: the run is made, posted and paid in one
+     * breath, so unlike a bill there is nowhere to hold one that has been signed
+     * once and is waiting for the next role. A payment run rule that asks for more
+     * than one signature says so plainly rather than paying out on the first
+     * (docs/approvals.md).
+     */
+    private static function oneSignatureOnly(ApprovalPolicy $policy, float $amount, string $what): void
+    {
+        $needed = $policy->signaturesNeeded('payment_run', $amount);
+        if ($needed > 1) {
+            throw new RuleViolation($what . ' of ' . Prototype::fmt($amount) . ' needs ' . $needed
+                . ' signatures, and a payment run is released in one act — there is nowhere to hold it between them. '
+                . 'Release it in smaller runs, or set a payment run rule that asks for one signature at this value.');
+        }
+    }
 
     /** "EFT — KCB Current (KES)", "M-Pesa B2B paybill", "Cheque", "SWIFT — Equity account". */
     private static function methodLabel(array $bank, ?string $method): string

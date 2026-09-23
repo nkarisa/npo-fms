@@ -58,8 +58,21 @@ final class AdvancesRepository extends Repository
             }
             $trails = $this->trails('advance');
             $documents = (new AttachmentRepository())->byObject('advance');
+            $rows = $this->rows(
+                'SELECT a.*, g.short_name AS grant_short, fr.name AS funder, j.reference AS issue_ref, s.left_on
+                 FROM {advances} a
+                 LEFT JOIN {grants} g ON g.id = a.grant_id LEFT JOIN {funders} fr ON fr.id = g.funder_id
+                 LEFT JOIN {journals} j ON j.id = a.issue_journal_id LEFT JOIN {staff} s ON s.id = a.staff_id
+                 ORDER BY a.requested_on DESC, a.reference DESC'
+            );
+            // How far up its ladder each request awaiting approval has come, for the
+            // whole register in one query (docs/approvals.md).
+            $ladders = (new ApprovalPolicy())->standings('advance', array_column(array_map(
+                static fn ($a) => ['id' => (int) $a['id'], 'type' => 'advance', 'amount' => (float) $a['amount']],
+                array_values(array_filter($rows, static fn ($a) => $a['status'] === 'requested'))
+            ), null, 'id'), $this->lookups->viewerId());
 
-            return array_map(function ($a) use ($surrenders, $recovered, $reminders, $trails, $documents) {
+            return array_map(function ($a) use ($surrenders, $recovered, $reminders, $trails, $documents, $ladders) {
                 $id   = (int) $a['id'];
                 $fund = $this->lookups->funds()[$a['fund_id']];
 
@@ -93,14 +106,9 @@ final class AdvancesRepository extends Repository
                     // A holder who has left cannot be recovered from: their final pay is settled.
                     'left'      => $a['left_on'] !== null,
                     'staffId'   => $a['staff_id'] === null ? null : (int) $a['staff_id'],
+                    'approval'  => $ladders[$id] ?? null,
                 ];
-            }, $this->rows(
-                'SELECT a.*, g.short_name AS grant_short, fr.name AS funder, j.reference AS issue_ref, s.left_on
-                 FROM {advances} a
-                 LEFT JOIN {grants} g ON g.id = a.grant_id LEFT JOIN {funders} fr ON fr.id = g.funder_id
-                 LEFT JOIN {journals} j ON j.id = a.issue_journal_id LEFT JOIN {staff} s ON s.id = a.staff_id
-                 ORDER BY a.requested_on DESC, a.reference DESC'
-            ));
+            }, $rows);
         });
     }
 
@@ -192,13 +200,28 @@ final class AdvancesRepository extends Repository
         if ((int) $advance['requested_by'] === $actorId) {
             throw new RuleViolation('The person who requested an advance cannot approve it. It needs a second approver.');
         }
-        (new ApprovalPolicy())->check('advance', (float) $advance['amount'], $actorId, $ref, $authorityRef);
+        $policy = new ApprovalPolicy();
+        $amount = (float) $advance['amount'];
+        $id     = (int) $advance['id'];
+        $policy->check('advance', $amount, $actorId, $ref, $authorityRef, 'advance', $id);
 
-        $this->transaction(function () use ($advance, $ref, $actorId) {
+        $this->transaction(function () use ($advance, $ref, $actorId, $authorityRef, $policy, $amount, $id) {
+            $who  = $this->lookups->shortName($actorId);
+            $step = $policy->progress('advance', $id, 'advance', $amount)['open'];
+
+            if (!$policy->sign('advance', $id, $ref, 'advance', $amount, $actorId, $authorityRef, '', (int) $advance['entity_id'])) {
+                // Signed, but the ladder is not finished: the request stays where it
+                // is, waiting for the role that signs next, and nothing is payable.
+                $this->audit('advance', $id, $ref, ($step['label'] ?? ApprovalPolicy::DEFAULT_LABEL) . ' by ' . $who
+                    . $policy->awaitingNote('advance', $id, 'advance', $amount), $actorId);
+
+                return;
+            }
+
             $this->db->table('advances')->where('id', $advance['id'])->update([
                 'status' => 'approved', 'approved_by' => $actorId, 'approved_at' => Clock::timestamp(), 'updated_at' => Clock::timestamp(),
             ]);
-            $this->audit('advance', (int) $advance['id'], $ref, 'Approved by ' . $this->lookups->shortName($actorId), $actorId);
+            $this->audit('advance', $id, $ref, 'Approved by ' . $who, $actorId);
         });
 
         return ['ref' => $ref, 'amount' => self::num($advance['amount'])];
@@ -221,6 +244,8 @@ final class AdvancesRepository extends Repository
                 'status' => 'rejected', 'rejected_by' => $actorId, 'rejected_at' => Clock::timestamp(),
                 'rejected_reason' => $reason, 'updated_at' => Clock::timestamp(),
             ]);
+            (new ApprovalPolicy())->returnToPreparer('advance', (int) $advance['id'], $ref, 'advance',
+                (float) $advance['amount'], $actorId, $reason, (int) $advance['entity_id']);
             $this->audit('advance', (int) $advance['id'], $ref, 'Rejected by ' . $this->lookups->shortName($actorId) . ' — ' . $reason, $actorId);
         });
 

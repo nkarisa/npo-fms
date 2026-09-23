@@ -431,7 +431,12 @@ final class AssetRepository extends Repository
      * date released, cost derecognised, and the gain or loss taken to the surplus.
      * The person who proposed it cannot approve it.
      *
-     * @return array{journal: string, cost: float, accum: float, proceeds: float, result: float}
+     * A disposal ladder is an administrator's to define (docs/approvals.md). Where
+     * one asks for more than a single signature the proposal stays where it is
+     * until the last role has signed, and `awaiting` says who that is; with no
+     * rule for disposals, as an instance starts, the first signature is the last.
+     *
+     * @return array{journal: string, cost: float, accum: float, proceeds: float, result: float, awaiting: string|null}
      */
     public function approveDisposal(string $tag, int $actorId): array
     {
@@ -460,8 +465,25 @@ final class AssetRepository extends Repository
             'code' => $code, 'fund_id' => $a['fundId'], 'programme_id' => $programme, 'grant_id' => $a['grantId'], 'desc' => $desc, 'dr' => $dr, 'cr' => $cr,
         ];
         $who = $this->lookups->shortName($actorId);
+        $policy = new ApprovalPolicy();
+        $carrying = round((float) $a['cost'] - $accum, 2);
+        $policy->check('asset_disposal', $carrying, $actorId, $tag, $d['board_minute'], 'asset_disposal', (int) $d['id']);
 
-        return $this->transaction(function () use ($d, $a, $tag, $accum, $proceeds, $result, $line, $who, $actorId) {
+        return $this->transaction(function () use ($d, $a, $tag, $accum, $proceeds, $result, $line, $who, $actorId, $policy, $carrying) {
+            $id   = (int) $d['id'];
+            $step = $policy->progress('asset_disposal', $id, 'asset_disposal', $carrying)['open'];
+
+            if (!$policy->sign('asset_disposal', $id, $tag, 'asset_disposal', $carrying, $actorId, $d['board_minute'])) {
+                // Signed, but the ladder is not finished: nothing is derecognised
+                // and the asset stays on the register until the last role signs.
+                $awaiting = ($step['label'] ?? ApprovalPolicy::DEFAULT_LABEL) . ' by ' . $who
+                    . $policy->awaitingNote('asset_disposal', $id, 'asset_disposal', $carrying);
+                $this->audit('asset', (int) $d['asset_id'], $tag, 'Disposal ' . lcfirst($awaiting), $actorId);
+
+                return ['journal' => '', 'cost' => (float) $a['cost'], 'accum' => $accum, 'proceeds' => $proceeds,
+                    'result' => $result, 'awaiting' => $awaiting];
+            }
+
             $journal = (new JournalRepository())->postFromSource([
                 'date' => $d['disposed_on'], 'sourceType' => 'asset_disposal', 'sourceId' => (int) $d['id'], 'docRef' => $a['doc'] !== '' ? $a['doc'] : $tag, 'series' => 'JV',
                 'narration' => 'Disposal of ' . $a['name'] . ' (' . $tag . ')',
@@ -484,7 +506,7 @@ final class AssetRepository extends Repository
             $this->audit('asset', $a['id'], $tag, 'Disposal approved by ' . $who . ' and posted as ' . $journal . ' — derecognised, '
                 . ($result >= 0 ? 'gain of ' . Prototype::fmt($result) . ' to ' . PostingAccounts::of('disposalGain') : 'loss of ' . Prototype::fmt(-$result) . ' to ' . PostingAccounts::of('disposalLoss')), $actorId);
 
-            return ['journal' => $journal, 'cost' => (float) $a['cost'], 'accum' => $accum, 'proceeds' => $proceeds, 'result' => $result];
+            return ['journal' => $journal, 'cost' => (float) $a['cost'], 'accum' => $accum, 'proceeds' => $proceeds, 'result' => $result, 'awaiting' => null];
         });
     }
 
