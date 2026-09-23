@@ -296,6 +296,7 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('manual', 'Api\Manual::index');
     $routes->get('manual/image/(:segment)', 'Api\Manual::image/$1');
     $routes->get('i18n', 'Api\I18n::index');
+    $routes->get('i18n/string', 'Api\I18n::string');
     $routes->get('i18n/requests', 'Api\I18n::requests');
     $routes->post('i18n/requests', 'Api\I18n::raise');
     $routes->post('i18n/requests/(:segment)/approve', 'Api\I18n::approve/$1');

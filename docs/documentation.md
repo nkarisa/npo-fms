@@ -76,7 +76,9 @@ Running left to right across the top of every page:
 - **Breadcrumb** — the current group and page (e.g. *Accounting / Journals*).
 - **Interface language** — a menu of available languages with their translation
   coverage. Changing it re-renders the interface text only; posted amounts, dates
-  and account codes are unchanged. Links through to *Settings → Language and translation*.
+  and account codes are unchanged. The sidebar is translated with the rest of the
+  shell, and any label in it can be raised with its reviewer by Cmd-clicking it.
+  Links through to *Settings → Language and translation*.
 - **Entity picker** — switches between entities (National Secretariat, regional
   offices, the endowment trust, or a consolidated view).
 - **Search everything (⌘K)** — a command-palette search across journals,
@@ -941,6 +943,17 @@ warning appears if you try to leave with unsaved changes.
     the rest of the draft, needing `settings.organisation`, and recorded in the audit
     log. It is set once so that two people reading the same screen agree on which
     wording their reviewer has actually approved.
+  - **Raising a label where you read it.** Cmd-click (Alt-click on Windows and
+    Linux) any label in the sidebar and a *Raise this label* popover opens on it,
+    with the English source, how it currently reads in the target language, and a
+    choice of suggesting wording or reporting a problem. A label showing English
+    under the marked fallback wears a small `EN` badge, and clicking that badge
+    alone opens the same popover. Reading English, the popover asks which language
+    the wording is for, so a label can be raised against any reviewer of record
+    without switching the interface first. Nothing on screen moves: the raise goes
+    to the queue in this section and the label is unchanged until the reviewer
+    approves it. A locked term cannot be suggested at all — the popover names the
+    unlock authority instead.
 - **Users** — everyone with access: their roles (as chips), entity access, last
   sign-in, status and whether they have a second step. **Invite user** takes a
   name, an email, one or more roles and the entities; the person is emailed a

@@ -137,6 +137,57 @@ class I18n extends BaseApiController
         ];
     }
 
+    /**
+     * One catalogue string, as each language currently renders it.
+     *
+     * What the raise popover needs when a reader Cmd-clicks a label anywhere in
+     * the shell: the wording they are looking at, whether it is locked, and which
+     * languages already have it — so somebody reading English can still raise a
+     * French label against its reviewer of record.
+     */
+    public function string()
+    {
+        // Named by ?str= rather than a path segment so that wording containing a
+        // slash stays addressable. Naming nothing is a read with nothing behind
+        // it, and refuses with its reason like any other.
+        $str = trim((string) $this->request->getGet('str'));
+        if ($str === '') {
+            return $this->response->setStatusCode(404)->setJSON([
+                'error' => 'Name the string whose translations you want, as ?str=. Only wording in the language catalogue can be raised.',
+            ]);
+        }
+
+        $lock = I18nLib::lockOn($str);
+        if (!I18nLib::isTranslatable($str) && $lock === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => '"' . $str . '" is not a string in the translation catalogue.']);
+        }
+
+        // Deliberately not through json(): every string below is the *subject* of
+        // translation rather than chrome around it, so running the response
+        // translator over it would rewrite the very wording being reviewed.
+        return $this->response->setJSON([
+            'str'     => $str,
+            'locked'  => $lock === null ? null : ['note' => $lock['reason'], 'unlock' => $lock['unlock']],
+            'reasons' => self::REPORT_REASONS,
+            'current' => $this->i18n->code(),
+            'source'  => I18nLib::SOURCE_LOCALE,
+            'locales' => array_map(static function ($l) use ($str, $lock) {
+                $text = $lock !== null
+                    ? ($lock['tr'][$l['code']] ?? null)
+                    : (new TranslationRepository())->translation($l['code'], $str);
+
+                return [
+                    'code'       => $l['code'],
+                    'native'     => $l['native'],
+                    'label'      => $l['label'],
+                    'reviewer'   => $l['reviewer'],
+                    'translated' => $text !== null && $text !== '',
+                    'text'       => $text ?? $str,
+                ];
+            }, I18nLib::targets()),
+        ]);
+    }
+
     // ---- Raise a label ----
 
     /** The queue of wording raised against the catalogue, newest first. */

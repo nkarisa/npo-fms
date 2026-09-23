@@ -2,6 +2,7 @@
 
 use App\Database\Seeds\DatabaseSeeder;
 use App\Libraries\I18n;
+use App\Libraries\Navigation;
 use App\Repositories\Repository;
 use CodeIgniter\Test\CIUnitTestCase;
 use CodeIgniter\Test\DatabaseTestTrait;
@@ -103,6 +104,128 @@ final class I18nTest extends CIUnitTestCase
         $this->assertSame('Budgets', $out['stats'][0]['label']);
         $this->assertSame('(1,240)', $out['stats'][0]['value']);
         $this->assertSame('États financiers', $out['stats'][0]['note']);
+    }
+
+    /**
+     * The "mark" fallback is a badge the shell draws beside the label, not two
+     * extra characters inside it. A caller that renders its own marker asks for
+     * plain() and needsMark(); one that just wants a string still gets the mark
+     * from t(), which is what every API response relies on.
+     */
+    public function testTheUntranslatedMarkIsSeparableFromTheWording(): void
+    {
+        $sw = new I18n('sw', 'mark');
+
+        // Swahili has no approved wording for this one.
+        $this->assertSame('Asset verification EN', $sw->t('Asset verification'));
+        $this->assertSame('Asset verification', $sw->plain('Asset verification'));
+        $this->assertTrue($sw->needsMark('Asset verification'));
+
+        // One it does have is never marked, either way round.
+        $this->assertSame('Leja kuu', $sw->plain('General ledger'));
+        $this->assertSame('Leja kuu', $sw->t('General ledger'));
+        $this->assertFalse($sw->needsMark('General ledger'));
+
+        // Nothing is marked in the source language, nor under the other fallbacks.
+        $this->assertFalse((new I18n(I18n::SOURCE_LOCALE, 'mark'))->needsMark('Asset verification'));
+        $this->assertFalse((new I18n('sw', 'silent'))->needsMark('Asset verification'));
+        $this->assertSame('[Asset verification]', (new I18n('sw', 'key'))->plain('Asset verification'));
+
+        // And ledger data is outside all of it.
+        $this->assertFalse($sw->needsMark('Safaricom PLC'));
+    }
+
+    /**
+     * The sidebar was the one part of the shell the prototype translated that the
+     * application did not. Each item now reads in the reader's language and still
+     * carries the English source, which is the catalogue key a raise is made
+     * against whatever the reader's screen says.
+     */
+    public function testTheSidebarIsReadInTheReadersLanguage(): void
+    {
+        $groups = Navigation::groups(new I18n('fr', 'mark'));
+
+        $overview = $groups[0];
+        $this->assertSame("Vue d'ensemble", $overview['label']);
+        $this->assertSame('Overview', $overview['source']);
+
+        $dashboard = $overview['items'][0];
+        $this->assertSame('Tableau de bord', $dashboard['label']);
+        $this->assertSame('Dashboard', $dashboard['source']);
+        $this->assertSame('/', $dashboard['url']);
+        $this->assertFalse($dashboard['mark']);
+
+        // Swahili has no wording for asset verification, so it reads English, marked.
+        $items = array_merge(...array_column(Navigation::groups(new I18n('sw', 'mark')), 'items'));
+        $verify = array_values(array_filter($items, static fn ($i) => $i['source'] === 'Asset verification'))[0];
+        $this->assertSame('Asset verification', $verify['label']);
+        $this->assertTrue($verify['mark']);
+
+        // A page the reader may not see is not offered to them in any language.
+        $hidden = array_column(array_merge(...array_column(Navigation::groups(new I18n('fr'), ['settings']), 'items')), 'page');
+        $this->assertNotContains('settings', $hidden);
+    }
+
+    /** The shell marks each label with its key, so a reader can raise it from where they read it. */
+    public function testTheShellCarriesTheCatalogueKeyOnEveryLabelItDraws(): void
+    {
+        $_COOKIE['elog_locale'] = 'sw';
+        service('superglobals')->setCookie('elog_locale', 'sw');
+
+        try {
+            $page = $this->get('settings')->getBody();
+            $this->assertStringContainsString('data-i18n="Dashboard"', $page);
+            $this->assertStringContainsString('data-i18n="Asset verification"', $page);
+            // Read in Swahili, and the untranslated one wears its badge.
+            $this->assertStringContainsString('Dashibodi', $page);
+            $this->assertStringContainsString('class="i18n-mark"', $page);
+        } finally {
+            unset($_COOKIE['elog_locale']);
+            service('superglobals')->unsetCookie('elog_locale');
+        }
+    }
+
+    /**
+     * What the raise popover asks for when a label is Cmd-clicked. Somebody
+     * reading English can still raise a French label, so every target language
+     * comes back, not only the one being read.
+     */
+    public function testAStringCanBeLookedUpForRaising(): void
+    {
+        $data = json_decode($this->get('api/i18n/string?str=' . rawurlencode('Asset verification'))->getJSON(), true);
+
+        $this->assertSame('Asset verification', $data['str']);
+        $this->assertNull($data['locked']);
+        $this->assertSame('en-GB', $data['current']);
+
+        $by = array_column($data['locales'], null, 'code');
+        $this->assertSame(['fr', 'es', 'ar', 'sw'], array_keys($by));
+        $this->assertTrue($by['fr']['translated']);
+        $this->assertSame('Vérification des immobilisations', $by['fr']['text']);
+        // Untranslated: the source comes back, said to be untranslated, so the
+        // popover shows what the reader is actually looking at.
+        $this->assertFalse($by['sw']['translated']);
+        $this->assertSame('Asset verification', $by['sw']['text']);
+        $this->assertNotSame('', $by['fr']['reviewer']);
+
+        // A locked term says so, and names who may unlock it.
+        $locked = json_decode($this->get('api/i18n/string?str=' . rawurlencode('Restricted fund'))->getJSON(), true);
+        $this->assertSame('Finance Director', $locked['locked']['unlock']);
+
+        // Ledger data is not raisable, and says why rather than failing.
+        $refused = $this->get('api/i18n/string?str=' . rawurlencode('Safaricom PLC'));
+        $refused->assertStatus(404);
+        $this->assertStringContainsString('not a string in the translation catalogue', json_decode($refused->getJSON(), true)['error']);
+    }
+
+    /** The wording under review must not itself be run through the translator. */
+    public function testALookupIsNotTranslatedIntoTheLanguageBeingRead(): void
+    {
+        $data = json_decode($this->withHeaders(['X-Locale' => 'fr'])->get('api/i18n/string?str=' . rawurlencode('Journals'))->getJSON(), true);
+
+        $this->assertSame('Journals', $data['str']);
+        $this->assertSame('fr', $data['current']);
+        $this->assertSame('Écritures', array_column($data['locales'], null, 'code')['fr']['text']);
     }
 
     public function testLockedTerminologyIsIdentifiable(): void

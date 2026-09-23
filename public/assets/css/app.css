@@ -2579,3 +2579,56 @@ select.ss-open { outline: 2px solid var(--accent-line); outline-offset: 1px; }
 .mt-win-state.Underway { color: var(--urgent); }
 .mt-win-state.Finished { color: var(--faint); }
 .mt-win-state.Cancelled { color: var(--faint); text-decoration: line-through; }
+
+/* ---- Raise a label ----
+ *
+ * The "EN" badge on an untranslated label, and the popover a Cmd-click opens on
+ * it. The badge sits on the dark rail as well as on paper, so it states its own
+ * colours rather than inheriting whatever it is sitting in.
+ */
+.i18n-mark {
+  margin-inline-start: auto; font-size: 8.5px; letter-spacing: .06em; line-height: 1.6;
+  font-family: 'IBM Plex Mono', monospace; color: #D8A184; border: 1px solid var(--rail-edge);
+  border-radius: 3px; padding: 0 3px; cursor: pointer; flex: none;
+}
+.i18n-mark:hover { color: #F0C4AC; border-color: #6A5142; }
+.nav-group-label .i18n-mark { margin-inline-start: 6px; }
+
+.rz-shade { position: fixed; inset: 0; z-index: 1200; background: rgba(13, 27, 24, .10); }
+.rz-pop {
+  position: fixed; z-index: 1201; background: var(--card); border: 1px solid var(--border);
+  border-radius: 9px; box-shadow: 0 16px 38px rgba(13, 27, 24, .18); overflow: hidden;
+  text-align: start; display: flex; flex-direction: column; max-height: calc(100vh - 24px);
+}
+.rz-load { padding: 16px; font-size: 12px; color: var(--muted); }
+.rz-head { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-bottom: 1px solid #F0EEE9; background: var(--accent-haze); }
+.rz-title { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.rz-x { margin-inline-start: auto; border: 1px solid #DDDAD2; background: var(--card); border-radius: 6px; width: 24px; height: 24px; cursor: pointer; color: var(--muted); font-size: 13px; line-height: 1; }
+.rz-body { padding: 12px 13px; display: flex; flex-direction: column; gap: 11px; overflow-y: auto; }
+
+.rz-pair { display: flex; align-items: baseline; gap: 8px; }
+.rz-key { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #9AA39E; flex: 0 0 92px; }
+.rz-src { font-size: 12.5px; color: var(--ink); font-family: 'IBM Plex Mono', monospace; }
+.rz-now { font-size: 12.5px; color: var(--ink); display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+/* On paper the badge states the untranslated tone rather than the rail's. */
+.rz-en { margin-inline-start: 0; color: var(--urgent); border-color: #F1DACF; background: #FBEDE7; cursor: default; }
+
+.rz-locked { display: flex; flex-direction: column; gap: 8px; border: 1px solid #E9E1D0; background: #FBF6EA; border-radius: 8px; padding: 11px 12px; font-size: 11.5px; color: #7A6438; line-height: 1.55; }
+.rz-locked-head { font-size: 12px; font-weight: 600; }
+
+.rz-field { display: flex; flex-direction: column; gap: 5px; }
+.rz-label { font-size: 11px; color: var(--muted); }
+.rz-label em { font-style: normal; color: var(--faint); }
+.rz-field textarea, .rz-field input { font: inherit; font-size: 12.5px; color: var(--ink); border: 1px solid #DDDAD2; border-radius: 6px; padding: 7px 9px; background: var(--card); resize: vertical; }
+.rz-field textarea:focus, .rz-field input:focus { outline: none; border-color: var(--accent); }
+
+.rz-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.rz-chip { font: inherit; font-size: 11.5px; color: var(--muted); background: var(--card); border: 1px solid #DDDAD2; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.rz-chip.on { color: var(--accent); border-color: var(--accent); background: var(--accent-tint); font-weight: 600; }
+
+.rz-seg { display: flex; gap: 2px; background: #EDEBE5; border-radius: 7px; padding: 2px; }
+.rz-seg-btn { flex: 1 1 0; font: inherit; border: none; background: transparent; border-radius: 5px; padding: 5px 9px; font-size: 11.5px; color: #5C665F; cursor: pointer; }
+.rz-seg-btn.on { background: var(--card); box-shadow: 0 1px 2px rgba(0, 0, 0, .07); font-weight: 600; color: var(--ink); }
+
+.rz-note { font-size: 11.5px; color: var(--muted); line-height: 1.55; }
+.rz-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 11px 13px; border-top: 1px solid #F0EEE9; background: var(--accent-haze); }

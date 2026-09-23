@@ -237,6 +237,21 @@ class I18n
      */
     public function t(string $s): string
     {
+        // The "mark" fallback is the only one that adds to the wording rather than
+        // replacing it, so it is applied here and not in plain().
+        return $this->plain($s) . ($this->needsMark($s) ? ' ' . self::UNTRANSLATED_MARK : '');
+    }
+
+    /**
+     * The same translation without the "EN" marker appended.
+     *
+     * For a caller that renders the marker as its own element rather than as part
+     * of the wording — the sidebar draws it as a badge, which is both tidier and
+     * something a reader can click to raise the label. Such a caller pairs this
+     * with needsMark().
+     */
+    public function plain(string $s): string
+    {
         if ($this->isSource() || $s === '' || !self::isTranslatable($s)) {
             return $s;
         }
@@ -246,11 +261,17 @@ class I18n
             return $translated;
         }
 
-        return match ($this->fallback) {
-            'key'   => '[' . $s . ']',
-            'mark'  => $s . ' ' . self::UNTRANSLATED_MARK,
-            default => $s,
-        };
+        return $this->fallback === 'key' ? '[' . $s . ']' : $s;
+    }
+
+    /** Whether this string is showing English under the "mark" fallback. */
+    public function needsMark(string $s): bool
+    {
+        return $this->fallback === 'mark'
+            && !$this->isSource()
+            && $s !== ''
+            && self::isTranslatable($s)
+            && !self::hasIn($this->locale, $s);
     }
 
     /**

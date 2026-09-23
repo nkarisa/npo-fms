@@ -48,6 +48,45 @@ class Navigation
     ];
 
     /**
+     * The sidebar as the shell draws it: group headings and items in the reader's
+     * language, each carrying the English source it was translated from.
+     *
+     * The source travels with the label because it is the catalogue key — what a
+     * reader raises with the reviewer is "Dashboard", whatever their screen says.
+     * `mark` says the wording is still English under the organisation's marked
+     * fallback, so the shell can badge it and offer the raise from there.
+     *
+     * @param list<string> $hidden page keys to leave out, e.g. settings for
+     *                             someone with no section of it to see
+     */
+    public static function groups(I18n $i18n, array $hidden = []): array
+    {
+        $out = [];
+
+        foreach (self::GROUPS as $group => $items) {
+            $rows = [];
+            foreach ($items as $item) {
+                if (in_array($item['page'], $hidden, true)) {
+                    continue;
+                }
+                // wording() first: its translated label must win the union over the English one.
+                $rows[] = self::wording($i18n, $item['label']) + $item;
+            }
+            if ($rows !== []) {
+                $out[] = self::wording($i18n, $group) + ['items' => $rows];
+            }
+        }
+
+        return $out;
+    }
+
+    /** One label in the reader's language, with the key and the marker it needs. */
+    private static function wording(I18n $i18n, string $source): array
+    {
+        return ['label' => $i18n->plain($source), 'source' => $source, 'mark' => $i18n->needsMark($source)];
+    }
+
+    /**
      * What the topbar picker offers the person signed in: the entities they hold a
      * role at, then the consolidated view when they hold one at every entity
      * (App\Libraries\EntityScope). The one being worked in is marked current.

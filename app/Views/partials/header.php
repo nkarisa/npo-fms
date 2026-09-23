@@ -72,12 +72,11 @@ try {
       <button type="button" class="nav-toggle" id="nav-toggle" title="Collapse the menu" aria-label="Collapse the menu">‹</button>
     </div>
     <nav class="nav">
-      <?php foreach (Navigation::GROUPS as $group => $items): ?>
-        <div class="nav-group-label"><?= esc($group) ?></div>
-        <?php foreach ($items as $item): ?>
-          <?php if (in_array($item['page'], $hidden, true)) continue; ?>
-          <a class="nav-item <?= $item['page'] === $page ? 'active' : '' ?>" href="<?= $item['url'] ?>" aria-label="<?= esc($item['label']) ?>" data-rail>
-            <span class="nav-icon"><?= $item['icon'] ?></span><span class="nav-label"><?= esc($item['label']) ?></span>
+      <?php foreach (Navigation::groups($locale, $hidden) as $group): ?>
+        <div class="nav-group-label" data-i18n="<?= esc($group['source'], 'attr') ?>"><?= esc($group['label']) ?><?php if ($group['mark']): ?><span class="i18n-mark" title="Not yet translated — raise it with the reviewer"><?= esc(I18n::UNTRANSLATED_MARK) ?></span><?php endif; ?></div>
+        <?php foreach ($group['items'] as $item): ?>
+          <a class="nav-item <?= $item['page'] === $page ? 'active' : '' ?>" href="<?= $item['url'] ?>" aria-label="<?= esc($item['label']) ?>" data-rail data-i18n="<?= esc($item['source'], 'attr') ?>">
+            <span class="nav-icon"><?= $item['icon'] ?></span><span class="nav-label"><?= esc($item['label']) ?></span><?php if ($item['mark']): ?><span class="i18n-mark" title="Not yet translated — raise it with the reviewer"><?= esc(I18n::UNTRANSLATED_MARK) ?></span><?php endif; ?>
           </a>
         <?php endforeach; ?>
       <?php endforeach; ?>
