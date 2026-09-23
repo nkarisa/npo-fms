@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Api;
 
+use App\Libraries\Maintenance;
 use App\Libraries\SignIn;
 use App\Repositories\AuthRepository;
 use App\Repositories\RuleViolation;
@@ -24,6 +25,14 @@ use App\Repositories\UserRepository;
  *
  * Each address gets a limited number of attempts a minute at the password, a code
  * or a reset, on top of the per-account lockout.
+ *
+ * While the application is closed for maintenance (App\Libraries\Maintenance),
+ * only a holder of settings.maintenance can complete a sign-in. Everyone else is
+ * turned away once their password is accepted, rather than before: an application
+ * that answered differently before the password was checked would tell anyone who
+ * asked which addresses have accounts. What is booked, and what people are told
+ * while it is closed, is on every response here, so the sign-in screen can say so
+ * before anybody types anything.
  */
 class Auth extends BaseApiController
 {
@@ -130,6 +139,11 @@ class Auth extends BaseApiController
             return $this->refused($e);
         }
 
+        // Closed while the second step was being set up: it is set up, but this is
+        // as far as they go — the refusal says so and the recovery codes wait.
+        if ($refusal = $this->closedTo($userId)) {
+            return $refusal;
+        }
         $this->finish($userId, 'a newly set-up second step');
 
         return $this->json(['recoveryCodes' => $codes, 'message' => 'Your second sign-in step is set up.'] + $this->state());
@@ -271,6 +285,9 @@ class Auth extends BaseApiController
     /** Moves the session on once the password (or a link) has been accepted. */
     private function afterPassword(int $userId, string $stage, array $user)
     {
+        if ($refusal = $this->closedTo($userId)) {
+            return $refusal;
+        }
         SignIn::begin($userId, $stage);
 
         if ($stage === SignIn::DONE) {
@@ -292,6 +309,10 @@ class Auth extends BaseApiController
 
     private function finish(int $userId, string $how)
     {
+        // Closed while this sign-in was part way through: no further than here.
+        if ($refusal = $this->closedTo($userId)) {
+            return $refusal;
+        }
         // Past the password and the second step, but the password has expired: a new one first.
         if ((new AuthRepository())->passwordExpired($userId)) {
             SignIn::advance(SignIn::RENEW);
@@ -313,7 +334,9 @@ class Auth extends BaseApiController
         $userId = SignIn::userId();
         $auth = new AuthRepository();
 
-        $out = ['stage' => $stage ?? 'signedOut'] + Account::passwordRules();
+        // On every response, so the sign-in screen carries the closure or the window
+        // coming without having to ask a second endpoint for it.
+        $out = ['stage' => $stage ?? 'signedOut', 'maintenance' => Maintenance::notice()] + Account::passwordRules();
         if ($userId !== null && $stage !== SignIn::DONE) {
             $out['user'] = $auth->factorState($userId);
             $out['pending'] = session(SignIn::PENDING_METHOD);
@@ -328,6 +351,23 @@ class Auth extends BaseApiController
         }
 
         return $out;
+    }
+
+    /**
+     * Whether the application is closed to this person. Their sign-in is ended
+     * rather than left part way through: there is nothing they could do with it
+     * until the application opens, and the next attempt should start clean.
+     */
+    private function closedTo(int $userId)
+    {
+        if (Maintenance::admits((new UserRepository())->actorById($userId))) {
+            return null;
+        }
+        SignIn::end();
+
+        return $this->response->setStatusCode(503)
+            ->setHeader('Retry-After', '600')
+            ->setJSON(['error' => Maintenance::refusal()] + $this->state());
     }
 
     private function outOfStep()

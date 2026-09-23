@@ -13,8 +13,8 @@ use Config\Auth;
  * need not set approval bands, and the M-Pesa credentials, payroll and users each
  * have a permission of their own. A section is shown to anyone holding one of its
  * `see` permissions or the one that changes it; settings.view shows the everyday
- * sections read only. Payroll, Integrations, Users, Roles and the audit log are
- * shown to nobody else.
+ * sections read only. Payroll, Integrations, Users, Roles, Maintenance and the
+ * audit log are shown to nobody else.
  *
  * Everything that serves or changes a section asks here — Api\Settings and the
  * endpoints the sections save through, the sidebar and the Settings page itself —
@@ -47,6 +47,10 @@ final class SettingsAccess
         'Language and translation' => ['icon' => '⌾', 'see' => [self::VIEW], 'edit' => 'settings.organisation'],
         'Users'                    => ['icon' => '◉', 'see' => [], 'edit' => 'users.manage'],
         'Roles'                    => ['icon' => '◎', 'see' => [], 'edit' => 'users.manage'],
+        // Shown only to whoever holds the key to the door. Everybody else learns
+        // that the application is closing from the notification and the bar across
+        // the top of every page, not from a settings section they cannot act on.
+        'Maintenance'              => ['icon' => '⏻', 'see' => [], 'edit' => Maintenance::PERMISSION],
         'Audit log'                => ['icon' => '◷', 'see' => ['audit.view'], 'edit' => null],
     ];
 

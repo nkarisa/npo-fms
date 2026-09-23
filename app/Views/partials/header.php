@@ -10,6 +10,7 @@
 use App\Libraries\Brand;
 use App\Libraries\EntityScope;
 use App\Libraries\I18n;
+use App\Libraries\Maintenance;
 use App\Libraries\Navigation;
 use App\Libraries\SettingsAccess;
 use App\Libraries\Theme;
@@ -32,6 +33,10 @@ $brand = Brand::current();
 // palette is built rather than one here and another in the settings preview.
 $style = $theme === Theme::CUSTOM ? Theme::customStyle(Theme::currentCustom()) : '';
 $entities = Navigation::entities();
+// Closed for maintenance, or a window coming: on every page, drawn with the page
+// rather than fetched after it, so nobody starts work in the seconds before a
+// script could have told them the application is about to close.
+$maintenance = Maintenance::banner();
 // Settings is offered only to someone with a section of it to see.
 try {
     $hidden = SettingsAccess::current()->any() ? [] : ['settings'];
@@ -67,12 +72,11 @@ try {
       <button type="button" class="nav-toggle" id="nav-toggle" title="Collapse the menu" aria-label="Collapse the menu">‹</button>
     </div>
     <nav class="nav">
-      <?php foreach (Navigation::GROUPS as $group => $items): ?>
-        <div class="nav-group-label"><?= esc($group) ?></div>
-        <?php foreach ($items as $item): ?>
-          <?php if (in_array($item['page'], $hidden, true)) continue; ?>
-          <a class="nav-item <?= $item['page'] === $page ? 'active' : '' ?>" href="<?= $item['url'] ?>" aria-label="<?= esc($item['label']) ?>" data-rail>
-            <span class="nav-icon"><?= $item['icon'] ?></span><span class="nav-label"><?= esc($item['label']) ?></span>
+      <?php foreach (Navigation::groups($locale, $hidden) as $group): ?>
+        <div class="nav-group-label" data-i18n="<?= esc($group['source'], 'attr') ?>"><?= esc($group['label']) ?><?php if ($group['mark']): ?><span class="i18n-mark" title="Not yet translated — raise it with the reviewer"><?= esc(I18n::UNTRANSLATED_MARK) ?></span><?php endif; ?></div>
+        <?php foreach ($group['items'] as $item): ?>
+          <a class="nav-item <?= $item['page'] === $page ? 'active' : '' ?>" href="<?= $item['url'] ?>" aria-label="<?= esc($item['label']) ?>" data-rail data-i18n="<?= esc($item['source'], 'attr') ?>">
+            <span class="nav-icon"><?= $item['icon'] ?></span><span class="nav-label"><?= esc($item['label']) ?></span><?php if ($item['mark']): ?><span class="i18n-mark" title="Not yet translated — raise it with the reviewer"><?= esc(I18n::UNTRANSLATED_MARK) ?></span><?php endif; ?>
           </a>
         <?php endforeach; ?>
       <?php endforeach; ?>
@@ -134,4 +138,8 @@ try {
 
       </div>
     </header>
+    <div class="mt-bar <?= $maintenance === null ? '' : 'is-' . esc($maintenance['tone'], 'attr') ?>" id="mt-bar" role="status" <?= $maintenance === null ? 'hidden' : '' ?>>
+      <span class="mt-bar-mark" aria-hidden="true">⏻</span>
+      <span class="mt-bar-text"><strong id="mt-bar-title"><?= esc($maintenance['title'] ?? '') ?></strong> <span id="mt-bar-note"><?= esc($maintenance['note'] ?? '') ?></span></span>
+    </div>
     <div class="content" id="page-content">

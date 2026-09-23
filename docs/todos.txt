@@ -34,7 +34,7 @@ How to test a local development email server - Done
 
 Translate all hints and messages in the application for localization.
 
-App installer 
+App installer - Done
 
 Implement a consumable feature
 
@@ -42,13 +42,16 @@ Provide permission to restrict who sees what in the settings page - Done
 
 Propose how consolidation works when various entities would use difference currency?
 
-Allow switching a role (a priviledge permission)
+Allow switching a role (a priviledge permission) ***
 
-Expiry of password after a given period
-Never repeat previous passwords
+Expiry of password after a given period - Done
 
-Maintaince Mode 
+Never repeat previous passwords - Done
 
-Multiple attempts password locking
+Multiple attempts password locking - Done
+
+Unmasking password - Done
+
+Maintaince Mode - Done
 
 Show the password complexity policy on the reset-password screen - Done

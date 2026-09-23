@@ -298,7 +298,10 @@ class Settings extends BaseApiController
             'current'   => $this->i18n->code(),
             'dir'       => $this->i18n->dir(),
             'coverage'  => $this->i18n->coverage(),
-            'fallback'  => $this->i18n->fallbackMode(),
+            // The organisation's two language settings, as the section edits them —
+            // the fallback as it now stands, not the one this response was rendered
+            // under, which is in the locale block.
+            'fallback'  => $settings->fallbackMode(),
             'formatsLocked' => $settings->formatsLocked(),
             'locales'   => array_map(static fn ($l) => [
                 'code'     => $l['code'],

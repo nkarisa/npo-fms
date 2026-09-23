@@ -63,10 +63,10 @@
           <p class="page-blurb" style="max-width:620px;">Master account structure shared across every entity. Segment values for fund, programme, grant and funder are validated at posting.</p>
         </div>
         <div class="page-actions" style="margin-left:0;margin-inline-start:auto;">
-          <button type="button" class="btn" id="coa-template">Start from a template</button>
-          <button type="button" class="btn" id="coa-import">Import CSV</button>
+          ${data.canManage ? '<button type="button" class="btn" id="coa-template">Start from a template</button>' : ''}
+          ${data.canManage ? '<button type="button" class="btn" id="coa-import">Import CSV</button>' : ''}
           <button type="button" class="btn" id="coa-export">Export</button>
-          <button type="button" class="btn btn-primary" id="coa-new">+ New account</button>
+          ${data.canManage ? '<button type="button" class="btn btn-primary" id="coa-new">+ New account</button>' : ''}
         </div>
       </div>
       <div id="coa-stats"></div>
@@ -175,12 +175,13 @@
       }
       openAccount(data.accounts.find(a => a.code === row.dataset.code));
     }));
-    document.getElementById('coa-new').addEventListener('click', () => openAccount(null));
-    document.getElementById('coa-export').addEventListener('click', exportCsv);
-    document.getElementById('coa-import').addEventListener('click', openImport);
-    document.getElementById('coa-template').addEventListener('click', openTemplates);
-    const first = document.getElementById('coa-template-first');
-    if (first) first.addEventListener('click', openTemplates);
+    // The write actions are only rendered for a holder of chart.manage, so bind what is there.
+    const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+    on('coa-new', () => openAccount(null));
+    on('coa-export', exportCsv);
+    on('coa-import', openImport);
+    on('coa-template', openTemplates);
+    on('coa-template-first', openTemplates);
   }
 
   async function reload() {
@@ -252,7 +253,7 @@
         <button type="button" class="jd-x" data-close aria-label="Close" style="margin-inline-start:auto;">✕</button>
       </div>
       <form id="coa-form" style="flex:1;overflow-y:auto;padding:18px 22px 24px;display:flex;flex-direction:column;gap:18px;">
-        ${locked ? '<div class="jd-msg idle">Only the Finance Manager can change the chart. Switch actor in the account menu to make changes.</div>' : ''}
+        ${locked ? `<div class="jd-msg idle">${esc(data.role || 'Your role')} cannot change the chart of accounts — that needs a role with chart.manage. You can read the account here.</div>` : ''}
         <div class="coa-section">
           <div class="jd-caps">Identification</div>
           <div style="display:grid;grid-template-columns:118px 1fr;gap:10px;">
@@ -305,14 +306,20 @@
         <div class="jd-error" id="coa-error" hidden></div>
       </form>
       <div class="jd-actions" style="padding:13px 22px;">
-        ${editing && a.status !== 'Archived' ? '<button type="button" class="btn" id="coa-archive" style="border-color:#E0D7D2;color:#8A6A5C;">Archive</button>' : ''}
-        <button type="button" class="btn" data-close style="margin-inline-start:auto;">Cancel</button>
-        <button type="button" class="btn btn-primary" id="coa-save" ${locked ? 'disabled' : ''}>${editing ? 'Save changes' : 'Create account'}</button>
+        ${editing && a.status !== 'Archived' && !locked ? '<button type="button" class="btn" id="coa-archive" style="border-color:#E0D7D2;color:#8A6A5C;">Archive</button>' : ''}
+        <button type="button" class="btn" data-close style="margin-inline-start:auto;">${locked ? 'Close' : 'Cancel'}</button>
+        ${locked ? '' : `<button type="button" class="btn btn-primary" id="coa-save">${editing ? 'Save changes' : 'Create account'}</button>`}
       </div>`);
 
     const form = panel.querySelector('#coa-form');
     const error = panel.querySelector('#coa-error');
     const fail = (msg) => { error.textContent = msg; error.hidden = false; };
+
+    // Without chart.manage the drawer reads the account and nothing in it can be typed into.
+    if (locked) {
+      form.querySelectorAll('input, select, textarea').forEach(el => { el.disabled = true; });
+      return;
+    }
 
     panel.querySelector('#coa-save').addEventListener('click', async () => {
       error.hidden = true;
@@ -431,10 +438,12 @@
     return `
       <div class="coa-empty">
         Nothing in the chart yet. Nothing can be posted until there is at least one postable account.
+        ${data.canManage ? `
         <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
           <button type="button" class="btn btn-primary" id="coa-template-first">Start from a template</button>
         </div>
-        <div style="margin-top:10px;font-size:11.5px;">Or import a CSV, or add accounts one at a time. A template can be cloned later too — it fills the gaps and leaves what is already there.</div>
+        <div style="margin-top:10px;font-size:11.5px;">Or import a CSV, or add accounts one at a time. A template can be cloned later too — it fills the gaps and leaves what is already there.</div>`
+        : '<div style="margin-top:10px;font-size:11.5px;">Opening the chart needs a role with chart.manage.</div>'}
       </div>`;
   }
 
@@ -445,9 +454,10 @@
     renderTemplates();
     if (!ct.templates) {
       try {
+        // canManage is the same chart.manage flag /api/coa already answered with, so the
+        // page keeps one source of truth for it rather than caching a second copy here.
         const res = await UI.fetchJSON('/api/coa/templates');
         ct.templates = res.templates;
-        ct.canManage = res.canManage;
       } catch (err) {
         UI.toast(err.message);
         return;
@@ -685,7 +695,7 @@
       </div>
       <div style="flex:0 0 auto;padding:14px 20px;border-top:1px solid #E4E2DB;display:flex;gap:8px;justify-content:flex-end;">
         <button type="button" class="btn" id="ct-back" style="margin-inline-end:auto;">Back to adjust</button>
-        <button type="button" class="btn btn-primary" id="ct-go" ${ct.busy || !shown.length ? 'disabled' : ''}>${ct.busy ? 'Opening…' : `Adopt ${shown.length} ${shown.length === 1 ? 'account' : 'accounts'}`}</button>
+        <button type="button" class="btn btn-primary" id="ct-go" ${ct.busy || !shown.length || !data.canManage ? 'disabled' : ''}>${ct.busy ? 'Opening…' : `Adopt ${shown.length} ${shown.length === 1 ? 'account' : 'accounts'}`}</button>
       </div>`);
 
     panel.querySelector('#ct-back').addEventListener('click', () => { ct.step = 2; renderTemplates(); });
@@ -804,7 +814,7 @@
     });
     panel.querySelector('#ci-commit').addEventListener('click', async () => {
       if (!importable) { UI.toast('Nothing in this file can be imported — every row was rejected.'); return; }
-      if (!data.canManage) { UI.toast('Only the Finance Manager can change the chart of accounts.'); return; }
+      if (!data.canManage) { UI.toast('Importing accounts needs a role with chart.manage.'); return; }
       try {
         const res = await UI.postJSON('/api/coa/import', { rows: mappedRows(), mode: ci.mode, fileName: ci.fileName, commit: true });
         drawerEl.hidden = true;

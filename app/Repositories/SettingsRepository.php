@@ -6,6 +6,7 @@ use App\Libraries\Brand;
 use App\Libraries\Clock;
 use App\Libraries\EntityCalendar;
 use App\Libraries\EntityScope;
+use App\Libraries\I18n;
 use App\Libraries\PasswordPolicy;
 use App\Libraries\Prototype;
 use App\Libraries\SettingsAccess;
@@ -59,6 +60,16 @@ final class SettingsRepository extends Repository
         'Bill coding, approval and payment release are three separate permissions and cannot be held together.',
         'Inter-fund transfers and sub-grants always need the Executive Director, regardless of amount.',
         'Auditors hold read-only access and cannot post, approve or change configuration.',
+    ];
+
+    /**
+     * How each fallback reads in the audit log: what a reader actually meets on a
+     * label the reviewer has not approved yet, not the key it is stored under.
+     */
+    public const FALLBACK_CHANGES = [
+        'silent' => 'Untranslated strings show the English (UK) source, unmarked',
+        'mark'   => 'Untranslated strings show the English (UK) source, marked as untranslated',
+        'key'    => 'Untranslated strings show the string key, for translators working through the catalogue',
     ];
 
     /** Held on the setting row so the seeded database and the screen say the same thing. */
@@ -227,6 +238,23 @@ final class SettingsRepository extends Repository
             "SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = 'formatsLocked'",
             [$this->lookups->headOfficeCode()]
         ) ?? '1') === '1');
+    }
+
+    /**
+     * How a string with no approved translation is shown, for everybody: the English
+     * source silently, the English source marked as untranslated, or the string key.
+     * One organisation setting rather than a browser preference — see I18n::fallback().
+     */
+    public function fallbackMode(): string
+    {
+        return $this->cached('i18n-fallback', function () {
+            $held = $this->value(
+                'SELECT s.value FROM {settings} s JOIN {entities} e ON e.id = s.entity_id WHERE e.code = ? AND s.key = ?',
+                [$this->lookups->headOfficeCode(), I18n::FALLBACK_KEY]
+            );
+
+            return I18n::isFallback($held) ? (string) $held : I18n::DEFAULT_FALLBACK;
+        });
     }
 
     /** Segments with how many values each currently has. */
@@ -526,7 +554,7 @@ final class SettingsRepository extends Repository
      * anything is written.
      *
      * @param array $draft any of: organisation, ledger, toggles, segments, currencies,
-     *        approvals, payroll {benefits, grades}, users {email: role}, language {formatsLocked}
+     *        approvals, payroll {benefits, grades}, users {email: role}, language {formatsLocked, fallback}
      * @param (callable(string): bool)|null $mayEdit whether the author may change a section
      * @return list<array{area: string, what: string}> the changes made, as the audit log records them
      * @throws NotPermitted when the draft changes a section $mayEdit refuses
@@ -629,6 +657,18 @@ final class SettingsRepository extends Repository
                     fn () => $this->setSetting('formatsLocked', $locked ? '1' : '0'));
             }
         }
+        if (isset($draft['language']['fallback'])) {
+            $from('language');
+            $mode = (string) $draft['language']['fallback'];
+            if (!I18n::isFallback($mode)) {
+                throw new RuleViolation('Choose how an untranslated string is shown from the options offered.');
+            }
+            if ($mode !== $this->fallbackMode()) {
+                // Named as the reader meets it rather than by its key: the audit log is
+                // read by people asking why a label changed, not by translators.
+                $plan('Language', self::FALLBACK_CHANGES[$mode], fn () => $this->setSetting(I18n::FALLBACK_KEY, $mode));
+            }
+        }
 
         foreach (array_keys($touched) as $changed) {
             if ($mayEdit !== null && !$mayEdit($changed)) {
@@ -693,7 +733,9 @@ final class SettingsRepository extends Repository
         $this->transaction(function () use ($name, $email, $short, $initials, $chosen, $plan, $role, $entities, $actorId, $now) {
             $userId = $this->insert('users', [
                 'email' => $email, 'name' => $name, 'short_name' => mb_substr($short, 0, 60), 'initials' => $initials,
-                'locale_id' => $this->value("SELECT id FROM {locales} WHERE code = 'en-GB'"), 'status' => 'invited', 'invited_at' => $now, 'created_at' => $now,
+                // No language chosen for them: an invited user reads in their browser's
+                // language until they pick one for themselves in the top bar.
+                'status' => 'invited', 'invited_at' => $now, 'created_at' => $now,
             ]);
             (new RoleRepository($this->db))->writeAccess($userId, $plan);
             $this->logChange('Users', $short . ' invited as ' . $role . ($entities === 'all' ? ' across all entities' : ' — ' . implode(', ', array_column($chosen, 'name'))), $actorId);
@@ -1254,6 +1296,12 @@ final class SettingsRepository extends Repository
             if ($next['maxAgeDays'] > 0) {
                 $this->db->table('users')->where('password_changed_at', null)->where('password_hash IS NOT NULL', null, false)
                     ->update(['password_changed_at' => date('Y-m-d H:i:s')]);
+            }
+            // Turning locking off lets anyone already locked out back in, rather than
+            // leaving them to wait out a rule that no longer exists.
+            if ($next['lockAttempts'] === 0) {
+                $this->db->table('users')->where('locked_until IS NOT NULL', null, false)
+                    ->update(['failed_sign_ins' => 0, 'locked_until' => null]);
             }
         });
     }

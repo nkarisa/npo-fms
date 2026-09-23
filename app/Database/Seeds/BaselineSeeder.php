@@ -71,6 +71,7 @@ class BaselineSeeder extends Seeder
         'settings.banking'      => 'Change bank statement formats and the cash accounts they are read into',
         'settings.integrations' => 'Change the M-Pesa integration and the mail server, credentials included',
         'settings.payroll'      => 'Change payroll benefits, grades and the accounts payroll pays from',
+        'settings.maintenance'  => 'Close the application for maintenance, and schedule maintenance periods',
         'audit.view'            => 'Read the settings audit log',
         'period.close'          => 'Confirm the management review and close a period',
         'period.authorise'      => 'Authorise a period close and reopen a closed period',
@@ -86,7 +87,7 @@ class BaselineSeeder extends Seeder
     public const ROLE_PERMISSIONS = [
         'Finance Manager'     => ['ledger.view', 'journal.prepare', 'journal.approve', 'journal.post', 'requisition.raise', 'payroll.view',
             'settings.view', 'settings.organisation', 'settings.ledger', 'settings.approvals', 'settings.banking', 'settings.integrations', 'settings.payroll',
-            'period.close', 'chart.manage', 'users.manage', 'audit.view'],
+            'settings.maintenance', 'period.close', 'chart.manage', 'users.manage', 'audit.view'],
         'Executive Director'  => ['ledger.view', 'journal.approve', 'journal.post', 'payroll.view', 'settings.view', 'period.authorise', 'audit.view'],
         'Senior Accountant'   => ['ledger.view', 'journal.prepare', 'requisition.raise', 'settings.view'],
         'Accountant'          => ['ledger.view', 'journal.prepare', 'requisition.raise', 'settings.view'],

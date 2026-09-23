@@ -183,10 +183,22 @@ log in words. The rules live in
 | Refuse common passwords, also with digits or symbols added at the end | on/off | on |
 | Earlier passwords that cannot be used again (the current one counts as the first) | 0–24 | 0 |
 | Days a password lasts | 0 (never) or 30–365 | 0 |
+| Wrong passwords in a row before the account is locked | 0 (never) or 3–20 | `auth.maxFailedSignIns` (5) |
+| Minutes a locked account stays locked | 5–1440 | `auth.lockMinutes` (15) |
 
 The matrix and the history are checked whenever a password is chosen: from an
 invitation or reset link, on My account, at `renew`, and by the installer. They
 never apply at sign-in, so tightening them locks nobody out.
+
+The last two rules are not about the password itself but about guessing at it, and
+are the ones read at sign-in
+([AuthRepository::attempt()](../app/Repositories/AuthRepository.php)). Wrong
+passwords in a row are counted per account; enough of them lock it for the minutes
+set, and the right password waits the lock out. A password reset unlocks the
+account straight away, and a sign-in that works clears the count. Setting the
+attempts to 0 stops locking altogether — the count is still kept and every refusal
+still reaches the audit log — and saving that releases everyone locked out at the
+time, rather than leaving them to wait out a rule that no longer exists.
 
 Expiry is the exception. Once a password is older than the limit, the person
 chooses a new one at their next sign-in, after the second step (the `renew` stage).
@@ -214,7 +226,7 @@ and demo instances still work without mail. The screen says when this has happen
 
 | Threat | Protection |
 |---|---|
-| Guessing one person's password | After `auth.maxFailedSignIns` (5) wrong passwords in a row, the account is locked for `auth.lockMinutes` (15). A password reset unlocks it straight away. |
+| Guessing one person's password | After as many wrong passwords in a row as the password policy allows (Settings → Users, standard 5), the account is locked for the minutes it sets (standard 15). A password reset unlocks it straight away. |
 | Guessing across many accounts | Each IP address gets 10 attempts a minute at the password, codes, resets and links. After that it gets `429`. |
 | Finding out who has an account | An unknown email and a wrong password get the same message and take the same time. A dummy hash is checked when there is no account. (The locked-account message does show that the account exists.) |
 | A stolen copy of the database | Links, emailed codes and recovery codes are stored only as hashes. TOTP secrets are encrypted with the application key. |
@@ -263,6 +275,7 @@ each one is checked somewhere in the code. They cannot be added from the screen.
 | `settings.banking` | Change bank statement formats and the cash accounts they are read into |
 | `settings.integrations` | Change the M-Pesa integration and the mail server, credentials included |
 | `settings.payroll` | Change payroll benefits, grades and the accounts payroll pays from |
+| `settings.maintenance` | Close the application for maintenance, and schedule maintenance periods |
 | `audit.view` | Read the settings audit log |
 | `period.close` | Confirm the management review and close a period |
 | `period.authorise` | Authorise a period close and reopen a closed period |
@@ -284,6 +297,7 @@ Which permission shows and changes each section of Settings is set in one place,
 | Integrations | nobody else | `settings.integrations` |
 | Payroll | `payroll.view` | `settings.payroll` |
 | Users, Roles | nobody else | `users.manage` |
+| Maintenance | nobody else | `settings.maintenance` |
 | Audit log | `audit.view` | nobody |
 
 Holding the permission that changes a section also shows it. A section someone
@@ -291,6 +305,39 @@ cannot see is left out of what the API serves, data and all, and Settings is lef
 out of the sidebar for someone who can see no section. A settings save that would
 change a section its author cannot change is refused whole (403), with nothing
 applied.
+
+### Maintenance mode
+
+`settings.maintenance` is not only a settings permission: it is the key to the
+door. While the application is closed for maintenance
+([app/Libraries/Maintenance.php](../app/Libraries/Maintenance.php)), its holders
+are the only people who get in. The Maintenance section is shown to them alone —
+`settings.view` does not reach it, and `Api\Maintenance::index` refuses anyone
+else — so what the rest of the organisation is told about a closure comes through
+the notification, the bar on every page and the maintenance screen, not the
+section.
+
+The application is closed either by hand, from **Settings → Maintenance**, or by a
+window booked there in advance, which closes it by itself while it runs and opens
+it again at the end. Either way:
+
+- **Already signed in.** `SignedIn` checks each request against the person signed
+  in — not anyone they are acting as — and everybody else gets a plain
+  "Closed for maintenance" page (`503`) instead of the application. Their session
+  is left alone, so they carry on from where they were once it opens. An API
+  request is answered `503` with an `X-Maintenance` header, which the page scripts
+  turn into a trip to that page.
+- **Signing in.** `Api\Auth` turns everybody else away *after* their password has
+  been accepted, never before, so a closed application still gives nothing away
+  about which addresses have accounts. The part-way session is ended rather than
+  left hanging. The closure, and any window coming, is on every `/api/auth`
+  response, so the sign-in screen says so before anybody types.
+- **Nothing touches the ledger.** Maintenance mode stops people reaching the
+  application; the books are unchanged either way.
+
+Booking a window notifies every account at once, and the notice is carried on
+every page for the seven days before it starts. Every switch, booking and
+cancellation is in the settings audit log under Maintenance.
 
 ### Roles
 
@@ -350,7 +397,7 @@ overridden in `.env` as `auth.<name>` (or `auth_<name>` in an environment variab
 | `issuer` | the organisation's brand name | The name an authenticator app files the account under |
 | `emailCodeMinutes` | 10 | How long an emailed code works |
 | `maxCodeAttempts` | 5 | Wrong codes allowed per code and per sign-in |
-| `maxFailedSignIns` / `lockMinutes` | 5 / 15 | Wrong passwords before a lockout, and how long it lasts |
+| `maxFailedSignIns` / `lockMinutes` | 5 / 15 | The standard wrong passwords before a lockout and how long it lasts, until a password policy is saved in Settings → Users |
 | `idleMinutes` | 30 | Idle time before a session ends |
 | `inviteHours` / `resetHours` | 168 / 1 | How long invitation and reset links work |
 | `minPasswordLength` | 12 | The standard minimum length, until a password policy is saved in Settings → Users |

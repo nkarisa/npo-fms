@@ -399,6 +399,7 @@ final class Installer
         $row('formatsLocked', 'language', '1',
             "Hold numbers, dates and currency in the organisation's reporting locale",
             'Recommended. Finance staff, auditors and funders read the same figure the same way in every language, so a report cannot be misread as a different amount.');
+        $row(I18n::FALLBACK_KEY, I18n::FALLBACK_KIND, I18n::DEFAULT_FALLBACK, I18n::FALLBACK_LABEL, I18n::FALLBACK_NOTE);
     }
 
     /** The approval policy the instance starts with. */
@@ -476,13 +477,14 @@ final class Installer
     private function firstUser(array $in, array $entityIds, array $roleIds, string $now): int
     {
         [$first, $last] = explode(' ', trim($in['userName']), 2) + [1 => ''];
-        $localeId = $this->db->table('locales')->select('id')->where('code', BaselineSeeder::LOCALE['code'])->get()->getRowArray()['id'] ?? null;
 
         $userId = $this->insert('users', [
             'email' => mb_strtolower($in['userEmail']), 'name' => $in['userName'],
             'short_name' => mb_substr($first, 0, 1) . '. ' . $last,
             'initials' => mb_strtoupper(mb_substr($first, 0, 1) . mb_substr($last, 0, 1)),
-            'locale_id' => $localeId, 'status' => 'active', 'created_at' => $now,
+            // locale_id is left null: the interface language is the reader's own,
+            // recorded when they pick one in the top bar. Until then the browser answers.
+            'status' => 'active', 'created_at' => $now,
             'password_hash' => $in['userPassword'] === '' ? null : password_hash($in['userPassword'], PASSWORD_DEFAULT),
             'password_changed_at' => $in['userPassword'] === '' ? null : $now,
         ]);

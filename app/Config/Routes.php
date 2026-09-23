@@ -281,6 +281,12 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->post('settings/conversion/preview', 'Api\Conversion::preview');
     $routes->post('settings/conversion/load', 'Api\Conversion::load');
     $routes->post('settings/conversion/discard', 'Api\Conversion::discard');
+    // Maintenance mode. Read by anyone who can see Settings, changed only by a
+    // holder of settings.maintenance, and never through the settings draft.
+    $routes->get('maintenance', 'Api\Maintenance::index');
+    $routes->post('maintenance', 'Api\Maintenance::set');
+    $routes->post('maintenance/windows', 'Api\Maintenance::schedule');
+    $routes->post('maintenance/windows/(:num)/cancel', 'Api\Maintenance::cancel/$1');
     $routes->get('mpesa', 'Api\Mpesa::index');
     $routes->post('mpesa', 'Api\Mpesa::save');
     $routes->post('mpesa/check', 'Api\Mpesa::check');
@@ -290,6 +296,8 @@ $routes->group('api', static function (RouteCollection $routes) {
     $routes->get('manual', 'Api\Manual::index');
     $routes->get('manual/image/(:segment)', 'Api\Manual::image/$1');
     $routes->get('i18n', 'Api\I18n::index');
+    $routes->post('i18n/locale', 'Api\I18n::choose');
+    $routes->get('i18n/string', 'Api\I18n::string');
     $routes->get('i18n/requests', 'Api\I18n::requests');
     $routes->post('i18n/requests', 'Api\I18n::raise');
     $routes->post('i18n/requests/(:segment)/approve', 'Api\I18n::approve/$1');

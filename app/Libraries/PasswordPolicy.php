@@ -21,6 +21,11 @@ use Throwable;
  * the standard below applies — twelve characters of any kind, which a passphrase
  * of a few words meets, with no history and no expiry.
  *
+ * One rule is not about the password at all but about guessing at it: how many
+ * wrong passwords in a row lock the account (`lockAttempts`, 0 for never) and for
+ * how long (`lockMinutes`). That one is read at sign-in, by
+ * App\Repositories\AuthRepository::attempt().
+ *
  * The matrix is checked when a password is chosen — from an invitation, a reset
  * link, My account or the installer — never at sign-in, so tightening it does not
  * lock anyone out: each person meets the new rules the next time they change
@@ -48,6 +53,8 @@ final class PasswordPolicy
         'kind'      => [0, 10],
         'history'   => [0, 24],
         'maxAgeDays' => [30, 365],
+        'lockAttempts' => [3, 20],
+        'lockMinutes'  => [5, 1440],
     ];
 
     /** Earlier passwords kept per person: as many as `history` can ever ask about. */
@@ -72,7 +79,7 @@ final class PasswordPolicy
     public static function standard(): array
     {
         return [
-            'minLength' => max(self::RANGES['minLength'][0], min(self::RANGES['minLength'][1], config(Auth::class)->minPasswordLength)),
+            'minLength' => self::within('minLength', config(Auth::class)->minPasswordLength),
             'distinct'  => 5,
             'kinds'     => 1,
             'upper'     => 0,
@@ -83,6 +90,8 @@ final class PasswordPolicy
             'common'    => true,
             'history'   => 0,
             'maxAgeDays' => 0,
+            'lockAttempts' => self::within('lockAttempts', config(Auth::class)->maxFailedSignIns),
+            'lockMinutes'  => self::within('lockMinutes', config(Auth::class)->lockMinutes),
         ];
     }
 
@@ -133,6 +142,9 @@ final class PasswordPolicy
         $out['history'] = $whole($in['history'] ?? 0, 'history', 'The number of earlier passwords that cannot be used again');
         // 0 for never; otherwise at least a month, so nobody is asked more often than that.
         $out['maxAgeDays'] = (string) ($in['maxAgeDays'] ?? '0') === '0' ? 0 : $whole($in['maxAgeDays'], 'maxAgeDays', 'The days a password lasts (0 for never)');
+        // 0 for never locking; otherwise at least three tries, so a typo or two is not a lockout.
+        $out['lockAttempts'] = (string) ($in['lockAttempts'] ?? '0') === '0' ? 0 : $whole($in['lockAttempts'], 'lockAttempts', 'The wrong passwords before an account is locked (0 for never)');
+        $out['lockMinutes'] = $whole($in['lockMinutes'] ?? $out['lockMinutes'], 'lockMinutes', 'The minutes a locked account stays locked');
         $out['personal'] = filter_var($in['personal'] ?? true, FILTER_VALIDATE_BOOLEAN);
         $out['common'] = filter_var($in['common'] ?? true, FILTER_VALIDATE_BOOLEAN);
 
@@ -224,6 +236,9 @@ final class PasswordPolicy
         $policy = self::merged($policy);
         $words = array_column(self::describe($policy), 'text');
         $words[] = $policy['maxAgeDays'] > 0 ? 'Changed every ' . $policy['maxAgeDays'] . ' days' : 'Never expires';
+        $words[] = $policy['lockAttempts'] > 0
+            ? 'Locked for ' . self::lockFor($policy['lockMinutes']) . ' after ' . $policy['lockAttempts'] . ' wrong passwords'
+            : 'Never locked for wrong passwords';
 
         return implode(' · ', $words);
     }
@@ -242,7 +257,41 @@ final class PasswordPolicy
         return strtotime($changedAt) + $days * 86400;
     }
 
+    /**
+     * The lockout in force: how many wrong passwords in a row lock an account, and
+     * for how many minutes. `attempts` of 0 means an account is never locked —
+     * wrong passwords are still counted and logged, but nothing closes the door.
+     *
+     * @return array{attempts: int, minutes: int}
+     */
+    public static function lockout(array $policy): array
+    {
+        $policy = self::merged($policy);
+
+        return ['attempts' => $policy['lockAttempts'], 'minutes' => $policy['lockMinutes']];
+    }
+
+    /** "15 minutes", "1 hour", "2 hours 30 minutes" — a lock's length in words. */
+    public static function lockFor(int $minutes): string
+    {
+        if ($minutes < 60) {
+            return $minutes . ' minutes';
+        }
+        $hours = intdiv($minutes, 60);
+        $rest = $minutes % 60;
+
+        return $hours . ($hours === 1 ? ' hour' : ' hours') . ($rest > 0 ? ' ' . $rest . ' minutes' : '');
+    }
+
     // ------------------------------------------------------------------
+
+    /** A number from Config\Auth brought inside what the policy allows. */
+    private static function within(string $range, int $value): int
+    {
+        [$low, $high] = self::RANGES[$range];
+
+        return max($low, min($high, $value));
+    }
 
     /** A held policy over the standard, so a rule added later has its standard value. */
     private static function merged(array $held): array

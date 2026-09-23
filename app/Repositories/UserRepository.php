@@ -101,6 +101,36 @@ final class UserRepository extends Repository
         return null;
     }
 
+    /**
+     * The interface language this user reads in, as they last chose it.
+     *
+     * Held against the user rather than the browser: two people signing in at the
+     * same machine each read in their own language, and someone who switches at
+     * the office still reads in that language at home. Null until they have ever
+     * chosen, which is everyone on a fresh install — the browser's Accept-Language
+     * answers for them until they do.
+     */
+    public function localeOf(int $userId): ?string
+    {
+        return $this->cached('locale-' . $userId, fn () => $this->value(
+            'SELECT l.code FROM {users} u JOIN {locales} l ON l.id = u.locale_id WHERE u.id = ?',
+            [$userId]
+        ));
+    }
+
+    /** Records the language a user chose in the top bar. Nothing else about them moves. */
+    public function chooseLocale(int $userId, string $code): void
+    {
+        $localeId = $this->value('SELECT id FROM {locales} WHERE code = ?', [$code]);
+        if ($localeId === null) {
+            throw new RuleViolation('"' . $code . '" is not a language this instance publishes.');
+        }
+
+        $this->transaction(fn () => $this->db->table('users')
+            ->where('id', $userId)
+            ->update(['locale_id' => $localeId, 'updated_at' => Clock::timestamp()]));
+    }
+
     public function actor(string $email): ?array
     {
         foreach ($this->actors() as $a) {

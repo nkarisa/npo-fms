@@ -17,7 +17,12 @@ class Coa extends BaseApiController
 
     private const TYPE_LABEL = ['All' => 'All', 'Asset' => 'Assets', 'Liability' => 'Liabilities', 'Equity' => 'Funds', 'Income' => 'Income', 'Expense' => 'Expenditure'];
 
-    /** Only the Finance Manager changes the chart. */
+    /**
+     * Adding, changing, importing and archiving an account all need this one
+     * permission. It is the Finance Manager's by default, but it is a permission
+     * and not a role: any role granted it maintains the chart, and a Finance
+     * Manager whose role has it removed no longer can.
+     */
     private const PERMISSION = 'chart.manage';
 
     /** Roll leaf balances up to their headings, following the chart's depth-first order. */
@@ -73,6 +78,7 @@ class Coa extends BaseApiController
             'archived'   => count(array_filter($list, fn ($a) => $a['status'] === 'Archived')),
             'lastEdited' => $repo->lastEdited(),
             'canManage'  => $this->canManage(),
+            'role'       => $this->actor()['role'],
             'codeLength' => ChartRepository::CODE_LENGTH,
             'options'    => [
                 'parents'      => array_merge(['— (top level)'], array_map(fn ($a) => $a['code'] . ' · ' . $a['name'], array_filter($list, fn ($a) => $a['level'] < 2))),
@@ -301,6 +307,6 @@ class Coa extends BaseApiController
 
     private function forbidden()
     {
-        return $this->response->setStatusCode(403)->setJSON(['error' => $this->actor()['role'] . ' cannot change the chart of accounts. The Finance Manager maintains it.']);
+        return $this->denied($this->actor()['role'] . ' cannot add, change or archive accounts. That needs a role with ' . self::PERMISSION . '.');
     }
 }

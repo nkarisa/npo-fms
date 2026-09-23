@@ -42,6 +42,44 @@ class I18n extends BaseApiController
         ]);
     }
 
+    /**
+     * Records the language the signed-in user reads in — the top bar's switcher.
+     * Body: {locale: a published locale's code}.
+     *
+     * Held against the user, not the browser: switching here changes nothing for
+     * anybody else, including a colleague who signs in at the same machine
+     * afterwards. It is a reading preference and carries no authority, so it needs
+     * no permission beyond being signed in, and it moves no figure — amounts,
+     * dates and account codes stay in the reporting locale either way.
+     */
+    public function choose()
+    {
+        $code = trim((string) (($this->request->getJSON(true) ?? [])['locale'] ?? ''));
+        if (!I18nLib::isKnown($code)) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'error' => $code === '' ? 'Name the language to read in.' : '"' . $code . '" is not a language this instance publishes.',
+            ]);
+        }
+
+        $id = \App\Libraries\SignIn::userId();
+        if ($id === null) {
+            return $this->denied('Sign in to choose the language you read in.');
+        }
+
+        try {
+            (new \App\Repositories\UserRepository())->chooseLocale($id, $code);
+        } catch (RuleViolation $e) {
+            return $this->refused($e);
+        }
+
+        // Re-read so the response describes the language actually stored.
+        $this->i18n = new I18nLib($code, I18nLib::fallback());
+
+        return $this->json([
+            'note' => 'Saved against your account. You will read in this language on any machine you sign in at, and nobody else\'s language changes.',
+        ]);
+    }
+
     private function localeRow(array $l): array
     {
         $missing = I18nLib::missing($l['code']);
@@ -135,6 +173,57 @@ class I18n extends BaseApiController
                 ? 'Held. Amounts, dates and percentages render exactly as posted, in every language, on screen and in every export.'
                 : 'Not held. The same posted amount will appear in different notations to different users — a reconciliation risk on any figure a funder queries.',
         ];
+    }
+
+    /**
+     * One catalogue string, as each language currently renders it.
+     *
+     * What the raise popover needs when a reader Cmd-clicks a label anywhere in
+     * the shell: the wording they are looking at, whether it is locked, and which
+     * languages already have it — so somebody reading English can still raise a
+     * French label against its reviewer of record.
+     */
+    public function string()
+    {
+        // Named by ?str= rather than a path segment so that wording containing a
+        // slash stays addressable. Naming nothing is a read with nothing behind
+        // it, and refuses with its reason like any other.
+        $str = trim((string) $this->request->getGet('str'));
+        if ($str === '') {
+            return $this->response->setStatusCode(404)->setJSON([
+                'error' => 'Name the string whose translations you want, as ?str=. Only wording in the language catalogue can be raised.',
+            ]);
+        }
+
+        $lock = I18nLib::lockOn($str);
+        if (!I18nLib::isTranslatable($str) && $lock === null) {
+            return $this->response->setStatusCode(404)->setJSON(['error' => '"' . $str . '" is not a string in the translation catalogue.']);
+        }
+
+        // Deliberately not through json(): every string below is the *subject* of
+        // translation rather than chrome around it, so running the response
+        // translator over it would rewrite the very wording being reviewed.
+        return $this->response->setJSON([
+            'str'     => $str,
+            'locked'  => $lock === null ? null : ['note' => $lock['reason'], 'unlock' => $lock['unlock']],
+            'reasons' => self::REPORT_REASONS,
+            'current' => $this->i18n->code(),
+            'source'  => I18nLib::SOURCE_LOCALE,
+            'locales' => array_map(static function ($l) use ($str, $lock) {
+                $text = $lock !== null
+                    ? ($lock['tr'][$l['code']] ?? null)
+                    : (new TranslationRepository())->translation($l['code'], $str);
+
+                return [
+                    'code'       => $l['code'],
+                    'native'     => $l['native'],
+                    'label'      => $l['label'],
+                    'reviewer'   => $l['reviewer'],
+                    'translated' => $text !== null && $text !== '',
+                    'text'       => $text ?? $str,
+                ];
+            }, I18nLib::targets()),
+        ]);
     }
 
     // ---- Raise a label ----

@@ -146,9 +146,14 @@ final class InstallWizardTest extends CIUnitTestCase
         $this->assertSame(['installed', false, 'Mara Trust — Head Office'], [$listed['state'], $listed['usable'], $listed['organisation']]);
     }
 
+    /**
+     * Installed under a table prefix, which the wizard offers on its first step:
+     * every table the install reads back is the prefixed one. The done screen names
+     * the administrator to sign in as, which is read with a query of its own.
+     */
     public function testACopyOfTheDemonstrationOrganisationSkipsTheOrganisationSteps(): void
     {
-        $this->toData();
+        $this->toData('fx_');
         $this->assertSame('review', $this->send('post', 'api/install/data', ['data' => 'demo'])['step']);
         // Back from its review is the choice, not the first user it never asked for.
         $this->assertSame('data', $this->send('post', 'api/install/back')['step']);
@@ -157,8 +162,11 @@ final class InstallWizardTest extends CIUnitTestCase
         $done = $this->write();
         $this->assertTrue($done['done']['demo']);
         $this->assertSame('optional', EnvFile::value('auth.mfaRequired'));
-        $db = $this->installed();
+        $this->assertStringContainsString('admin@elog.or.ke', $done['done']['user']);
+        $this->assertSame('fx_', EnvFile::value('database.default.DBPrefix'));
+        $db = $this->installed('fx_');
         $this->assertGreaterThan(1, $db->table('entities')->countAllResults());
+        $this->assertContains('fx_users', $db->listTables());
         $db->close();
     }
 
@@ -187,10 +195,10 @@ final class InstallWizardTest extends CIUnitTestCase
     }
 
     /** Unlocked, on SQLite, with a new database created and accepted. */
-    private function toData(): void
+    private function toData(string $prefix = ''): void
     {
         $this->unlock();
-        $this->send('post', 'api/install/server', ['driver' => 'SQLite3']);
+        $this->send('post', 'api/install/server', ['driver' => 'SQLite3', 'prefix' => $prefix]);
         $this->send('post', 'api/install/database', ['create' => true, 'database' => $this->name]);
     }
 
@@ -204,9 +212,12 @@ final class InstallWizardTest extends CIUnitTestCase
         return $this->send('post', 'api/install/finish');
     }
 
-    private function installed()
+    private function installed(string $prefix = '')
     {
-        return DatabaseConfig::connect(DatabaseProbe::config(['driver' => 'SQLite3', 'database' => WRITEPATH . $this->name . '.sqlite']), false);
+        return DatabaseConfig::connect(
+            DatabaseProbe::config(['driver' => 'SQLite3', 'database' => WRITEPATH . $this->name . '.sqlite', 'prefix' => $prefix]),
+            false
+        );
     }
 
     /** A request, carrying the session on from the last one. Returns the decoded body. */

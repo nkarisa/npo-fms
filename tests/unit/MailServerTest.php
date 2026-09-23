@@ -120,9 +120,12 @@ final class MailServerTest extends CIUnitTestCase
         $this->assertStringContainsString($says, $this->json($this->withBodyFormat('json')->post('api/mail', $body), 422)['error']);
     }
 
+    /** Whoever the test is signed in as: a test message goes to them. */
     private function me(): string
     {
-        return (string) db_connect()->table('users')->where('id', (new \App\Repositories\Lookups())->settingsManagerId())->get()->getRow()->email;
+        $id = (new \App\Repositories\Lookups())->holderOf(\App\Libraries\Installer::FIRST_ROLE);
+
+        return (string) db_connect()->table('users')->where('id', $id)->get()->getRow()->email;
     }
 
     private function save(array $body): array
