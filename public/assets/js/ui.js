@@ -658,14 +658,20 @@ const UI = (() => {
   }
 
   function approveJournal() {
-    const { journal, form } = jd;
+    const { journal } = jd;
     if (jd.dirty) {
       showJournalError('Approval posts the entry as it was submitted. Close without saving, or save the changes and have them approved again.');
       return;
     }
     return journalAction(async () => {
       const data = await postJSON(`/api/journals/${encodeURIComponent(journal.ref)}/approve`);
-      return { journal: data.journal, message: `${journal.ref} · approved and posted by ${form.preparer}.` };
+      // A signature that did not finish the ladder posts nothing: say what it did
+      // and who the entry is waiting for (docs/approvals.md).
+      const ladder = data.journal.approval;
+      return {
+        journal: data.journal,
+        message: ladder ? `${journal.ref} · signed — ${ladder.note}.` : `${journal.ref} · approved and posted.`,
+      };
     });
   }
 
