@@ -178,7 +178,7 @@ is planned.
 | Funds and grants | [Donor reports](#donor-reports) | ✅ |
 | Insight | [Cashflow forecast](#cashflow-forecast) | ✅ |
 | Insight | [Reports](#reports) | ✅ |
-| Insight | Settings | Coming soon ([Users and roles](#users-and-roles) ✅) |
+| Insight | [Settings](#settings) | ✅ (also [Users and roles](#users-and-roles), [Closing the application for maintenance](#closing-the-application-for-maintenance), [Audit log](#audit-log)) |
 
 > For a page-by-page overview of the entire interface, see
 > [`documentation.md`](documentation.md).
@@ -3055,6 +3055,490 @@ nothing reaches 1220 until the advance is later issued.
 
 ---
 
+## Settings
+
+Settings is where the organisation configures the ledger it works in: its
+registered details and its entities, the reporting framework and posting
+controls, the accounts the system posts to on its own behalf, the coding
+segments and funds every posting carries, currencies, tax rates, payment
+terms, the approval ladders and procurement threshold, bank-statement
+formats, opening balances for a new ledger, the M-Pesa and email
+integrations, the payroll scale, the application's name and colours, and its
+languages. **Users**, **Roles**, **Maintenance** and the **Audit log** live
+here too, and are written up in their own sections: see
+[Users and roles](#users-and-roles), [Closing the application for
+maintenance](#closing-the-application-for-maintenance) and
+[Audit log](#audit-log).
+
+- **Page:** *Settings* (`http://localhost:8090/settings`)
+- **Who can change it:** nobody sees a section they hold no permission for —
+  it is simply missing from the left-hand list, and someone who can see no
+  section at all does not have **Settings** in their sidebar. `settings.view`
+  shows the everyday sections (Organisation, Ledger, Segments, Currencies,
+  Taxes, Terms and reminders, Approvals, Bank statements, Opening balances,
+  Appearance, Language and translation) read only; `settings.organisation`,
+  `settings.ledger`, `settings.approvals`, `settings.banking` and
+  `settings.integrations` each change their own part, and
+  `settings.organisation` also covers Appearance and Language and
+  translation. Payroll is shown to `payroll.view` as well as changed by
+  `settings.payroll`. Users, Roles, Maintenance and the Audit log are shown
+  only to the permission that acts on them —
+  `users.manage`, `users.manage`, `settings.maintenance` and `audit.view`
+  respectively — seeing the rest of Settings is not enough. The Finance
+  Manager holds every one of these out of the box.
+
+### 1. Getting to the page
+
+Sidebar → **Insight** → **Settings**. The page opens on **Organisation**; a
+left-hand list runs down every section you can see, in the order shown
+below, with the current one highlighted.
+
+![Settings: the left-hand section list and the Organisation section, with the entities table and Add an entity](images/settings-organisation.png)
+
+### 2. How it saves
+
+Settings works two ways, and each section's page in this manual says which:
+
+- **Most sections** — Organisation, Ledger, Segments, Currencies, Taxes,
+  Terms and reminders, Approvals, Payroll and the Users section's password
+  policy — are edited into one shared **draft**. The button at the top right
+  reads **Save changes** once you have changed something, and **Saved** when
+  there is nothing pending; **Discard** appears alongside it to throw the
+  draft away. Trying to leave the page, or switch section, with unsaved
+  changes warns you first. Saving is recorded in the audit log in words —
+  *"Journal entries now take two signatures…"* — not as a row of raw values.
+- **A few sections save as you act** — Bank statements, Opening balances,
+  Integrations, Users, Roles and Maintenance. Each change there (adding a
+  bank format, inviting a user, booking a maintenance window) is its own
+  action with its own button, takes effect immediately, and is not part of
+  the draft.
+
+Someone who can see a section but not change it gets it read only, with a
+banner naming the permission that would let them.
+
+### 3. Organisation
+
+![The Organisation section: registered name, short name, KRA PIN and NGO Board registration, and the entities table](images/settings-organisation.png)
+
+The registered details at the top — **Registered name**, **Short name**,
+**KRA PIN** and **NGO Board registration** — are what prints on the close
+pack, the board pack and a donor report's cover (the cover shows the short
+name alongside it). This is not the name staff see in the application shell
+day to day; that is set separately, in **Appearance** (§14).
+
+Below, the **Entities** table lists the offices, branches and related trusts
+the accounts consolidate — every one of them posts into the same shared
+chart of accounts, and consolidation cancels out inter-entity balances
+automatically.
+
+| Column | Meaning |
+|---|---|
+| **Code** | Fixed once the entity is saved — user access and imported files refer to it. |
+| **Entity** | Its name; edited in place. |
+| **Type** | Head office, Branch or Related trust. |
+| **Currency** | Its functional currency. |
+| **Status** | Head office, Live or Dormant. |
+
+**To add an entity:** fill in **Code**, **Entity name**, **Type** and
+**Currency** under *Add an entity*, then **Add entity**. It reaches the
+ledger with the rest of the draft, once you **Save changes**.
+
+An entity is never deleted — every posting carries the entity it was made
+against. A branch that closes is marked **Dormant** instead, which keeps its
+history and drops it out of the lists that offer a choice elsewhere in the
+application. A few things are fixed once set: there is only ever one **Head
+office**, and it can neither change type nor go dormant; and an entity that
+already holds postings can no longer change its functional currency.
+
+### 4. Ledger
+
+![The Ledger section: reporting basis, posting controls, posting accounts by module, asset classes and open periods](images/settings-ledger.png)
+
+**Reporting basis** — the **Framework** (IFRS), the **Functional currency**,
+the **Financial year end** and the **Account code length**.
+
+**Posting controls** — six switches that shape every posting:
+
+| Toggle | What it does |
+|---|---|
+| Reject unbalanced journals | Debits must equal credits before an entry can leave draft. |
+| Enforce the two-person rule | The preparer of an entry can never be its approver, at any value. |
+| Allow posting to closed periods | Off by default; a journal dated in a closed period is rejected. |
+| Allow backdated postings within the open period | Permits corrections dated earlier in the same open month. |
+| Auto-number journals and vouchers | References are issued in sequence per source type and cannot be reused. |
+| Block postings that exceed the budget line | A hard stop rather than a warning; a blocked posting needs a budget revision first. |
+
+**Posting accounts** are where the entries the system raises for itself go —
+a bill to trade payables, a donor claim to grants receivable, a depreciation
+charge, the bank a payroll run pays from, a bank charge taken from a
+statement — grouped by the module that posts them (Payables, Receivables,
+Advances, Payroll, Fixed assets, Bank reconciliation). Each row offers only
+active, postable accounts of the right type — an expense for a charge, a
+liability for a payable. A change applies to postings **from then on**; an
+account already holding a balance that is cleared later (payables, goods
+received not invoiced, withholding tax, receivables, the doubtful-debt
+allowance, staff advances, suspense) can only move once that balance is nil,
+or once it has been journalled across — otherwise the entries that clear it
+would land in the account it just left.
+
+**Asset classes**, below the posting accounts, are what an asset is
+registered under: its **Tag prefix**, the **Life (yrs)** a new asset starts
+with, and the **Cost account** it is carried in and capitalised from. A cost
+account must be an active asset account in the accumulated-depreciation
+group, and is fixed once the class carries assets at cost. **Add an asset
+class** adds one with the rest of the draft; a class already carrying assets
+cannot be removed, and changing its life or prefix affects only assets
+registered afterwards.
+
+**Open periods**, at the foot, is a read-only strip of every recent month and
+whether it is open or closed — periods are opened and closed from
+[Period close](#period-close), not here.
+
+### 5. Segments
+
+![The Segments section: which coding segments are mandatory and shown on reports, and the funds table below](images/settings-segments.png)
+
+**Accounting segments** sets which coding dimensions a posting must carry —
+**Fund**, **Programme / project**, **Restriction class**, **Grant / award**,
+**Funder** and **County** — each shown as **Mandatory** or **Optional**,
+whether it is **Shown** on reports, and what it applies to. Marking one
+mandatory blocks any journal or bill that leaves it blank; leaving Fund or
+Grant / award optional draws a warning, since a posting that skips them
+cannot be traced back to a donor.
+
+**Funds**, below, is what the money is held for — the first coding dimension
+on every posting, and the one that decides which column of the statement of
+changes in funds a posting reports in.
+
+| Column | Meaning |
+|---|---|
+| **Code / Fund** | Its identifier and name. |
+| **Class** | Unrestricted, Restricted, Designated or Endowment. |
+| **Ledger column** | The statement column it rolls up to (e.g. General Fund, Grant Fund, Capital Fund, Endowment Fund). |
+| **Postings** | How many entries carry it so far. |
+
+Class and ledger column have to agree — an Endowment fund rolls up as one,
+and the Grant Fund and Capital Fund columns report money held for a donor,
+so a fund reporting there cannot be Unrestricted. A restricted fund can also
+name the funder it is held for.
+
+**To open a fund:** fill in **Code**, **Fund name**, **Class** and **Ledger
+column** under *Open a fund*, then **Open fund**. Unlike the rest of this
+section, a fund opens the moment you click it — it does not wait in the
+draft, because the ledger may already refer to it. Funds are never deleted;
+the Postings column shows why one with history cannot be.
+
+### 6. Currencies
+
+![The Currencies section: indicative rates, used-by counts and Enable/Disable, and Add a currency](images/settings-currencies.png)
+
+Which currencies an award or a donor claim may be denominated in, alongside
+the reporting currency (KES). Each row shows its **Indicative rate**, who is
+**Used by** it, and **Enable** or **Disable**. **Add a currency** takes a
+**Code**, **Currency name** and **Rate to KES**.
+
+The reporting currency cannot be disabled, and nor can one a claim is
+already stated in — disabling only removes a currency from new forms, it
+never restates what has already been posted. The rate held here is
+indicative only: it seeds the agreement rate on a new award and the claim
+rate on a donor invoice, and either can override it.
+
+### 7. Taxes
+
+![The Taxes section: the VAT rate and effective date, withholding rates, spend-category defaults, and rate history](images/settings-taxes.png)
+
+**VAT and withholding tax** — the **VAT rate (%)** and the date a change to
+it takes effect. A bill takes the rates in force on its **invoice date**;
+bills already captured keep the rate they were entered with, whatever
+changes afterwards.
+
+**Withholding rates** — a rate per row (e.g. 3% on goods, 5% on professional
+and management fees, 10% on rent and royalties), each showing what it
+**Applies to** and whether it is **in use**. **Add a rate** adds another; a
+rate a spend category defaults to cannot be removed.
+
+**Spend category defaults**, below, lists which withholding rate each
+category of spend takes unless a bill gives a reason to override it.
+
+**Rate history**, at the foot, lists every VAT and withholding rate that has
+ever been in force, with its **From** and **To** dates — out of the box: VAT
+16%; withholding 3%, 5% and 10%, all from 1 January 2021.
+
+### 8. Terms and reminders
+
+![The Terms and reminders section: a table of day-based rules for payment terms, claims, advances, suppliers, donor reports and tranches](images/settings-terms.png)
+
+A single table of the day-based rules the rest of the application reads:
+
+| Rule | What it sets |
+|---|---|
+| Supplier payment terms offered | The terms a bill can be captured on (e.g. 14, 30, 45, 60 days); a bill raised from goods received takes 30 when it is offered. |
+| A donor claim falls due after | Days from issue — drives ageing and the expected-receipts view. |
+| An unsurrendered advance is recovered from pay after | Days past the surrender date before the balance can be taken from payroll. |
+| A supplier shows as expiring | Days before its pre-qualification lapses. |
+| A donor report is flagged as due | Days before its deadline, on the grants page and the reporting calendar. |
+| A grant tranche shows as due | Days before it is expected. |
+
+A change applies from the moment you save it; a bill or claim already raised
+keeps the due date it was given at the time.
+
+### 9. Approvals
+
+![The Approvals section: approval thresholds per transaction type with an expanded ladder, the procurement threshold and segregation-of-duties notes](images/settings-approvals.png)
+
+**Approval thresholds** lists every transaction type — Journal entries,
+Supplier bills, Payment runs, Sub-grants to partners, Inter-fund transfers,
+Budget revisions — with its **Threshold (KES)**, the **Approver** role for
+the ordinary case, a note of what happens **Above threshold**, and a
+**Signatures** control showing how many steps the ladder has.
+
+**To see or change a ladder:** click **N step(s) ▾** on a row. It opens
+into the ladder itself — each step's **Signed by** role, the value it
+engages **Above**, **Up to** (blank means no ceiling), and **How many**
+signatures of that role are needed (a quorum, e.g. *any two of three Board
+Signatories*). **Add a signature** appends another step; **×** removes one.
+Bands are read from the bottom up — a transaction takes the highest band its
+value reaches — and every band above nil enforces the two-person rule. The
+head office's approval bands are the organisation's: an entity without its
+own follows them.
+
+**Procurement threshold** — above this value a purchase needs three
+quotations (each with the supplier's own document, or a single-source
+justification) before its purchase order; a bill entered straight into
+Payables above it, before VAT, can only be paid to a pre-qualified supplier.
+Below it, a supplier without a current pre-qualification still needs a
+reason recorded on the bill.
+
+**Segregation of duties**, at the foot, restates the rules that hold
+regardless of what is configured above: a journal's preparer can never
+approve their own entry; bill coding, approval and payment release are three
+separate permissions that cannot be held together; inter-fund transfers and
+sub-grants always need the Executive Director, whatever the amount; and
+auditors hold read-only access and can never post, approve or change
+configuration.
+
+> For how a document actually climbs a ladder once it is defined here, see
+> [`approvals.md`](approvals.md) — written for developers, but useful if you
+> want the mechanics behind what this screen configures.
+
+### 10. Bank statements
+
+![The Bank statements section: cash accounts with their assigned CSV format, and the format list below with View/Edit/Duplicate/Delete](images/settings-bank-statements.png)
+
+**Accounts** lists every cash account the organisation has opened — a bank
+account, mobile money or petty cash — each with a summary of what it is used
+for and, for anything that takes a statement, the **CSV format** it is read
+with. Petty cash takes no statement, so no format applies to it. **Open a
+cash account** puts one on a ledger account; only postable asset accounts
+that do not already carry a cash account are offered, since a reconciliation
+would not know which balance it had agreed if two cash accounts sat on one
+ledger account.
+
+**Formats**, below, are the CSV layouts a bank's statement is read with —
+its column mapping, separators, and date and decimal formats. **New format**
+defines one; an existing one can be **View**ed (built-in formats), **Edit**ed
+or **Duplicate**d, and **Delete**d once nothing uses it. This section saves
+as you act, not with the rest of the draft.
+
+### 11. Opening balances
+
+![The Opening balances section refusing to load a conversion because the ledger already carries postings](images/settings-opening-balances.png)
+
+Carries an entity's permanent balances from a legacy system onto this ledger
+when it is first stood up. Balances are never stored as figures against
+accounts — everything the application reports is derived from posted
+journal lines — so this writes **one journal**, dated the first day of the
+chosen period and marked as brought-forward figures, the same way the chart,
+the general ledger and the journal register already recognise an opening
+balance.
+
+1. **Download the trial balance to fill in.** The file carries every
+   postable account, already coded with the fund and programme it defaults
+   to, so only the figures need entering; delete rows that carry no balance.
+2. Fill it in from the old system's trial balance, or bring an exported one
+   in directly — an account column is required, with either separate debit
+   and credit columns or one signed balance column (a credit written
+   negative).
+3. **Check the file.** A dry run that changes nothing: every row the chart
+   cannot place is named with its line number and the reason (an account not
+   in the chart, a heading rather than a postable account, a fund the ledger
+   does not hold, a restricted line naming no award). The trial balance must
+   balance, and no restricted or endowment fund may open below zero.
+4. **Carry the balances.** This writes a *draft* journal, not a posting. It
+   is then submitted and approved on **Journals** like any other entry, so
+   the person who loaded it cannot also approve it, and the normal approval
+   limits apply.
+
+Opening balances can only be carried onto an **empty ledger** — the load is
+refused once anything is already posted on or before the cut-off date, as
+shown above, because the figures would otherwise count twice. Where the
+chosen period opens the fiscal year, only balance-sheet accounts carry
+(income and expenditure sit in the accumulated fund by then); converting
+mid-year, income and expenditure carry too, as the year to date.
+
+### 12. Integrations
+
+![The Integrations section: M-Pesa short code and Daraja credentials, services, and the email server below](images/settings-integrations.png)
+
+**M-Pesa (Safaricom Daraja)** is set up per entity — switch entity at the top
+of the page to configure another's. It covers the **Environment** (sandbox
+or production), whether the **Short code** is a **Paybill** or **Till** and
+the account number payers quote, the cash account it **Settles to**, the
+**Callback address** Safaricom posts results to, and the four **Daraja
+credentials** (consumer key, consumer secret, passkey, security credential)
+— each held encrypted and shown again only as *"Not set"* or its last four
+characters. **Check connection** asks Safaricom for an access token without
+moving any money.
+
+Two **Services** switch on independently — **Collections** (money paid to
+the short code is received into the ledger) and **Payments** (bills and
+advances can be paid out by M-Pesa) — each staying off, with a note of what
+is still needed, until every credential and address it depends on is set.
+Payments cannot be switched off while a bill or advance is already committed
+to M-Pesa. **Match receipts automatically** reconciles a receipt to the cash
+book by its M-Pesa receipt number, leaving anything unmatched for reconciling
+by hand.
+
+**Email** shows where mail currently goes — a development instance sends to
+a local mailbox regardless of what is set below, production uses the **Mail
+server** fields (SMTP server, port, encryption, username, the address
+messages come from, and sender name) and a **Password**, held encrypted the
+same way. **Send a test message** confirms it without sending anything to a
+real recipient list. This section, like Bank statements, saves as you act.
+
+### 13. Payroll
+
+![The Payroll section: posting accounts per pay component, benefits, and the grade scale](images/settings-payroll.png)
+
+**Posting accounts** sets, per pay component, whether it is an **Earning**,
+**Deduction** or **Employer** cost, and which ledger account it **Posts to**
+— basic salary and taxable allowances to salaries and wages, PAYE, NSSF,
+SHIF and the housing levy each to their own payable, an advance recovery
+back to staff advances, and the employer's own NSSF, housing levy and NITA
+contributions to statutory contributions. A run cannot be approved until
+every component its journal carries has an account.
+
+**Benefits** are what the organisation pays on top of basic — each becomes a
+column on the grade scale below, a line on every payslip, and part of gross
+pay, unless marked **Taxable** is unticked, which excludes it from taxable
+pay while still paying it. **Add a benefit** takes a **Name on the payslip**
+and a **Basis** (percentage of basic, or a flat KES figure); **Disable**
+withdraws one that is not already paid to anyone.
+
+**Grades and benefits** is what each benefit is worth at each grade. **Add a
+grade** adds one with a code and a band name plus its benefit figures. A new
+starter takes these automatically from the grade they are appointed to;
+existing staff keep the figures on their own record until a salary change
+picks up whatever has been added since. Changing a grade's figures here does
+not restate payroll runs already posted, and a grade already in use cannot
+be disabled — it is withdrawn from new appointments only.
+
+### 14. Appearance
+
+![The Appearance section: application name and logo, and the six interface theme choices](images/settings-appearance.png)
+
+**Name and logo** — the **Application name** and the line underneath it are
+what the sidebar and browser tab read; this is the name staff work under day
+to day, and need not match the registered name on Organisation, which is
+what prints on statements. A logo is uploaded as PNG, JPEG or WebP under
+500 KB (an SVG is refused, since it can carry script as well as a picture);
+with none set, the sidebar draws the application name's initials instead.
+Unlike the rest of this section, the logo saves the moment it is chosen, not
+with the draft.
+
+**Interface theme** — one theme for the whole organisation, so everyone
+reads the shell in the same colours. Choosing a card repaints the screen
+immediately as a preview; it takes effect for everyone once saved. Five are
+supplied (Evergreen, Deep blue, Indigo, Burgundy, Graphite); **Custom** takes
+an accent and a menu colour of your own, from which every other shade is
+derived, and shows the measured contrast ratio as you pick — a pair that
+does not clear the WCAG bar (4.5:1 for the accent, 7:1 for the menu, since
+both carry light text) is refused on save.
+
+A theme reaches buttons, links, the selected row and every tinted panel, not
+just the sidebar — except **Urgent**, **Warning** and **Settled**, which keep
+their own colours in every theme, so *"this one is done"* reads the same
+green whatever else changes. A theme is cosmetic only: it changes nothing
+about who can post, approve or read a record.
+
+### 15. Language and translation
+
+![The Language and translation section: interface languages with coverage and status, fallback behaviour, and wording raised for review](images/settings-language.png)
+
+**Interface languages** lists each language the shell can be read in, with
+its **Coverage** (percentage translated), its **Reviewer of record**, and a
+**Status** — **Source**, **Published**, **In review** or **Draft** — with
+**Preview** to see it rendered. The language a person reads in is their own
+choice, made in the top bar and kept in their browser; it changes what they
+read, never what the ledger holds — account codes, references, currency and
+posted amounts are untouched by it, and every switch is logged against the
+person who made it.
+
+**Fallback behaviour** is the organisation's single answer, not the reader's,
+to what shows when a string has no approved translation yet: the **English
+source silently**, the source **marked as untranslated** (recommended, so a
+reader knows it has not been reviewed), or the **string key** (for
+translators working through the catalogue, not for live users).
+
+**Raised for review** is the queue of wording someone has flagged — a
+suggestion, a reported problem, or an unlock request against a locked term —
+each with who raised it and when. **Approve** publishes it immediately and
+logs it; **Decline** dismisses it. A label can also be raised directly where
+it is read: Cmd-click (Alt-click on Windows and Linux) any label in the
+sidebar opens a *Raise this label* popover on it; a label already showing
+the English fallback wears a small `EN` badge that opens the same popover.
+
+**Numbers, dates and currency** — a single checkbox to **hold** these in the
+organisation's reporting locale regardless of interface language, so a
+figure cannot be misread as a different amount; the table beneath it shows a
+sample value as posted against how it would render in the browsing locale.
+
+**Locked terminology**, at the foot, lists regulated terms — *Restricted
+fund*, *Award*, *Encumbrance* and the like — that carry one approved
+translation each and cannot be edited freely in the catalogue; changing one
+needs a named unlock authority, via **Request unlock**, and the change is
+then versioned with the financial statements it appears in. **Coverage by
+area** closes the section with translation completeness broken down by part
+of the application.
+
+### 16. Quick reference
+
+| I want to… | Do this |
+|---|---|
+| Open Settings | Sidebar → **Insight** → **Settings** |
+| Change the registered name or add an entity | **Organisation** |
+| Change posting controls or where the system posts | **Ledger** |
+| Add a fund, or make a segment mandatory | **Segments** |
+| Enable a currency for awards and claims | **Currencies** |
+| Change the VAT or a withholding rate | **Taxes** |
+| Change how many days a bill or claim has | **Terms and reminders** |
+| Change who approves what, or add a signature | **Approvals** → **N step(s) ▾** |
+| Open a bank/M-Pesa/petty cash account, or its statement format | **Bank statements** |
+| Bring balances in from a legacy system | **Opening balances** → download template → **Check the file** → **Carry the balances** |
+| Connect M-Pesa or the mail server | **Integrations** |
+| Add a benefit or a pay grade | **Payroll** |
+| Rename the application or change its colours | **Appearance** |
+| Add a language, or change fallback wording | **Language and translation** |
+| Manage people or roles | See [Users and roles](#users-and-roles) |
+| Close the application for maintenance | See [Closing the application for maintenance](#closing-the-application-for-maintenance) |
+| See who changed a setting | See [Audit log](#audit-log) |
+
+### 17. Notes and good practice
+
+- **Most of Settings is one draft.** Changing several things — a threshold, a
+  fund, a posting account — and saving them together is normal; **Discard**
+  throws away everything unsaved at once, not one field at a time.
+- **A handful of sections act immediately.** Opening a fund, a cash account
+  or a language, inviting a user and booking a maintenance window all take
+  effect the moment you click them, because the ledger (or the person
+  invited) may already depend on the result.
+- **Changes to posting accounts and controls apply going forward only.**
+  Nothing already posted is recalculated or restated.
+- **Everything here is in the audit log**, in words rather than raw values —
+  see [Audit log](#audit-log).
+
+---
+
 ## Users and roles
 
 **Settings → Users** and **Settings → Roles**. Seeing or changing either needs a
@@ -3238,6 +3722,61 @@ and what actually happened are both on the record.
 | Call a booked period off | Maintenance → **Cancel** on its row |
 | End one that is running | Maintenance → **End the maintenance now** |
 | See what was closed and when | Settings → **Audit log**, area *Maintenance* |
+
+---
+
+## Audit log
+
+**Settings → Audit log.** A read-only, searchable record of every
+configuration change made anywhere in Settings — who changed what, and when
+— kept for seven years and not editable, or clearable, from within the
+application. Shown only to a role holding `audit.view`; seeing the rest of
+Settings does not bring this section with it.
+
+![The Audit log section: a search box, and a table of when, who, what changed and which area](images/settings-audit-log.png)
+
+- **Page:** *Settings → Audit log* (`http://localhost:8090/settings` →
+  **Audit log** in the left-hand list)
+- **Who can see it:** only a role holding `audit.view` — the Finance Manager
+  and the Auditor role both hold it out of the box.
+
+### 1. Reading an entry
+
+Each row reads as a sentence, not a row of raw values — *"Journal entries
+now take two signatures — the Finance Manager, then the Executive
+Director,"* *"B. Omondi suspended following transfer out of the Rift Valley
+office"* — with:
+
+| Column | Meaning |
+|---|---|
+| **When** | Date and time of the change. |
+| **User** | Who made it. |
+| **Change** | What changed, in plain English. |
+| **Area** | Which section of Settings it belongs to (Organisation, Ledger, Segments, Approvals, Users, and so on). |
+
+### 2. Finding an entry
+
+Type into the search box (top right) to match against the user, the change
+text or the area. The table pages ten entries at a time.
+
+### 3. Quick reference
+
+| I want to… | Do this |
+|---|---|
+| See what changed in Settings | Sidebar → **Insight** → **Settings** → **Audit log** |
+| Find a change by who made it or what it affected | Type into the search box |
+| Check who reopened or closed a period, or booked maintenance | Search for the area (*Ledger*, *Maintenance*) |
+
+### 4. Notes and good practice
+
+- **Nothing here can be edited or deleted**, including by whoever can see it
+  — it is a record, not a working screen.
+- **It reads in words, not figures.** A threshold change shows as *"raised
+  from 1,500,000 to 2,000,000,"* so the log stays legible without cross-
+  referencing the screen it came from.
+- **Every section of Settings writes here**, including the ones that save as
+  you act (Bank statements, Integrations, Users, Roles, Maintenance) and the
+  ones that save with the shared draft.
 
 ---
 
